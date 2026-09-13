@@ -1,0 +1,36 @@
+name: AgentQuant 24/7 Automated Daily Trader
+
+on:
+  schedule:
+    # Runs Monday through Friday at 19:45 UTC (8:45 PM West Africa Time / 3:45 PM New York Time)
+    # 15 minutes before the US market close to execute end-of-day scalper signals.
+    - cron: '45 19 * * 1-5'
+  workflow_dispatch:
+    # Allows manual trigger at any time from GitHub UI or mobile app
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scipy statsmodels yfinance python-dotenv requests
+
+      - name: Run Daily Signal Scanner & Execution Engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CTRADER_ACCOUNT_ID: ${{ secrets.CTRADER_ACCOUNT_ID }}
+          CTRADER_ACCESS_TOKEN: ${{ secrets.CTRADER_ACCESS_TOKEN }}
+        run: |
+          python scripts/daily_signal_scanner.py --notify
