@@ -1,0 +1,275 @@
+{
+  "initial_capital": 100.0,
+  "eval_period": {
+    "start": "2025-09-11",
+    "end": "2026-09-11",
+    "trading_days": 252
+  },
+  "best_strategy": {
+    "name": "mean_reversion",
+    "params": {
+      "window": 20,
+      "num_std": 2.0
+    },
+    "starting_balance": 100.0,
+    "final_balance": 110.36,
+    "net_pnl_dollars": 10.36,
+    "net_pnl_pct": 10.36,
+    "sharpe_ratio": 2.08,
+    "sortino_ratio": 3.59,
+    "calmar_ratio": 7.71,
+    "max_drawdown_pct": 1.36,
+    "max_drawdown_dollars": 1.36,
+    "total_trades": 11,
+    "winning_trades": 11,
+    "win_rate_pct": 100.0
+  },
+  "benchmark_buy_and_hold": {
+    "name": "SPY Buy & Hold",
+    "starting_balance": 100.0,
+    "final_balance": 118.48,
+    "net_pnl_dollars": 18.48,
+    "net_pnl_pct": 18.48,
+    "sharpe_ratio": 1.32,
+    "max_drawdown_pct": 8.88
+  },
+  "all_strategies_tested": [
+    {
+      "strategy": "mean_reversion",
+      "params": {
+        "window": 20,
+        "num_std": 2.0
+      },
+      "final_val": 110.36,
+      "pnl_pct": 10.36,
+      "sharpe": 2.08,
+      "max_dd_pct": 1.36
+    },
+    {
+      "strategy": "momentum",
+      "params": {
+        "fast_window": 50,
+        "slow_window": 150
+      },
+      "final_val": 115.04,
+      "pnl_pct": 15.04,
+      "sharpe": 1.09,
+      "max_dd_pct": 8.88
+    },
+    {
+      "strategy": "momentum",
+      "params": {
+        "fast_window": 20,
+        "slow_window": 60
+      },
+      "final_val": 106.09,
+      "pnl_pct": 6.09,
+      "sharpe": 0.46,
+      "max_dd_pct": 12.17
+    },
+    {
+      "strategy": "breakout",
+      "params": {
+        "window": 20,
+        "threshold_pct": 0.02
+      },
+      "final_val": 100.0,
+      "pnl_pct": 0.0,
+      "sharpe": 0.0,
+      "max_dd_pct": -0.0
+    },
+    {
+      "strategy": "momentum",
+      "params": {
+        "fast_window": 10,
+        "slow_window": 50
+      },
+      "final_val": 92.2,
+      "pnl_pct": -7.8,
+      "sharpe": -0.63,
+      "max_dd_pct": 13.49
+    },
+    {
+      "strategy": "trend_following",
+      "params": {
+        "short_window": 10,
+        "medium_window": 50,
+        "long_window": 100
+      },
+      "final_val": 88.85,
+      "pnl_pct": -11.15,
+      "sharpe": -1.08,
+      "max_dd_pct": 16.64
+    }
+  ],
+  "monthly_breakdown": [
+    {
+      "month": "2025-09",
+      "return_pct": -0.2686412143798944,
+      "month_pnl_dollars": -0.2686412143798975,
+      "end_balance": 99.7313587856201
+    },
+    {
+      "month": "2025-10",
+      "return_pct": 0.7731064572282342,
+      "month_pnl_dollars": 0.7710295746530846,
+      "end_balance": 100.50238836027319
+    },
+    {
+      "month": "2025-11",
+      "return_pct": 0.9424396437965221,
+      "month_pnl_dollars": 0.9471743508695596,
+      "end_balance": 101.44956271114275
+    },
+    {
+      "month": "2025-12",
+      "return_pct": 0.0,
+      "month_pnl_dollars": 0.0,
+      "end_balance": 101.44956271114275
+    },
+    {
+      "month": "2026-01",
+      "return_pct": 0.9329624061451325,
+      "month_pnl_dollars": 0.9464862812935877,
+      "end_balance": 102.39604899243633
+    },
+    {
+      "month": "2026-02",
+      "return_pct": 1.6964893211695475,
+      "month_pnl_dollars": 1.7371380364562157,
+      "end_balance": 104.13318702889255
+    },
+    {
+      "month": "2026-03",
+      "return_pct": 4.099715299578488,
+      "month_pnl_dollars": 4.269164200562187,
+      "end_balance": 108.40235122945474
+    },
+    {
+      "month": "2026-04",
+      "return_pct": -1.2507683682621118,
+      "month_pnl_dollars": -1.3558623196304183,
+      "end_balance": 107.04648890982432
+    },
+    {
+      "month": "2026-05",
+      "return_pct": 0.0,
+      "month_pnl_dollars": 0.0,
+      "end_balance": 107.04648890982432
+    },
+    {
+      "month": "2026-06",
+      "return_pct": 1.4779361354072318,
+      "month_pnl_dollars": 1.5820787412829844,
+      "end_balance": 108.6285676511073
+    },
+    {
+      "month": "2026-07",
+      "return_pct": 1.454856711656638,
+      "month_pnl_dollars": 1.5803900072486101,
+      "end_balance": 110.20895765835591
+    },
+    {
+      "month": "2026-08",
+      "return_pct": 0.13926640395762746,
+      "month_pnl_dollars": 0.15348405216997207,
+      "end_balance": 110.36244171052589
+    },
+    {
+      "month": "2026-09",
+      "return_pct": 0.0,
+      "month_pnl_dollars": 0.0,
+      "end_balance": 110.36244171052589
+    }
+  ],
+  "trades": [
+    {
+      "entry_date": "2025-10-10",
+      "exit_date": "2025-10-13",
+      "entry_price": 647.6542358398438,
+      "exit_price": 657.5919189453125,
+      "return_pct": 1.5344118135168356,
+      "profitable": true
+    },
+    {
+      "entry_date": "2025-11-18",
+      "exit_date": "2025-11-19",
+      "entry_price": 654.65625,
+      "exit_price": 657.185302734375,
+      "return_pct": 0.38631766432765285,
+      "profitable": true
+    },
+    {
+      "entry_date": "2025-11-20",
+      "exit_date": "2025-11-21",
+      "entry_price": 647.1683349609375,
+      "exit_price": 653.6148681640625,
+      "return_pct": 0.9961138168965122,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-01-20",
+      "exit_date": "2026-01-21",
+      "entry_price": 673.9981689453125,
+      "exit_price": 681.77685546875,
+      "return_pct": 1.154110928166135,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-02-05",
+      "exit_date": "2026-02-06",
+      "entry_price": 674.0379638671875,
+      "exit_price": 686.96923828125,
+      "return_pct": 1.9184786476819993,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-03-06",
+      "exit_date": "2026-03-09",
+      "entry_price": 668.82568359375,
+      "exit_price": 674.6845703125,
+      "return_pct": 0.8759960722903001,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-03-12",
+      "exit_date": "2026-03-16",
+      "entry_price": 662.5390625,
+      "exit_price": 665.493408203125,
+      "return_pct": 0.4459126820352574,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-03-20",
+      "exit_date": "2026-03-23",
+      "entry_price": 646.9034423828125,
+      "exit_price": 653.6959228515625,
+      "return_pct": 1.0499991225476386,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-03-27",
+      "exit_date": "2026-03-31",
+      "entry_price": 632.4606323242188,
+      "exit_price": 648.6688842773438,
+      "return_pct": 2.5627289865555065,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-06-10",
+      "exit_date": "2026-06-11",
+      "entry_price": 723.56591796875,
+      "exit_price": 735.8642578125,
+      "return_pct": 1.6996847886747966,
+      "profitable": true
+    },
+    {
+      "entry_date": "2026-07-29",
+      "exit_date": "2026-07-30",
+      "entry_price": 729.4600219726562,
+      "exit_price": 741.6900024414062,
+      "return_pct": 1.6765799496011913,
+      "profitable": true
+    }
+  ]
+}

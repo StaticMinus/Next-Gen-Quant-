@@ -1,0 +1,43 @@
+# Environment & secrets
+.env
+*.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+cache/
+*.log
+
+
+# Data (download on demand)
+data_store/*.parquet
+
+# Generated outputs
+figures/
+experiments/*.csv
+experiments/*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Legacy config (standardized to config.yaml)
+config.json
+new_env.ini
+experiments/run_manifests/

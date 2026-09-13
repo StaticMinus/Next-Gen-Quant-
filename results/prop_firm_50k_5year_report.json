@@ -1,0 +1,825 @@
+{
+  "metadata": {
+    "initial_capital": 50000.0,
+    "start_date": "2021-09-13",
+    "end_date": "2026-09-11",
+    "total_trading_days": 1255,
+    "trader_split": 0.85,
+    "naira_rate": 1650.0
+  },
+  "best_run": {
+    "asset": "SPY",
+    "variant_name": "Balanced Long-Only Scalper",
+    "initial_capital": 50000.0,
+    "final_balance": 70942.1,
+    "total_profit_usd": 20942.1,
+    "total_return_pct": 41.88,
+    "annualized_cagr_pct": 7.25,
+    "trader_takehome_5year_usd": 17800.79,
+    "trader_takehome_5year_ngn": 29371299.0,
+    "average_yearly_takehome_usd": 3560.16,
+    "average_yearly_takehome_ngn": 5874260.0,
+    "average_monthly_takehome_usd": 296.68,
+    "average_monthly_takehome_ngn": 489522.0,
+    "sharpe": 0.74,
+    "max_drawdown_pct": 10.99,
+    "max_drawdown_usd": 5493.55,
+    "total_trades": 105,
+    "win_rate_pct": 79.0,
+    "yearly_breakdown": [
+      {
+        "period_label": "Year 1 (2021-2022 Bear Market)",
+        "strategy_return_pct": 0.04,
+        "benchmark_return_pct": -6.67,
+        "year_profit_usd": 20.7,
+        "your_takehome_usd (85%)": 17.6,
+        "your_takehome_ngn (85%)": 29035.0,
+        "year_max_drawdown_pct": 9.19,
+        "prop_firm_safe": false
+      },
+      {
+        "period_label": "Year 2 (2022-2023 Recovery)",
+        "strategy_return_pct": 9.48,
+        "benchmark_return_pct": 10.29,
+        "year_profit_usd": 4739.2,
+        "your_takehome_usd (85%)": 4028.32,
+        "your_takehome_ngn (85%)": 6646734.0,
+        "year_max_drawdown_pct": 3.79,
+        "prop_firm_safe": true
+      },
+      {
+        "period_label": "Year 3 (2023-2024 AI Expansion)",
+        "strategy_return_pct": 0.8,
+        "benchmark_return_pct": 27.11,
+        "year_profit_usd": 399.52,
+        "your_takehome_usd (85%)": 339.59,
+        "your_takehome_ngn (85%)": 560324.0,
+        "year_max_drawdown_pct": 5.22,
+        "prop_firm_safe": false
+      },
+      {
+        "period_label": "Year 4 (2024-2025 Bull Run)",
+        "strategy_return_pct": 11.54,
+        "benchmark_return_pct": 19.05,
+        "year_profit_usd": 5768.72,
+        "your_takehome_usd (85%)": 4903.41,
+        "your_takehome_ngn (85%)": 8090627.0,
+        "year_max_drawdown_pct": 10.99,
+        "prop_firm_safe": false
+      },
+      {
+        "period_label": "Year 5 (2025-2026 Recent Cycle)",
+        "strategy_return_pct": 14.38,
+        "benchmark_return_pct": 16.55,
+        "year_profit_usd": 7188.19,
+        "your_takehome_usd (85%)": 6109.96,
+        "your_takehome_ngn (85%)": 10081436.0,
+        "year_max_drawdown_pct": 2.14,
+        "prop_firm_safe": true
+      }
+    ],
+    "benchmark": {
+      "final_balance": 91501.5,
+      "net_profit_usd": 41501.5,
+      "total_return_pct": 83.0,
+      "sharpe": 0.79,
+      "max_drawdown_pct": 24.5
+    }
+  },
+  "all_runs": [
+    {
+      "asset": "SPY",
+      "variant_name": "Balanced Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 70942.1,
+      "total_profit_usd": 20942.1,
+      "total_return_pct": 41.88,
+      "annualized_cagr_pct": 7.25,
+      "trader_takehome_5year_usd": 17800.79,
+      "trader_takehome_5year_ngn": 29371299.0,
+      "average_yearly_takehome_usd": 3560.16,
+      "average_yearly_takehome_ngn": 5874260.0,
+      "average_monthly_takehome_usd": 296.68,
+      "average_monthly_takehome_ngn": 489522.0,
+      "sharpe": 0.74,
+      "max_drawdown_pct": 10.99,
+      "max_drawdown_usd": 5493.55,
+      "total_trades": 105,
+      "win_rate_pct": 79.0,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": 0.04,
+          "benchmark_return_pct": -6.67,
+          "year_profit_usd": 20.7,
+          "your_takehome_usd (85%)": 17.6,
+          "your_takehome_ngn (85%)": 29035.0,
+          "year_max_drawdown_pct": 9.19,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 9.48,
+          "benchmark_return_pct": 10.29,
+          "year_profit_usd": 4739.2,
+          "your_takehome_usd (85%)": 4028.32,
+          "your_takehome_ngn (85%)": 6646734.0,
+          "year_max_drawdown_pct": 3.79,
+          "prop_firm_safe": true
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": 0.8,
+          "benchmark_return_pct": 27.11,
+          "year_profit_usd": 399.52,
+          "your_takehome_usd (85%)": 339.59,
+          "your_takehome_ngn (85%)": 560324.0,
+          "year_max_drawdown_pct": 5.22,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": 11.54,
+          "benchmark_return_pct": 19.05,
+          "year_profit_usd": 5768.72,
+          "your_takehome_usd (85%)": 4903.41,
+          "your_takehome_ngn (85%)": 8090627.0,
+          "year_max_drawdown_pct": 10.99,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 14.38,
+          "benchmark_return_pct": 16.55,
+          "year_profit_usd": 7188.19,
+          "your_takehome_usd (85%)": 6109.96,
+          "your_takehome_ngn (85%)": 10081436.0,
+          "year_max_drawdown_pct": 2.14,
+          "prop_firm_safe": true
+        }
+      ],
+      "benchmark": {
+        "final_balance": 91501.5,
+        "net_profit_usd": 41501.5,
+        "total_return_pct": 83.0,
+        "sharpe": 0.79,
+        "max_drawdown_pct": 24.5
+      }
+    },
+    {
+      "asset": "QQQ",
+      "variant_name": "Aggressive Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 80403.36,
+      "total_profit_usd": 30403.36,
+      "total_return_pct": 60.81,
+      "annualized_cagr_pct": 9.97,
+      "trader_takehome_5year_usd": 25842.86,
+      "trader_takehome_5year_ngn": 42640719.0,
+      "average_yearly_takehome_usd": 5168.57,
+      "average_yearly_takehome_ngn": 8528144.0,
+      "average_monthly_takehome_usd": 430.71,
+      "average_monthly_takehome_ngn": 710679.0,
+      "sharpe": 0.72,
+      "max_drawdown_pct": 16.48,
+      "max_drawdown_usd": 8240.77,
+      "total_trades": 124,
+      "win_rate_pct": 70.2,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -0.89,
+          "benchmark_return_pct": -16.97,
+          "year_profit_usd": -447.32,
+          "your_takehome_usd (85%)": -447.32,
+          "your_takehome_ngn (85%)": -738073.0,
+          "year_max_drawdown_pct": 16.48,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 21.72,
+          "benchmark_return_pct": 20.82,
+          "year_profit_usd": 10857.94,
+          "your_takehome_usd (85%)": 9229.25,
+          "your_takehome_ngn (85%)": 15228265.0,
+          "year_max_drawdown_pct": 5.89,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": 5.15,
+          "benchmark_return_pct": 27.82,
+          "year_profit_usd": 2574.49,
+          "your_takehome_usd (85%)": 2188.32,
+          "your_takehome_ngn (85%)": 3610727.0,
+          "year_max_drawdown_pct": 6.39,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": 14.88,
+          "benchmark_return_pct": 24.67,
+          "year_profit_usd": 7440.39,
+          "your_takehome_usd (85%)": 6324.34,
+          "your_takehome_ngn (85%)": 10435153.0,
+          "year_max_drawdown_pct": 12.78,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 9.4,
+          "benchmark_return_pct": 21.38,
+          "year_profit_usd": 4701.65,
+          "your_takehome_usd (85%)": 3996.4,
+          "your_takehome_ngn (85%)": 6594068.0,
+          "year_max_drawdown_pct": 6.28,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 97809.92,
+        "net_profit_usd": 47809.92,
+        "total_return_pct": 95.62,
+        "sharpe": 0.7,
+        "max_drawdown_pct": 35.12
+      }
+    },
+    {
+      "asset": "QQQ",
+      "variant_name": "Balanced Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 70542.03,
+      "total_profit_usd": 20542.03,
+      "total_return_pct": 41.08,
+      "annualized_cagr_pct": 7.13,
+      "trader_takehome_5year_usd": 17460.72,
+      "trader_takehome_5year_ngn": 28810193.0,
+      "average_yearly_takehome_usd": 3492.14,
+      "average_yearly_takehome_ngn": 5762039.0,
+      "average_monthly_takehome_usd": 291.01,
+      "average_monthly_takehome_ngn": 480170.0,
+      "sharpe": 0.57,
+      "max_drawdown_pct": 17.89,
+      "max_drawdown_usd": 8944.61,
+      "total_trades": 106,
+      "win_rate_pct": 68.9,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -7.29,
+          "benchmark_return_pct": -16.97,
+          "year_profit_usd": -3642.66,
+          "your_takehome_usd (85%)": -3642.66,
+          "your_takehome_ngn (85%)": -6010388.0,
+          "year_max_drawdown_pct": 17.89,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 17.47,
+          "benchmark_return_pct": 20.82,
+          "year_profit_usd": 8735.37,
+          "your_takehome_usd (85%)": 7425.06,
+          "your_takehome_ngn (85%)": 12251354.0,
+          "year_max_drawdown_pct": 6.18,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": -1.52,
+          "benchmark_return_pct": 27.82,
+          "year_profit_usd": -758.89,
+          "your_takehome_usd (85%)": -758.89,
+          "your_takehome_ngn (85%)": -1252165.0,
+          "year_max_drawdown_pct": 7.41,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": 16.99,
+          "benchmark_return_pct": 24.67,
+          "year_profit_usd": 8494.34,
+          "your_takehome_usd (85%)": 7220.19,
+          "your_takehome_ngn (85%)": 11913316.0,
+          "year_max_drawdown_pct": 12.78,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 11.46,
+          "benchmark_return_pct": 21.38,
+          "year_profit_usd": 5730.27,
+          "your_takehome_usd (85%)": 4870.73,
+          "your_takehome_ngn (85%)": 8036710.0,
+          "year_max_drawdown_pct": 4.65,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 97809.92,
+        "net_profit_usd": 47809.92,
+        "total_return_pct": 95.62,
+        "sharpe": 0.7,
+        "max_drawdown_pct": 35.12
+      }
+    },
+    {
+      "asset": "SPY",
+      "variant_name": "Aggressive Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 66221.19,
+      "total_profit_usd": 16221.19,
+      "total_return_pct": 32.44,
+      "annualized_cagr_pct": 5.78,
+      "trader_takehome_5year_usd": 13788.01,
+      "trader_takehome_5year_ngn": 22750217.0,
+      "average_yearly_takehome_usd": 2757.6,
+      "average_yearly_takehome_ngn": 4550043.0,
+      "average_monthly_takehome_usd": 229.8,
+      "average_monthly_takehome_ngn": 379170.0,
+      "sharpe": 0.57,
+      "max_drawdown_pct": 10.95,
+      "max_drawdown_usd": 5473.89,
+      "total_trades": 120,
+      "win_rate_pct": 78.3,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": 3.16,
+          "benchmark_return_pct": -6.67,
+          "year_profit_usd": 1578.43,
+          "your_takehome_usd (85%)": 1341.67,
+          "your_takehome_ngn (85%)": 2213750.0,
+          "year_max_drawdown_pct": 8.77,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 8.45,
+          "benchmark_return_pct": 10.29,
+          "year_profit_usd": 4224.61,
+          "your_takehome_usd (85%)": 3590.92,
+          "your_takehome_ngn (85%)": 5925022.0,
+          "year_max_drawdown_pct": 7.53,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": 2.25,
+          "benchmark_return_pct": 27.11,
+          "year_profit_usd": 1122.96,
+          "your_takehome_usd (85%)": 954.52,
+          "your_takehome_ngn (85%)": 1574957.0,
+          "year_max_drawdown_pct": 5.96,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": 11.59,
+          "benchmark_return_pct": 19.05,
+          "year_profit_usd": 5793.35,
+          "your_takehome_usd (85%)": 4924.35,
+          "your_takehome_ngn (85%)": 8125171.0,
+          "year_max_drawdown_pct": 10.95,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 3.0,
+          "benchmark_return_pct": 16.55,
+          "year_profit_usd": 1499.32,
+          "your_takehome_usd (85%)": 1274.42,
+          "your_takehome_ngn (85%)": 2102800.0,
+          "year_max_drawdown_pct": 4.18,
+          "prop_firm_safe": true
+        }
+      ],
+      "benchmark": {
+        "final_balance": 91501.5,
+        "net_profit_usd": 41501.5,
+        "total_return_pct": 83.0,
+        "sharpe": 0.79,
+        "max_drawdown_pct": 24.5
+      }
+    },
+    {
+      "asset": "QQQ",
+      "variant_name": "Conservative Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 65056.64,
+      "total_profit_usd": 15056.64,
+      "total_return_pct": 30.11,
+      "annualized_cagr_pct": 5.41,
+      "trader_takehome_5year_usd": 12798.14,
+      "trader_takehome_5year_ngn": 21116931.0,
+      "average_yearly_takehome_usd": 2559.63,
+      "average_yearly_takehome_ngn": 4223386.0,
+      "average_monthly_takehome_usd": 213.3,
+      "average_monthly_takehome_ngn": 351949.0,
+      "sharpe": 0.43,
+      "max_drawdown_pct": 19.07,
+      "max_drawdown_usd": 9536.07,
+      "total_trades": 52,
+      "win_rate_pct": 65.4,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": 1.95,
+          "benchmark_return_pct": -16.97,
+          "year_profit_usd": 975.92,
+          "your_takehome_usd (85%)": 829.53,
+          "your_takehome_ngn (85%)": 1368726.0,
+          "year_max_drawdown_pct": 12.14,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 21.9,
+          "benchmark_return_pct": 20.82,
+          "year_profit_usd": 10948.52,
+          "your_takehome_usd (85%)": 9306.24,
+          "your_takehome_ngn (85%)": 15355292.0,
+          "year_max_drawdown_pct": 5.81,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": 0.74,
+          "benchmark_return_pct": 27.82,
+          "year_profit_usd": 368.64,
+          "your_takehome_usd (85%)": 313.34,
+          "your_takehome_ngn (85%)": 517011.0,
+          "year_max_drawdown_pct": 8.52,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": -1.41,
+          "benchmark_return_pct": 24.67,
+          "year_profit_usd": -705.87,
+          "your_takehome_usd (85%)": -705.87,
+          "your_takehome_ngn (85%)": -1164682.0,
+          "year_max_drawdown_pct": 19.07,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 5.42,
+          "benchmark_return_pct": 21.38,
+          "year_profit_usd": 2709.39,
+          "your_takehome_usd (85%)": 2302.98,
+          "your_takehome_ngn (85%)": 3799924.0,
+          "year_max_drawdown_pct": 7.18,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 97809.92,
+        "net_profit_usd": 47809.92,
+        "total_return_pct": 95.62,
+        "sharpe": 0.7,
+        "max_drawdown_pct": 35.12
+      }
+    },
+    {
+      "asset": "IWM",
+      "variant_name": "Balanced Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 51737.86,
+      "total_profit_usd": 1737.86,
+      "total_return_pct": 3.48,
+      "annualized_cagr_pct": 0.69,
+      "trader_takehome_5year_usd": 1477.18,
+      "trader_takehome_5year_ngn": 2437355.0,
+      "average_yearly_takehome_usd": 295.44,
+      "average_yearly_takehome_ngn": 487471.0,
+      "average_monthly_takehome_usd": 24.62,
+      "average_monthly_takehome_ngn": 40623.0,
+      "sharpe": 0.12,
+      "max_drawdown_pct": 24.08,
+      "max_drawdown_usd": 12039.13,
+      "total_trades": 98,
+      "win_rate_pct": 68.4,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -7.25,
+          "benchmark_return_pct": -13.99,
+          "year_profit_usd": -3625.9,
+          "your_takehome_usd (85%)": -3625.9,
+          "your_takehome_ngn (85%)": -5982734.0,
+          "year_max_drawdown_pct": 14.87,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 5.42,
+          "benchmark_return_pct": -1.31,
+          "year_profit_usd": 2709.8,
+          "your_takehome_usd (85%)": 2303.33,
+          "your_takehome_ngn (85%)": 3800501.0,
+          "year_max_drawdown_pct": 7.83,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": -4.09,
+          "benchmark_return_pct": 16.47,
+          "year_profit_usd": -2046.36,
+          "your_takehome_usd (85%)": -2046.36,
+          "your_takehome_ngn (85%)": -3376497.0,
+          "year_max_drawdown_pct": 11.18,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": -4.89,
+          "benchmark_return_pct": 13.92,
+          "year_profit_usd": -2445.75,
+          "your_takehome_usd (85%)": -2445.75,
+          "your_takehome_ngn (85%)": -4035480.0,
+          "year_max_drawdown_pct": 16.1,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 15.54,
+          "benchmark_return_pct": 21.96,
+          "year_profit_usd": 7772.08,
+          "your_takehome_usd (85%)": 6606.27,
+          "your_takehome_ngn (85%)": 10900345.0,
+          "year_max_drawdown_pct": 6.0,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 68928.7,
+        "net_profit_usd": 18928.7,
+        "total_return_pct": 37.86,
+        "sharpe": 0.4,
+        "max_drawdown_pct": 31.91
+      }
+    },
+    {
+      "asset": "IWM",
+      "variant_name": "Aggressive Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 51433.66,
+      "total_profit_usd": 1433.66,
+      "total_return_pct": 2.87,
+      "annualized_cagr_pct": 0.57,
+      "trader_takehome_5year_usd": 1218.61,
+      "trader_takehome_5year_ngn": 2010708.0,
+      "average_yearly_takehome_usd": 243.72,
+      "average_yearly_takehome_ngn": 402142.0,
+      "average_monthly_takehome_usd": 20.31,
+      "average_monthly_takehome_ngn": 33512.0,
+      "sharpe": 0.11,
+      "max_drawdown_pct": 26.57,
+      "max_drawdown_usd": 13285.7,
+      "total_trades": 117,
+      "win_rate_pct": 70.1,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -13.45,
+          "benchmark_return_pct": -13.99,
+          "year_profit_usd": -6726.83,
+          "your_takehome_usd (85%)": -6726.83,
+          "your_takehome_ngn (85%)": -11099275.0,
+          "year_max_drawdown_pct": 19.18,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": 10.85,
+          "benchmark_return_pct": -1.31,
+          "year_profit_usd": 5426.4,
+          "your_takehome_usd (85%)": 4612.44,
+          "your_takehome_ngn (85%)": 7610522.0,
+          "year_max_drawdown_pct": 8.59,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": -3.7,
+          "benchmark_return_pct": 16.47,
+          "year_profit_usd": -1849.28,
+          "your_takehome_usd (85%)": -1849.28,
+          "your_takehome_ngn (85%)": -3051307.0,
+          "year_max_drawdown_pct": 7.22,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": -7.4,
+          "benchmark_return_pct": 13.92,
+          "year_profit_usd": -3699.11,
+          "your_takehome_usd (85%)": -3699.11,
+          "your_takehome_ngn (85%)": -6103531.0,
+          "year_max_drawdown_pct": 20.21,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 19.74,
+          "benchmark_return_pct": 21.96,
+          "year_profit_usd": 9869.73,
+          "your_takehome_usd (85%)": 8389.27,
+          "your_takehome_ngn (85%)": 13842300.0,
+          "year_max_drawdown_pct": 5.8,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 68928.7,
+        "net_profit_usd": 18928.7,
+        "total_return_pct": 37.86,
+        "sharpe": 0.4,
+        "max_drawdown_pct": 31.91
+      }
+    },
+    {
+      "asset": "SPY",
+      "variant_name": "Conservative Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 49641.17,
+      "total_profit_usd": -358.83,
+      "total_return_pct": -0.72,
+      "annualized_cagr_pct": -0.14,
+      "trader_takehome_5year_usd": -305.01,
+      "trader_takehome_5year_ngn": -503260.0,
+      "average_yearly_takehome_usd": -61.0,
+      "average_yearly_takehome_ngn": -100652.0,
+      "average_monthly_takehome_usd": -5.08,
+      "average_monthly_takehome_ngn": -8388.0,
+      "sharpe": 0.04,
+      "max_drawdown_pct": 24.88,
+      "max_drawdown_usd": 12437.54,
+      "total_trades": 48,
+      "win_rate_pct": 66.7,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -5.28,
+          "benchmark_return_pct": -6.67,
+          "year_profit_usd": -2639.14,
+          "your_takehome_usd (85%)": -2639.14,
+          "your_takehome_ngn (85%)": -4354584.0,
+          "year_max_drawdown_pct": 11.46,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": -3.65,
+          "benchmark_return_pct": 10.29,
+          "year_profit_usd": -1823.03,
+          "your_takehome_usd (85%)": -1823.03,
+          "your_takehome_ngn (85%)": -3008002.0,
+          "year_max_drawdown_pct": 7.12,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": -3.57,
+          "benchmark_return_pct": 27.11,
+          "year_profit_usd": -1786.39,
+          "your_takehome_usd (85%)": -1786.39,
+          "your_takehome_ngn (85%)": -2947548.0,
+          "year_max_drawdown_pct": 6.53,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": 4.29,
+          "benchmark_return_pct": 19.05,
+          "year_profit_usd": 2143.3,
+          "your_takehome_usd (85%)": 1821.81,
+          "your_takehome_ngn (85%)": 3005981.0,
+          "year_max_drawdown_pct": 14.48,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 7.26,
+          "benchmark_return_pct": 16.55,
+          "year_profit_usd": 3630.08,
+          "your_takehome_usd (85%)": 3085.57,
+          "your_takehome_ngn (85%)": 5091192.0,
+          "year_max_drawdown_pct": 6.03,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 91501.5,
+        "net_profit_usd": 41501.5,
+        "total_return_pct": 83.0,
+        "sharpe": 0.79,
+        "max_drawdown_pct": 24.5
+      }
+    },
+    {
+      "asset": "IWM",
+      "variant_name": "Conservative Long-Only Scalper",
+      "initial_capital": 50000.0,
+      "final_balance": 42759.14,
+      "total_profit_usd": -7240.86,
+      "total_return_pct": -14.48,
+      "annualized_cagr_pct": -3.08,
+      "trader_takehome_5year_usd": -6154.74,
+      "trader_takehome_5year_ngn": -10155313.0,
+      "average_yearly_takehome_usd": -1230.95,
+      "average_yearly_takehome_ngn": -2031063.0,
+      "average_monthly_takehome_usd": -102.58,
+      "average_monthly_takehome_ngn": -169255.0,
+      "sharpe": -0.16,
+      "max_drawdown_pct": 32.91,
+      "max_drawdown_usd": 16454.44,
+      "total_trades": 52,
+      "win_rate_pct": 65.4,
+      "yearly_breakdown": [
+        {
+          "period_label": "Year 1 (2021-2022 Bear Market)",
+          "strategy_return_pct": -15.56,
+          "benchmark_return_pct": -13.99,
+          "year_profit_usd": -7781.12,
+          "your_takehome_usd (85%)": -7781.12,
+          "your_takehome_ngn (85%)": -12838853.0,
+          "year_max_drawdown_pct": 20.97,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 2 (2022-2023 Recovery)",
+          "strategy_return_pct": -1.93,
+          "benchmark_return_pct": -1.31,
+          "year_profit_usd": -962.6,
+          "your_takehome_usd (85%)": -962.6,
+          "your_takehome_ngn (85%)": -1588296.0,
+          "year_max_drawdown_pct": 9.97,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 3 (2023-2024 AI Expansion)",
+          "strategy_return_pct": 0.36,
+          "benchmark_return_pct": 16.47,
+          "year_profit_usd": 179.81,
+          "your_takehome_usd (85%)": 152.84,
+          "your_takehome_ngn (85%)": 252179.0,
+          "year_max_drawdown_pct": 6.13,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 4 (2024-2025 Bull Run)",
+          "strategy_return_pct": -10.14,
+          "benchmark_return_pct": 13.92,
+          "year_profit_usd": -5068.88,
+          "your_takehome_usd (85%)": -5068.88,
+          "your_takehome_ngn (85%)": -8363645.0,
+          "year_max_drawdown_pct": 20.67,
+          "prop_firm_safe": false
+        },
+        {
+          "period_label": "Year 5 (2025-2026 Recent Cycle)",
+          "strategy_return_pct": 14.03,
+          "benchmark_return_pct": 21.96,
+          "year_profit_usd": 7017.21,
+          "your_takehome_usd (85%)": 5964.63,
+          "your_takehome_ngn (85%)": 9841632.0,
+          "year_max_drawdown_pct": 7.3,
+          "prop_firm_safe": false
+        }
+      ],
+      "benchmark": {
+        "final_balance": 68928.7,
+        "net_profit_usd": 18928.7,
+        "total_return_pct": 37.86,
+        "sharpe": 0.4,
+        "max_drawdown_pct": 31.91
+      }
+    }
+  ],
+  "benchmarks": {
+    "SPY": {
+      "final_balance": 91501.5,
+      "net_profit_usd": 41501.5,
+      "total_return_pct": 83.0,
+      "sharpe": 0.79,
+      "max_drawdown_pct": 24.5
+    },
+    "QQQ": {
+      "final_balance": 97809.92,
+      "net_profit_usd": 47809.92,
+      "total_return_pct": 95.62,
+      "sharpe": 0.7,
+      "max_drawdown_pct": 35.12
+    },
+    "IWM": {
+      "final_balance": 68928.7,
+      "net_profit_usd": 18928.7,
+      "total_return_pct": 37.86,
+      "sharpe": 0.4,
+      "max_drawdown_pct": 31.91
+    }
+  }
+}
