@@ -1,19 +1,16 @@
 """
-AgentQuant Next-Gen Mobile Command Terminal (v5.0)
+AgentQuant Next-Gen Mobile Command Terminal (v5.1)
 ==================================================
 - High-Signal, Minimalist FinTech UI (Sub-50ms Response)
-- Total System Overview & Trader Profile
+- Persistent Bottom Reply Keyboard (Pinned at Thumb Level - No Scrolling Up)
+- Dual-Mode Callback Engine: editMessageText on text, sendMessage on media
+- Full Visual Card Suite (Profile, Risk Gauge, Trade Ticket, P2P Matrix, 15Y Equity)
+- 1-Page ReportLab Official Cycle Statement PDF (sendDocument)
 - Autonomous Crypto Payout System to Binance USDT (TRC20)
-- On-Demand Institutional Visual Charts (sendPhoto):
-    * 15-Year Equity Curve & Drawdown Audit
-    * 15-Day Mean Reversion Dip Radar
-    * Multi-Account Wealth Scaling Roadmap Infographic
-- 1-Page Official PDF Cycle Financial Statement Generator (sendDocument)
-- Bi-Weekly Payout Countdown & Goal Progress Tracker
+- Bi-Weekly Payout Countdown & Goal Tracker
 - Live Binance P2P USDT/NGN Exchange Rate Tracker & Converter
-- Plain-English Quantitative Trade Logic Journal
-- Autonomous Risk Guardian & Emergency Kill Switch (100% Cash Lock)
-- Locked-In Strategy Rulebook Specification (No tampering)
+- Risk Guardian with Emergency Kill Switch (100% Cash Lock)
+- Registered Telegram Bot Menu Commands (setMyCommands)
 - Strict Master User Authentication (ID: 8428715579)
 """
 
@@ -61,7 +58,6 @@ _CACHE = {
     "wallet_address": "TX8aKq9Z...BinanceTRC20",
     "days_until_payout": 5,
     "payout_date": "Sept 18, 2026",
-    "notification_mode": "loud"  # "loud" or "stealth"
 }
 
 
@@ -84,6 +80,26 @@ def ack_callback(cq_id: str, text: str = ""):
         )
     except Exception:
         pass
+
+
+def register_bot_commands():
+    """Registers standard Telegram / commands menu for 1-tap thumb navigation."""
+    commands = [
+        {"command": "overview", "description": "👤 Master Profile & Capital Snapshot"},
+        {"command": "balance", "description": "💰 Balance & Risk Sentinel"},
+        {"command": "radar", "description": "📡 Live Market Dip Scanner"},
+        {"command": "trades", "description": "📊 Active Positions & Trades"},
+        {"command": "withdraw", "description": "💸 Request Crypto Payout to Binance"},
+        {"command": "tracker", "description": "⏳ Payout Countdown & Scale Goals"},
+        {"command": "p2p", "description": "🏦 Binance P2P Naira Converter"},
+        {"command": "card", "description": "🖼️ Master Profile Visual Card"},
+        {"command": "risk", "description": "🛡️ Risk Safety Gauge Card"},
+        {"command": "ticket", "description": "🎫 Live Trade Ticket Card"},
+        {"command": "chart", "description": "📈 15-Year Visual Equity Curve"},
+        {"command": "pdf", "description": "📑 Export Official Cycle PDF"}
+    ]
+    res = api_call("setMyCommands", {"commands": commands})
+    print("[+] Bot commands registered with Telegram:", res.get("ok", False))
 
 
 def send_photo_buffer(chat_id, buf, caption=""):
@@ -117,8 +133,21 @@ def send_document_buffer(chat_id, buf, filename="Statement.pdf", caption=""):
 
 
 # =====================================================================
-# MENUS & MARKUPS
+# MENUS & MARKUPS (CLEAN, ZERO BLOAT)
 # =====================================================================
+
+def get_persistent_bottom_keyboard():
+    """Permanent keyboard docked at bottom of Telegram chat — no scrolling needed."""
+    return {
+        "keyboard": [
+            [{"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}, {"text": "📡 Live Radar"}],
+            [{"text": "📊 Active Trades"}, {"text": "💸 Withdraw Crypto"}, {"text": "⏳ Payout & Goals"}],
+            [{"text": "🏦 Binance P2P"}, {"text": "📈 15Y PnL Chart"}, {"text": "📑 Export PDF"}]
+        ],
+        "resize_keyboard": True,
+        "is_persistent": True
+    }
+
 
 def get_main_menu_markup():
     return {
@@ -145,9 +174,6 @@ def get_main_menu_markup():
             ],
             [
                 {"text": "🔍 Trade Logic", "callback_data": "cmd_trade_logic"},
-                {"text": "ℹ️ Strategy Rules", "callback_data": "cmd_strategy_rules"},
-            ],
-            [
                 {"text": "⚡ Refresh Status", "callback_data": "cmd_refresh"},
             ],
         ]
@@ -225,17 +251,6 @@ def get_balance_markup():
             [
                 {"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"},
                 {"text": "🔙 Overview", "callback_data": "cmd_overview"},
-            ],
-        ]
-    }
-
-
-def get_strategy_rules_markup():
-    return {
-        "inline_keyboard": [
-            [
-                {"text": "📈 View 15-Year PnL Chart", "callback_data": "cmd_chart_pnl"},
-                {"text": "🔙 Back to Overview", "callback_data": "cmd_overview"},
             ],
         ]
     }
@@ -409,34 +424,6 @@ def render_trade_logic_text():
     return text
 
 
-def render_strategy_rules_text():
-    text = (
-        "ℹ️ <b>STRATEGY SPECIFICATION & RULEBOOK</b>\n"
-        "────────────────────────────\n"
-        "🎯 <b>Model:</b> <code>Balanced Long-Only SPY Scalper</code>\n"
-        "🔒 <b>Rulebook Status:</b> 🟢 <b>LOCKED & IMMUTABLE</b>\n"
-        "────────────────────────────\n"
-        "• <b>Market Focus:</b> <code>SPY (Micro S&P 500 - MES)</code>\n"
-        "• <b>Lookback Window:</b> <code>5-Day Rolling Average</code>\n"
-        "• <b>Entry Trigger:</b> <code>1.25σ Lower Band Dip</code>\n"
-        "• <b>Take-Profit Target:</b> <code>Return to 5-Day Mean</code>\n"
-        "• <b>Strict Stop Loss:</b> <code>3.0% Hard Safety Barrier</code>\n"
-        "• <b>Max Hold Duration:</b> <code>5 Trading Days Max</code>\n"
-        "• <b>Position Sizing:</b> <code>1 Mini Contract (Safe Sizing)</code>\n"
-        "• <b>Direction:</b> <code>Long-Only (100% Cash when flat)</code>\n"
-        "────────────────────────────\n"
-        "📊 <b>15-YEAR VERIFIED AUDIT (2011–2026):</b>\n"
-        "• Win Rate: <code>77.5% (227 Wins / 66 Losses)</code>\n"
-        "• Net Profit: <code>+$102,180.16 USD (+204.4%)</code>\n"
-        "• 85% Trader Cut: <code>$86,853.14 (~₦143.3M)</code>\n"
-        "• Max Drawdown: <code>2.07% ($1,036 vs $2,000 Limit)</code>\n"
-        "• Annual Reliability: <code>14 of 16 Years Profitable</code>\n"
-        "────────────────────────────\n"
-        "🛡️ <i>The algorithm is permanently locked to proven mathematics. No manual tinkering. Zero curve-fitting.</i>"
-    )
-    return text
-
-
 def render_history_overview_text():
     text = (
         "📜 <b>TRADE & PERFORMANCE HISTORY</b>\n"
@@ -602,6 +589,44 @@ def render_payout_success_text(amount: float):
 
 
 # =====================================================================
+# DUAL-MODE DISPATCHER (ZERO CLICK FAILURE ON PHOTOS / DOCUMENTS)
+# =====================================================================
+
+def update_or_send(chat_id, msg: dict, new_text: str, markup: dict):
+    """
+    Guarantees sub-50ms responsive delivery.
+    If the message contains a photo or document, sends a fresh message with active inline buttons.
+    If it is a text message, smoothly edits in-place with instant fallback to sendMessage.
+    """
+    msg_id = msg.get("message_id")
+    has_media = ("photo" in msg) or ("document" in msg) or ("caption" in msg and "text" not in msg)
+
+    if has_media:
+        return api_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": new_text,
+            "parse_mode": "HTML",
+            "reply_markup": markup
+        })
+    else:
+        res = api_call("editMessageText", {
+            "chat_id": chat_id,
+            "message_id": msg_id,
+            "text": new_text,
+            "parse_mode": "HTML",
+            "reply_markup": markup
+        })
+        if not res.get("ok"):
+            return api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": new_text,
+                "parse_mode": "HTML",
+                "reply_markup": markup
+            })
+        return res
+
+
+# =====================================================================
 # UPDATE HANDLER (SUB-50MS NON-BLOCKING)
 # =====================================================================
 
@@ -612,7 +637,6 @@ def handle_update(update: dict):
         data = cq.get("data", "")
         msg = cq.get("message", {})
         chat_id = msg.get("chat", {}).get("id")
-        msg_id = msg.get("message_id")
         user_id = str(cq.get("from", {}).get("id", ""))
 
         if ALLOWED_CHAT_ID and user_id != ALLOWED_CHAT_ID and str(chat_id) != ALLOWED_CHAT_ID:
@@ -624,7 +648,7 @@ def handle_update(update: dict):
         new_text = ""
         markup = get_main_menu_markup()
 
-        # Navigation
+        # Navigation Callbacks
         if data in ["cmd_overview", "cmd_menu", "cmd_refresh"]:
             new_text = render_overview_text()
             markup = get_main_menu_markup()
@@ -644,6 +668,7 @@ def handle_update(update: dict):
             new_text = render_p2p_rate_text()
             markup = {
                 "inline_keyboard": [
+                    [{"text": "🏦 View P2P Card", "callback_data": "cmd_card_p2p"}],
                     [{"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"}],
                     [{"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}]
                 ]
@@ -652,15 +677,11 @@ def handle_update(update: dict):
             new_text = render_trade_logic_text()
             markup = {
                 "inline_keyboard": [
-                    [{"text": "ℹ️ Strategy Rules", "callback_data": "cmd_strategy_rules"}],
                     [{"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}]
                 ]
             }
-        elif data == "cmd_strategy_rules":
-            new_text = render_strategy_rules_text()
-            markup = get_strategy_rules_markup()
 
-        # Payout
+        # Payout Portal
         elif data == "cmd_withdraw":
             new_text = render_withdraw_text()
             markup = {
@@ -687,7 +708,7 @@ def handle_update(update: dict):
                 ]
             }
 
-        # History Views
+        # History Timeframe Filters
         elif data in ["cmd_hist_overview", "cmd_history"]:
             new_text = render_history_overview_text()
             markup = get_history_markup("overview")
@@ -704,7 +725,7 @@ def handle_update(update: dict):
             new_text = render_history_all_text()
             markup = get_history_markup("all")
 
-        # Visual Charts & Cards on Demand
+        # Visual Cards & Charts on Demand
         elif data == "cmd_card_profile":
             buf = generate_profile_summary_card()
             caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($50k Capital) | 0.00% DD"
@@ -746,7 +767,7 @@ def handle_update(update: dict):
             send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
             return
 
-        # Kill Switch
+        # Emergency Kill Switch
         elif data == "cmd_ask_kill_switch":
             new_text = (
                 "⚠️ <b>CONFIRM EMERGENCY KILL SWITCH</b>\n"
@@ -792,17 +813,11 @@ def handle_update(update: dict):
             )
             markup = get_main_menu_markup()
 
-        if new_text and chat_id and msg_id:
-            api_call("editMessageText", {
-                "chat_id": chat_id,
-                "message_id": msg_id,
-                "text": new_text,
-                "parse_mode": "HTML",
-                "reply_markup": markup
-            })
+        if new_text and chat_id:
+            update_or_send(chat_id, msg, new_text, markup)
         return
 
-    # Text Commands
+    # Text & Bottom Keyboard Commands
     if "message" in update:
         m = update["message"]
         chat_id = m.get("chat", {}).get("id")
@@ -820,59 +835,55 @@ def handle_update(update: dict):
             })
             return
 
-        if text in ["/start", "/menu", "/overview", "/profile", "start", "menu"]:
+        # Bottom Menu & Slash Command Routing
+        if any(cmd in text for cmd in ["/start", "/menu", "/overview", "/profile", "👤 overview", "overview", "start", "menu"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_overview_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_main_menu_markup(),
             })
-        elif text in ["/card", "card", "/profilecard", "profilecard"]:
-            buf = generate_profile_summary_card()
-            caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($50k Capital) | 0.00% DD"
-            send_photo_buffer(chat_id, buf, caption)
-        elif text in ["/balance", "/bal", "balance", "bal"]:
+        elif any(cmd in text for cmd in ["/balance", "/bal", "💰 balance", "balance", "bal"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_balance_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_balance_markup(),
             })
-        elif text in ["/risk", "risk", "/riskgauge", "riskgauge"]:
-            buf = generate_risk_sentinel_card()
-            caption = "🛡️ <b>Risk Guardian Sentinel & Drawdown Safety Gauge</b>\n• $2,000 Safety Buffer (100% Healthy) | Sub-50ms Kill Switch Active"
-            send_photo_buffer(chat_id, buf, caption)
-        elif text in ["/ticket", "ticket", "/signalcard"]:
-            buf = generate_trade_signal_card("SPY", 754.20, 758.60, 731.57)
-            caption = "🎫 <b>AgentQuant Institutional Trade Ticket // SPY Long Dip Buy</b>\n• Entry: $754.20 | Target: $758.60 | Stop: $731.57 (-3%)"
-            send_photo_buffer(chat_id, buf, caption)
-        elif text in ["/chart", "chart", "/pnl", "pnl"]:
-            buf = generate_equity_chart()
-            caption = "📈 <b>AgentQuant 15-Year Equity & Drawdown Audit</b>\n• Net: +$102k (+204%) | Win Rate: 77.5%"
-            send_photo_buffer(chat_id, buf, caption)
-        elif text in ["/roadmap", "roadmap", "/goals", "goals"]:
-            buf = generate_payout_roadmap_card()
-            caption = "🗺️ <b>AgentQuant Multi-Account Wealth Scaling Roadmap</b>"
-            send_photo_buffer(chat_id, buf, caption)
-        elif text in ["/pdf", "pdf", "/statement", "statement"]:
-            buf = generate_cycle_statement_pdf()
-            caption = "📑 <b>AgentQuant Official 14-Day Cycle Statement (PDF)</b>"
-            send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
-        elif text in ["/signals", "/radar", "signals"]:
+        elif any(cmd in text for cmd in ["/signals", "/radar", "📡 live radar", "radar", "signals"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_signals_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_radar_markup(),
             })
-        elif text in ["/tracker", "tracker", "/countdown"]:
+        elif any(cmd in text for cmd in ["/trades", "📊 active trades", "trades"]):
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": render_trades_text(),
+                "parse_mode": "HTML",
+                "reply_markup": get_main_menu_markup(),
+            })
+        elif any(cmd in text for cmd in ["/withdraw", "💸 withdraw", "withdraw"]):
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": render_withdraw_text(),
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "🚀 Request $1,062.50 to Binance", "callback_data": "cmd_ask_payout_1062"}],
+                        [{"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}]
+                    ]
+                }
+            })
+        elif any(cmd in text for cmd in ["/tracker", "/goals", "⏳ payout", "goals", "tracker"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_tracker_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_tracker_markup(),
             })
-        elif text in ["/p2p", "p2p", "/naira", "naira", "/p2pcard"]:
+        elif any(cmd in text for cmd in ["/p2p", "/naira", "🏦 binance p2p", "p2p", "naira"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_p2p_rate_text(),
@@ -885,44 +896,66 @@ def handle_update(update: dict):
                     ]
                 },
             })
-        elif text in ["/rules", "rules"]:
+        elif any(cmd in text for cmd in ["/chart", "/pnl", "📈 15y", "chart", "pnl"]):
+            buf = generate_equity_chart()
+            caption = "📈 <b>AgentQuant 15-Year Equity & Drawdown Audit</b>\n• Net: +$102k (+204%) | Win Rate: 77.5%"
+            send_photo_buffer(chat_id, buf, caption)
+        elif any(cmd in text for cmd in ["/pdf", "/statement", "📑 export pdf", "pdf", "statement"]):
+            buf = generate_cycle_statement_pdf()
+            caption = "📑 <b>AgentQuant Official 14-Day Cycle Statement (PDF)</b>"
+            send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
+        elif any(cmd in text for cmd in ["/card", "/profilecard", "profilecard", "card"]):
+            buf = generate_profile_summary_card()
+            caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($50k Capital) | 0.00% DD"
+            send_photo_buffer(chat_id, buf, caption)
+        elif any(cmd in text for cmd in ["/risk", "/riskgauge", "riskgauge", "risk"]):
+            buf = generate_risk_sentinel_card()
+            caption = "🛡️ <b>Risk Guardian Sentinel & Drawdown Safety Gauge</b>\n• $2,000 Safety Buffer (100% Healthy) | Sub-50ms Kill Switch Active"
+            send_photo_buffer(chat_id, buf, caption)
+        elif any(cmd in text for cmd in ["/ticket", "/signalcard", "ticket"]):
+            buf = generate_trade_signal_card("SPY", 754.20, 758.60, 731.57)
+            caption = "🎫 <b>AgentQuant Institutional Trade Ticket // SPY Long Dip Buy</b>\n• Entry: $754.20 | Target: $758.60 | Stop: $731.57 (-3%)"
+            send_photo_buffer(chat_id, buf, caption)
+        elif any(cmd in text for cmd in ["/roadmap", "roadmap"]):
+            buf = generate_payout_roadmap_card()
+            caption = "🗺️ <b>AgentQuant Multi-Account Wealth Scaling Roadmap</b>"
+            send_photo_buffer(chat_id, buf, caption)
+        elif any(cmd in text for cmd in ["/logic", "logic"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_strategy_rules_text(),
+                "text": render_trade_logic_text(),
                 "parse_mode": "HTML",
-                "reply_markup": get_strategy_rules_markup(),
+                "reply_markup": get_main_menu_markup(),
             })
         else:
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": (
-                    "⚡ <b>AgentQuant Next-Gen Terminal (v5.0)</b>\n\n"
-                    "• /overview — Profile & System Snapshot\n"
-                    "• /card — Visual Master Trader Profile Card\n"
-                    "• /chart — 15-Year Visual Equity Curve\n"
-                    "• /risk — Risk Guardian Sentinel Visual Gauge\n"
-                    "• /ticket — Live Trade Ticket Card\n"
-                    "• /roadmap — Multi-Account Wealth Scaling Roadmap\n"
-                    "• /pdf — Export Official 1-Page PDF Statement\n"
-                    "• /tracker — Payout Countdown & Growth Goal\n"
-                    "• /p2p — Live Binance NGN Currency Converter\n"
-                    "• /balance — Capital & Risk Sentinel\n"
-                    "• /signals — Market Dip Radar\n"
-                    "• /history — 7d, 14d, 30d Filtered History\n"
-                    "• /withdraw — Direct Crypto Payout Portal"
+                    "⚡ <b>AgentQuant Next-Gen Terminal (v5.1)</b>\n\n"
+                    "• 👤 <b>Overview</b> — Master Profile & Capital Snapshot\n"
+                    "• 💰 <b>Balance</b> — Capital & Risk Guardian Sentinel\n"
+                    "• 📡 <b>Live Radar</b> — SPY / QQQ Dip Buy Scanner\n"
+                    "• 📊 <b>Active Trades</b> — Current Positions & Targets\n"
+                    "• 💸 <b>Withdraw</b> — Direct Crypto Payout to Binance\n"
+                    "• ⏳ <b>Goals</b> — Bi-Weekly Payout Countdown\n"
+                    "• 🏦 <b>Binance P2P</b> — Live Naira Currency Converter\n"
+                    "• 📈 <b>15Y Chart</b> — High-Res Equity & Drawdown Curve\n"
+                    "• 📑 <b>Export PDF</b> — 1-Page Official Cycle Statement"
                 ),
                 "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup(),
+                "reply_markup": get_persistent_bottom_keyboard(),
             })
 
 
 def run_polling():
     print("=" * 65)
-    print("   AGENTQUANT TERMINAL (v5.0) — MULTI-MODAL VISUAL COMMAND")
+    print("   AGENTQUANT TERMINAL (v5.1) — MULTI-MODAL VISUAL COMMAND")
     print("=" * 65)
     print(f"Target Chat ID: {ALLOWED_CHAT_ID}")
-    print("Features: Charts, PDFs, Payout Tracker, Binance P2P, Risk Sentinel")
+    print("Features: Persistent Bottom Keyboard, Dual-Mode Dispatcher, All Cards")
     print("Status: 100% Dialed In & Cooking | Sub-50ms latency active")
+
+    register_bot_commands()
 
     last_offset = 0
     while True:
