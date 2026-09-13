@@ -43,7 +43,7 @@ def apply_dark_theme(fig, ax):
 def generate_equity_chart() -> io.BytesIO:
     """Generates the 15-Year Institutional Equity Curve & Drawdown Chart."""
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(10, 6.5), dpi=140,
+        2, 1, figsize=(9, 5.5), dpi=105,
         gridspec_kw={"height_ratios": [3.2, 1.2]}
     )
 
@@ -132,7 +132,7 @@ def generate_equity_chart() -> io.BytesIO:
 
 def generate_radar_candlestick_chart(ticker: str = "SPY") -> io.BytesIO:
     """Generates a 15-day price action chart showing 5d Mean and 1.25σ Lower Band."""
-    fig, ax = plt.subplots(figsize=(9, 5), dpi=140)
+    fig, ax = plt.subplots(figsize=(8.5, 4.5), dpi=105)
     apply_dark_theme(fig, ax)
 
     # Fetch cached or mock recent 20 bars
