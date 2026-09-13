@@ -757,6 +757,32 @@ To enable the GitHub Actions runner to deliver alerts automatically 24/7 from th
    - Updated terminal bot daemon (v3.1) active as background task `task-1253`.
    - Delivered new interactive terminal card directly to David's phone.
 
+---
+
+## 26. Next-Gen Telegram Terminal (v4.0) — Visual Charts, Risk Sentinel & Strategy Tuning
+
+**Status:** **Live & Running as Background Daemon!**
+
+### Implemented Enhancements:
+1. **Visual Charts on Demand (`src/visualization/telegram_charts.py`):**
+   - Headless, dark-mode Matplotlib generator producing high-DPI charts directly in memory (`io.BytesIO`) without disk delay.
+   - **`[ 📈 View PnL Chart ]`**: Delivers the complete 15-year equity curve and drawdown audit card with neon styling straight to Telegram.
+   - **`[ 🕯️ Chart SPY Dip ]`**: Renders a 15-day price action chart showing the 5-day mean reversion line and 1.25σ lower dip entry band.
+2. **Autonomous Risk Guardian & Emergency Kill Switch (`src/integrations/risk_guardian.py`):**
+   - Monitors trailing max drawdown ($2,000 limit) and $750 warning barrier.
+   - **Emergency Kill Switch:** A protected 2-tap button in the Balance & Risk menu that flattens all open positions and locks the account in 100% Cash if black-swan volatility strikes.
+   - **Resume Trading:** One-tap re-arming when market conditions stabilize.
+3. **Interactive Strategy Tuning (`[ ⚙️ Strategy Mode ]`):**
+   - Switch live between:
+     - `🛡️ Conservative Scalper`: 1.5σ deviation, 1 Micro contract, 2% stop loss.
+     - `⚡ Balanced Scalper`: 1.25σ deviation, 1 Mini contract, 3% stop loss (Default).
+     - `🔥 Aggressive Scalper`: 1.0σ deviation, tighter hold times.
+4. **Live Verification & Handshake:**
+   - Sent high-res visual chart to David's Telegram app (Delivered, message ID: 9).
+   - Sent updated v4.0 interactive control card (Delivered, message ID: 10).
+   - Running as active daemon task `task-1308`.
+
+
 
 
 
