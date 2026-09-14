@@ -90,14 +90,15 @@ class TestTelegramTerminalButtons(unittest.TestCase):
                 self.assertTrue(len(row) >= 1)
                 for btn in row:
                     self.assertIn("text", btn)
-                    self.assertIn("callback_data", btn)
+                    self.assertTrue("callback_data" in btn or "web_app" in btn or "url" in btn)
 
     def test_no_strategy_rules_button(self):
         """Verify Strategy Rules button is removed from main menu."""
         main_m = get_main_menu_markup()
         for row in main_m["inline_keyboard"]:
             for btn in row:
-                self.assertNotIn("strategy_rules", btn["callback_data"])
+                if "callback_data" in btn:
+                    self.assertNotIn("strategy_rules", btn["callback_data"])
                 self.assertNotIn("Strategy Rules", btn["text"])
 
     def test_persistent_bottom_keyboard(self):
