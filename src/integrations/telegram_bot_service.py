@@ -485,7 +485,7 @@ def register_bot_commands():
         "menu_button": {
             "type": "web_app",
             "text": "⚡ Pro App",
-            "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}
+            "web_app": {"url": "https://staticminus.github.io/agentquant-pro/?v=6.2"}
         }
     })
     print("[+] Telegram Chat Menu Button configured:", menu_res.get("ok", False))
@@ -544,7 +544,7 @@ def get_webapp_url() -> str:
     spy = _CACHE.get("spy_price", 764.29)
     qqq = _CACHE.get("qqq_price", 508.15)
     cap = _CACHE.get("capital", 6000.0)
-    params = f"?rate={rate}&spy={spy}&qqq={qqq}&cap={cap}"
+    params = f"?v=6.2&rate={rate}&spy={spy}&qqq={qqq}&cap={cap}"
     if wallet and wallet.startswith("T") and len(wallet) == 34:
         params += f"&wallet={wallet}"
     return f"https://staticminus.github.io/agentquant-pro/{params}"
