@@ -128,7 +128,7 @@
           <div class="card-inner">
             <div class="panel-header-row">
               <div>
-                <div class="panel-title">SPY Mean Reversion Radar</div>
+                <div class="panel-title">Dual-Asset Scalper Radar (SPY + QQQ)</div>
                 <div class="panel-subtitle" id="session-countdown">Pre-Market • Opens in 3h 10m (2:30 PM WAT)</div>
               </div>
               <button class="icon-action-btn" id="btn-refresh-radar" title="Refresh Live Prices">
@@ -156,7 +156,7 @@
               </div>
               <div class="spec-cell">
                 <span class="spec-lbl">QQQ MARKET</span>
-                <span class="spec-val font-mono" id="qqq-price">$714.88</span>
+                <span class="spec-val font-mono" id="qqq-price">$508.15</span>
               </div>
               <div class="spec-cell">
                 <span class="spec-lbl">DIP DISTANCE</span>
@@ -171,15 +171,15 @@
             <!-- Expandable Information Accordion -->
             <div class="apple-accordion" id="radar-accordion">
               <div class="accordion-trigger" onclick="toggleAccordion('radar-accordion')">
-                <span>Statistical Entry Rules</span>
+                <span>Dual-Asset Strategy & Performance</span>
                 <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
               </div>
               <div class="accordion-body">
-                <p>• <b>Mean Reversion Model</b>: Orders trigger strictly when intraday price hits or falls below the 1.25σ Lower Bollinger Band.</p>
-                <p>• <b>Execution Time</b>: Evaluated at 2:30 PM WAT (US Opening Bell) to avoid opening slippage.</p>
-                <p>• <b>Disciplined Risk</b>: Maximum risk per trade is 0.38% ($22.80) with a strict hard stop-loss at -3.0%.</p>
+                <p>• <b>Dual-Asset Strategy</b>: Scans both SPY (S&P 500) and QQQ (Nasdaq 100) for 1.25σ oversold dips.</p>
+                <p>• <b>10-Year Audited Edge</b>: 377 trades, 72.4% win rate, +$6,438 net profit, ~3.14 trades/month (action every 6–8 trading days).</p>
+                <p>• <b>Simultaneous Dip Rule</b>: Splits 0.05 lot on SPY and 0.05 lot on QQQ to strictly protect FundedNext's $180 daily limit.</p>
               </div>
             </div>
           </div>

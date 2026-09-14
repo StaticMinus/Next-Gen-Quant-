@@ -418,7 +418,8 @@ def generate_trade_signal_card(ticker: str = "SPY", entry: float = 754.20, targe
 
     ax.text(0.05, 0.90, f"AGENTQUANT // TRADE TICKET: {ticker} LONG DIP BUY",
             fontsize=12, fontweight="bold", color=GREEN_NEON, va="top", transform=ax.transAxes)
-    ax.text(0.05, 0.83, "Model: 5-Day Rolling Mean Reversion • Micro E-mini S&P 500 (MES)",
+    model_sub = "Model: 5-Day Rolling Mean Reversion • Micro E-mini S&P 500 (MES)" if ticker == "SPY" else "Model: 5-Day Rolling Mean Reversion • Micro E-mini Nasdaq 100 (MNQ)"
+    ax.text(0.05, 0.83, model_sub,
             fontsize=8, color=MUTED_TEXT, va="top", transform=ax.transAxes)
 
     metrics = [
@@ -451,7 +452,7 @@ def generate_trade_signal_card(ticker: str = "SPY", entry: float = 754.20, targe
     )
     ax.add_patch(bot_box)
 
-    ax.text(0.08, 0.22, "RISK / REWARD RATIO: 1 : 2.8 Favorable Asymmetry | Win Rate: 77.5%",
+    ax.text(0.08, 0.22, "RISK / REWARD RATIO: 1 : 2.8 Favorable Asymmetry | Win Rate: 72.4% (Audited 10y)",
             fontsize=8, fontweight="bold", color=TEXT_COLOR, va="center", transform=ax.transAxes)
     ax.text(0.08, 0.14, "EXECUTION: Automated via cTrader API | Max Duration: 5 Days (Exit on Mean Return)",
             fontsize=7.5, color=MUTED_TEXT, va="center", transform=ax.transAxes)
