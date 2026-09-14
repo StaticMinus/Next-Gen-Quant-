@@ -4,7 +4,7 @@
  */
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-const LIVE_P2P_RATE = 1665.0;
+const LIVE_P2P_RATE = 1365.0;
 
 // Application State
 let currentTab = 'radar';
