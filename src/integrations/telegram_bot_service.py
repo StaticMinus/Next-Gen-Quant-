@@ -476,6 +476,7 @@ def register_bot_commands():
         {"command": "ticket", "description": "🎫 Live Trade Ticket Card"},
         {"command": "chart", "description": "📈 15-Year Visual Equity Curve"},
         {"command": "pdf", "description": "📑 Export Official Cycle PDF"},
+        {"command": "wallet", "description": "💳 View linked Payout Wallet"},
         {"command": "setwallet", "description": "🔗 Link your Binance TRC20 Wallet"}
     ]
     res = api_call("setMyCommands", {"commands": commands})
@@ -1532,6 +1533,33 @@ def handle_update(update: dict):
                     "────────────────────────────\n"
                     "Your payouts will now be routed to this wallet.\n"
                     "You can update it anytime with <code>/setwallet</code>."
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_main_menu_markup(),
+            })
+            return
+
+        # /wallet — View currently linked Binance TRC20 wallet
+        if any(cmd in text for cmd in ["/wallet", "my wallet", "check wallet", "view wallet"]):
+            current_wallet = _CACHE.get("wallet_address", load_user_wallet())
+            is_linked = bool(current_wallet and current_wallet.startswith("T") and len(current_wallet) == 34)
+            status_text = "🟢 <b>ACTIVE & VERIFIED</b>" if is_linked else "⚠️ <b>NOT LINKED YET</b>"
+            guidance = (
+                "To update your address, send:\n<code>/setwallet &lt;NEW_TRC20_ADDRESS&gt;</code>"
+                if is_linked else
+                "To link your payout address, send:\n<code>/setwallet &lt;YOUR_BINANCE_TRC20_ADDRESS&gt;</code>\n\n"
+                "<i>(Find it in Binance → Deposit → USDT → TRC20 Network)</i>"
+            )
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "💳 <b>YOUR LINKED PAYOUT WALLET</b>\n"
+                    "────────────────────────────\n"
+                    f"• Address: <code>{current_wallet}</code>\n"
+                    "• Network: <code>USDT (TRC20 / Tron)</code>\n"
+                    f"• Status: {status_text}\n"
+                    "────────────────────────────\n"
+                    f"{guidance}"
                 ),
                 "parse_mode": "HTML",
                 "reply_markup": get_main_menu_markup(),
