@@ -9,6 +9,7 @@ fast exit at the moving-average mean, stop-loss protection, and max holding peri
 
 import logging
 from typing import Any, Dict
+
 import numpy as np
 import pandas as pd
 
@@ -66,10 +67,10 @@ class ScalperStrategy(Strategy):
             c = close_arr[i]
             m = mid_arr[i]
             u = upper_arr[i]
-            l = lower_arr[i]
+            lower_val = lower_arr[i]
             t = trend_arr[i]
 
-            if np.isnan(m) or np.isnan(l) or np.isnan(u):
+            if np.isnan(m) or np.isnan(lower_val) or np.isnan(u):
                 sig_arr[i] = 0
                 continue
 
@@ -91,7 +92,7 @@ class ScalperStrategy(Strategy):
             elif current_pos == -1:
                 bars_held += 1
                 # Take profit condition
-                tp = (c <= m) if exit_at_mean else (c <= l)
+                tp = (c <= m) if exit_at_mean else (c <= lower_val)
                 # Stop loss condition (uses dedicated short_stop_loss_pct if provided)
                 sl = (short_stop_loss_pct > 0 and c >= entry_price * (1.0 + short_stop_loss_pct))
                 # Time limit condition
@@ -107,7 +108,7 @@ class ScalperStrategy(Strategy):
                 can_long = (not trend_filter) or np.isnan(t) or (c >= t)
                 can_short = allow_short and ((not trend_filter) or np.isnan(t) or (c <= t))
 
-                if c < l and can_long:
+                if c < lower_val and can_long:
                     current_pos = 1
                     bars_held = 0
                     entry_price = c

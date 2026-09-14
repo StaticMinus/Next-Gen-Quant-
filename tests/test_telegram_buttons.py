@@ -13,38 +13,37 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.integrations.telegram_bot_service import (
-    get_main_menu_markup,
-    get_history_markup,
-    get_tracker_markup,
-    get_radar_markup,
     get_balance_markup,
+    get_history_markup,
+    get_main_menu_markup,
     get_persistent_bottom_keyboard,
-    render_overview_text,
+    get_radar_markup,
+    get_tracker_markup,
     render_balance_text,
-    render_signals_text,
-    render_trades_text,
-    render_tracker_text,
-    render_p2p_rate_text,
-    render_trade_logic_text,
-    render_history_overview_text,
     render_history_7d_text,
     render_history_14d_text,
     render_history_30d_text,
     render_history_all_text,
-    render_withdraw_text,
-    render_withdraw_confirm_text,
+    render_history_overview_text,
+    render_overview_text,
+    render_p2p_rate_text,
     render_payout_success_text,
-    handle_update
+    render_signals_text,
+    render_tracker_text,
+    render_trade_logic_text,
+    render_trades_text,
+    render_withdraw_confirm_text,
+    render_withdraw_text,
 )
 from src.visualization.telegram_charts import (
+    generate_cycle_statement_pdf,
     generate_equity_chart,
-    generate_radar_candlestick_chart,
+    generate_p2p_converter_card,
     generate_payout_roadmap_card,
     generate_profile_summary_card,
+    generate_radar_candlestick_chart,
     generate_risk_sentinel_card,
     generate_trade_signal_card,
-    generate_p2p_converter_card,
-    generate_cycle_statement_pdf
 )
 
 

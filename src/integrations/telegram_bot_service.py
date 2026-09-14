@@ -15,17 +15,31 @@ AgentQuant Next-Gen Mobile Command Terminal (v5.1)
 """
 
 import os
-import sys
-import time
-import json
 import random
+import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
 import requests
 from dotenv import load_dotenv
-import pandas as pd
+
+from src.integrations.ctrader_mcp_client import CTraderMCPClient
+from src.integrations.risk_guardian import guardian
+from src.integrations.webapp_server import launch_server_in_thread
+from src.visualization.telegram_charts import (
+    generate_cycle_statement_pdf,
+    generate_equity_chart,
+    generate_p2p_converter_card,
+    generate_payout_roadmap_card,
+    generate_profile_summary_card,
+    generate_radar_candlestick_chart,
+    generate_risk_sentinel_card,
+    generate_trade_signal_card,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -38,6 +52,7 @@ API_BASE = f"https://api.telegram.org/bot{TOKEN}"
 LIVE_P2P_RATE = 1518.40  # Dynamic Binance P2P USDT/NGN Benchmark
 WALLET_FILE = Path("cache/user_wallet.txt")
 
+
 def load_user_wallet() -> str:
     try:
         if WALLET_FILE.exists():
@@ -48,25 +63,12 @@ def load_user_wallet() -> str:
         pass
     return "⚠️ NO WALLET LINKED — Use /setwallet in Telegram"
 
+
 http_session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50, max_retries=2)
 http_session.mount("https://", adapter)
 http_session.mount("http://", adapter)
 executor = ThreadPoolExecutor(max_workers=16, thread_name_prefix="telegram_async")
-
-from src.visualization.telegram_charts import (
-    generate_equity_chart,
-    generate_radar_candlestick_chart,
-    generate_payout_roadmap_card,
-    generate_profile_summary_card,
-    generate_risk_sentinel_card,
-    generate_trade_signal_card,
-    generate_p2p_converter_card,
-    generate_cycle_statement_pdf
-)
-from src.integrations.risk_guardian import guardian
-from src.integrations.ctrader_mcp_client import CTraderMCPClient
-from src.integrations.webapp_server import launch_server_in_thread
 
 ctrader_client = CTraderMCPClient()
 _LAST_SYNC_TIME = 0.0
@@ -136,15 +138,15 @@ def async_send_risk_card(chat_id):
 def async_send_ticket_card(chat_id, ticker="SPY"):
     try:
         if ticker.upper() == "QQQ":
-            p = _CACHE.get("qqq_price", 508.15)
-            m = _CACHE.get("qqq_mean_5d", p + 0.50)
-            l = _CACHE.get("qqq_lower_band", p - 4.75)
+            p_val = _CACHE.get("qqq_price", 508.15)
+            mean_target = _CACHE.get("qqq_mean_5d", p_val + 0.50)
+            entry_limit = _CACHE.get("qqq_lower_band", p_val - 4.75)
         else:
-            p = _CACHE.get("spy_price", 764.29)
-            m = _CACHE.get("spy_mean_5d", p - 0.16)
-            l = _CACHE.get("spy_lower_band", p - 5.84)
-        buf = generate_trade_signal_card(ticker.upper(), l, m, l * 0.97)
-        caption = f"🎫 <b>AgentQuant Institutional Trade Ticket // {ticker.upper()} Long Dip Buy</b>\n• Entry: ${l:.2f} | Target: ${m:.2f} | Stop: ${l * 0.97:.2f} (-3%)"
+            p_val = _CACHE.get("spy_price", 764.29)
+            mean_target = _CACHE.get("spy_mean_5d", p_val - 0.16)
+            entry_limit = _CACHE.get("spy_lower_band", p_val - 5.84)
+        buf = generate_trade_signal_card(ticker.upper(), entry_limit, mean_target, entry_limit * 0.97)
+        caption = f"🎫 <b>AgentQuant Institutional Trade Ticket // {ticker.upper()} Long Dip Buy</b>\n• Entry: ${entry_limit:.2f} | Target: ${mean_target:.2f} | Stop: ${entry_limit * 0.97:.2f} (-3%)"
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
         print(f"[!] Error in async_send_ticket_card: {e}")
@@ -708,8 +710,6 @@ def get_balance_markup():
 # =====================================================================
 
 def render_overview_text():
-    curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
-    m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     now_str = datetime.now().strftime("%H:%M:%S WAT")
     capital = _CACHE.get("capital", 6000.0)
     equity = _CACHE.get("equity", 6000.0)
@@ -908,9 +908,7 @@ def render_tracker_text():
     cycle_profit = _CACHE.get("cycle_profit", 0.0)
     split_85 = cycle_profit * 0.85
     naira_val = split_85 * LIVE_P2P_RATE
-    days_left = _CACHE.get("days_until_payout", 5)
     p_date = _CACHE.get("payout_date", "Friday (5-Day Cycle)")
-    now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
         f"{get_breadcrumb('cmd_tracker')}\n"
@@ -1050,8 +1048,6 @@ def render_history_7d_text():
 
 
 def render_history_14d_text():
-    curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
-    m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     text = (
         "📜 <b>PAYOUT CYCLE STATUS // STELLAR 1-STEP ($6,000)</b>\n"
         "────────────────────────────\n"
@@ -1758,7 +1754,7 @@ def run_polling():
             for u in results:
                 last_offset = max(last_offset, u["update_id"] + 1)
                 executor.submit(handle_update, u)
-        except Exception as e:
+        except Exception:
             time.sleep(0.2)
 
 

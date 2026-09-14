@@ -5,13 +5,11 @@ Serves the dark-mode HTML5/CSS/JS Telegram Mini App (TMA) and exposes
 the /api/telemetry JSON endpoint synced with live cTrader and market radar data.
 """
 
-import os
-import sys
 import json
 import mimetypes
-from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 WEBAPP_DIR = ROOT_DIR / "webapp"

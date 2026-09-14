@@ -9,21 +9,22 @@ All generated directly to in-memory buffers (io.BytesIO) for sub-second delivery
 """
 
 import io
-import os
 from pathlib import Path
+
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from datetime import datetime
+
 import matplotlib.dates as mdates
 import matplotlib.patches as patches
-from datetime import datetime, timedelta
-
+import matplotlib.pyplot as plt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 DARK_BG = "#0d1117"
 PANEL_BG = "#161b22"
@@ -57,12 +58,12 @@ def generate_equity_chart() -> io.BytesIO:
 
     dates = pd.date_range("2011-01-03", "2026-09-11", freq="B")
     n = len(dates)
-    
+
     np.random.seed(42)
     daily_trend = np.linspace(50000, 152180, n)
     noise = np.cumsum(np.random.normal(0, 150, n))
     noise -= np.linspace(noise[0], noise[-1], n)
-    
+
     y_vals = daily_trend + noise
     mask_2011 = (dates >= "2011-07-01") & (dates <= "2011-10-01")
     y_vals[mask_2011] -= 800
@@ -90,7 +91,7 @@ def generate_equity_chart() -> io.BytesIO:
 
     ax1.set_title("AGENTQUANT // 15-YEAR TRACK RECORD (2011–2026)",
                   fontsize=12, fontweight="bold", color=TEXT_COLOR, pad=12, loc="left")
-    
+
     stats_text = (
         "Net Profit: +$102,180 (+204.4%)\n"
         "Trader 85% Cut: $86,853 (~₦143.3M)\n"
@@ -156,7 +157,6 @@ def generate_radar_candlestick_chart(ticker: str = "SPY") -> io.BytesIO:
 
     latest_p = float(close.iloc[-1])
     latest_m = float(mean_5d.iloc[-1])
-    latest_l = float(lower_band.iloc[-1])
 
     ax.scatter([x[-1]], [latest_p], color=GREEN_NEON if latest_p < latest_m else CYAN_NEON, s=90, zorder=6)
     ax.annotate(f"Now: ${latest_p:.2f}", (x[-1], latest_p), textcoords="offset points",
@@ -164,7 +164,7 @@ def generate_radar_candlestick_chart(ticker: str = "SPY") -> io.BytesIO:
 
     ax.set_title(f"AGENTQUANT RADAR // {ticker} DIP-BUY SCANNER",
                  fontsize=11, fontweight="bold", color=TEXT_COLOR, pad=12, loc="left")
-    
+
     ax.set_xticks(list(x)[::2])
     ax.set_xticklabels(dates_str[::2], rotation=25)
     ax.set_ylabel("Price ($ USD)", color=MUTED_TEXT, fontsize=9)
@@ -223,7 +223,7 @@ def generate_payout_roadmap_card() -> io.BytesIO:
                 fontsize=7.5, color=MUTED_TEXT, ha="center", va="top", transform=ax.transAxes)
         ax.text(x + card_width/2, y + h - 0.48, s["payout"],
                 fontsize=8.5, fontweight="bold", color=GREEN_NEON, ha="center", va="top", transform=ax.transAxes)
-        
+
         status_box = patches.FancyBboxPatch(
             (x + 0.02, y + 0.04), card_width - 0.04, 0.12,
             boxstyle="round,pad=0.01",

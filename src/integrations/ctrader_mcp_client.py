@@ -7,11 +7,12 @@ and trade operations (market orders, limit orders, position amendments, emergenc
 Operates over Server-Sent Events (SSE) and HTTP POST with standard JSON-RPC 2.0.
 """
 
+import json
 import os
 import sys
-import json
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 import requests
 from dotenv import load_dotenv
 
@@ -273,11 +274,11 @@ if __name__ == "__main__":
         print(f"✅ Handshake successful! Session ID: {client.session_id}")
         bal = client.get_balance()
         print(f"💰 Account Balance: ${bal['balance']:,.2f} | Equity: ${bal['equity']:,.2f} | Free Margin: ${bal['freeMargin']:,.2f}")
-        
+
         spx = client.get_spot_price("SPX500")
         if spx:
             print(f"📈 SPX500 Spot Price: Bid = ${spx['bid']:.2f} | Ask = ${spx['ask']:.2f}")
-            
+
         pos = client.get_positions()
         print(f"📊 Open Positions: {len(pos)}")
     else:

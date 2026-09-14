@@ -172,7 +172,7 @@ class OpenAIPlanner(BasePlanner):
         self._base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENROUTER_BASE_URL")
         if not self._base_url and (os.getenv("OPENROUTER_API_KEY") or self._api_key.startswith("sk-or-")):
             self._base_url = "https://openrouter.ai/api/v1"
-        
+
         default_model = "nex-agi/nex-n2.5-mini:free" if (self._base_url and "openrouter" in self._base_url) else "gpt-4o-mini"
         self._model = os.getenv("OPENROUTER_MODEL") or (
             config.llm.model if config.llm.provider in ("openai", "openrouter") else default_model

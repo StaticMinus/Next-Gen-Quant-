@@ -5,10 +5,11 @@ Sends instant trade signals, execution confirmations, and daily PnL summaries
 directly to the user's Telegram phone app via Telegram Bot API.
 """
 
-import os
-import urllib.request
-import urllib.parse
 import json
+import os
+import urllib.parse
+import urllib.request
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -45,7 +46,7 @@ def send_telegram_alert(message: str) -> bool:
         with urllib.request.urlopen(req, timeout=10) as response:
             res = json.loads(response.read().decode("utf-8"))
             return res.get("ok", False)
-    except Exception as e:
+    except Exception:
         # Fallback without parse_mode if formatting had an error
         try:
             payload_plain = {"chat_id": chat_id, "text": message}
