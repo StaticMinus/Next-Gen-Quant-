@@ -455,6 +455,51 @@ body {
 .spec-val { font-size: 13px; font-weight: 700; color: var(--text-primary); }
 .font-mono { font-family: var(--font-mono); }
 
+/* Radar Asset Switcher Pills */
+.radar-asset-pills { display: flex; gap: 6px; margin: 4px 0 8px 0; }
+.radar-pill {
+  flex: 1; padding: 6px 0; border-radius: var(--radius-btn);
+  background: var(--bg-subtle); border: 1px solid var(--border-primary);
+  color: var(--text-secondary); font-size: 11px; font-weight: 600;
+  font-family: var(--font-sans); cursor: pointer; transition: all 0.2s ease; text-align: center;
+}
+.radar-pill.active {
+  background: var(--bg-elevated); color: var(--text-primary);
+  border-color: var(--accent-cyan); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .radar-pill.active {
+  background: #FFFFFF; border-color: var(--accent-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Dual Asset Market Matrix Cards */
+.dual-matrix-container { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.asset-spec-card {
+  background: var(--bg-subtle); border: 1px solid var(--border-primary);
+  border-radius: var(--radius-inner); padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 4px; transition: border-color 0.2s ease;
+}
+.asset-spec-card.highlight { border-color: var(--accent-cyan); }
+.card-top-line { display: flex; align-items: center; justify-content: space-between; }
+.asset-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; color: var(--text-primary); }
+.asset-price { font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+.card-mid-line { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 0; }
+.lbl-small { font-size: 9px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.03em; }
+.val-dist { font-size: 12px; font-weight: 700; }
+.val-green { color: var(--accent-green); }
+.card-bottom-line {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 4px; border-top: 1px solid var(--border-primary); font-size: 9px;
+}
+.lbl-dim { color: var(--text-tertiary); }
+.lbl-dim b { color: var(--text-secondary); font-family: var(--font-mono); }
+.status-badge {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 1.5px 5px; border-radius: 4px; text-transform: uppercase;
+}
+.badge-waiting { background: rgba(100, 210, 255, 0.12); color: var(--accent-cyan); }
+.badge-active { background: rgba(48, 209, 88, 0.18); color: var(--accent-green); animation: pulse-glow 1.5s infinite ease-in-out; }
+
 .apple-accordion { border-top: 1px solid var(--border-primary); padding-top: 10px; }
 .accordion-trigger {
   display: flex; align-items: center; justify-content: space-between;
@@ -478,15 +523,16 @@ body {
 .list-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border-primary); }
 .list-row:last-child { border-bottom: none; }
 .list-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-.list-value { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.list-value { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.val-cyan { color: var(--accent-cyan); }
 
-.apple-btn {
-  border: none; border-radius: var(--radius-btn); padding: 11px 16px;
-  font-size: 13px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
+.action-row { padding-top: 4px; }
+.btn-danger {
+  width: 100%; padding: 11px 0; border-radius: var(--radius-inner);
+  background: rgba(255, 69, 58, 0.12); border: 1px solid rgba(255, 69, 58, 0.25);
+  color: var(--accent-red); font-size: 12.5px; font-weight: 700;
   cursor: pointer; transition: all 0.2s ease; font-family: var(--font-sans);
 }
-.btn-danger { background: rgba(255, 69, 58, 0.12); color: var(--accent-red); border: 1px solid rgba(255, 69, 58, 0.25); }
 .btn-danger:active { transform: scale(0.97); background: rgba(255, 69, 58, 0.22); }
 
 /* 6. PAYOUT PROGRESS */
@@ -506,18 +552,30 @@ body {
 
 .p2p-calc-box { display: flex; flex-direction: column; gap: 12px; }
 .calc-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: var(--text-tertiary); text-align: center; }
-.calc-hero-val { display: flex; align-items: baseline; justify-content: center; gap: 3px; }
-.calc-sym { font-size: 22px; font-weight: 500; color: var(--text-secondary); }
-.calc-amount { font-size: 42px; font-weight: 700; letter-spacing: -0.03em; font-family: var(--font-mono); color: var(--text-primary); }
+.calc-hero-val { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.calc-sym { font-size: 26px; font-weight: 500; color: var(--text-secondary); }
+.p2p-amount-input {
+  font-family: var(--font-mono); font-size: 38px; font-weight: 700;
+  letter-spacing: -0.02em; color: var(--text-primary);
+  background: transparent; border: none; outline: none; text-align: center;
+  width: 175px; border-bottom: 1.5px dashed var(--border-strong);
+  padding: 0 4px; transition: border-color 0.2s ease;
+}
+.p2p-amount-input:focus { border-bottom-color: var(--accent-amber); }
+.p2p-amount-input::-webkit-outer-spin-button,
+.p2p-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.p2p-amount-input[type=number] { -moz-appearance: textfield; }
 .calc-unit { font-size: 13px; font-weight: 700; color: var(--accent-amber); }
 
 .apple-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: var(--radius-pill); background: var(--bg-elevated); outline: none; }
 .apple-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--text-primary); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); cursor: pointer; }
 [data-theme="light"] .apple-slider::-webkit-slider-thumb { background: #FFFFFF; border: 1px solid rgba(0, 0, 0, 0.12); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 
-.quick-chips { display: flex; gap: 6px; justify-content: space-between; }
-.chip-preset { flex: 1; border: 1px solid var(--border-primary); background: var(--bg-subtle); color: var(--text-secondary); border-radius: 8px; padding: 7px 0; font-size: 10.5px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; font-family: var(--font-sans); text-align: center; }
+.quick-chips { display: flex; gap: 5px; justify-content: space-between; flex-wrap: wrap; }
+.chip-preset { flex: 1 1 auto; min-width: 58px; border: 1px solid var(--border-primary); background: var(--bg-subtle); color: var(--text-secondary); border-radius: 8px; padding: 7px 4px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; font-family: var(--font-sans); text-align: center; }
 .chip-preset.active, .chip-preset:active { background: var(--accent-amber); color: #000000; border-color: var(--accent-amber); font-weight: 700; }
+.chip-preset.chip-custom { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.chip-preset.chip-custom.active { background: var(--accent-cyan); color: #000000; }
 
 .naira-output-card { background: rgba(48, 209, 88, 0.08); border: 1px solid rgba(48, 209, 88, 0.18); border-radius: var(--radius-inner); padding: 14px; text-align: center; display: flex; flex-direction: column; gap: 3px; }
 .output-label { font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em; color: var(--accent-green); }

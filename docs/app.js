@@ -1,6 +1,6 @@
 /**
- * AgentQuant Pro Terminal v6 — Minimalist Controller
- * Live Radar • Multi-Provider P2P Rate • Dark/Light Theme • Telegram WebApp SDK
+ * AgentQuant Pro Terminal v6.3 — Minimalist Controller
+ * Dual-Asset Radar (SPY + QQQ) • Custom P2P Converter • Dark/Light Theme • Telegram WebApp SDK
  */
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
@@ -108,45 +108,67 @@ async function fetchLiveBinanceRate() {
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       subEl.textContent = `Live Market Rate: 1 USDT = ₦${newRate.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} • ${nowStr}`;
     }
-    const slider = document.getElementById('p2p-slider');
-    if (slider) updateP2P(parseFloat(slider.value));
+    const input = document.getElementById('p2p-custom-input');
+    const curVal = input ? parseFloat(input.value) : 600;
+    updateP2P(curVal);
   }
 }
 
 // =========================================================================
-// APPLICATION STATE & RADAR BUFFER
+// APPLICATION STATE & DUAL-ASSET RADAR BUFFERS
 // =========================================================================
 
 let currentTab = 'radar';
+let activeRadarAsset = 'SPY'; // 'SPY' or 'QQQ'
 const navHistory = ['radar'];
+
 let telemetryData = {
   capital: 6000.0, equity: 6000.0, buffer: 360.0,
   strategy_name: 'Dual-Asset Scalper (SPY + QQQ)',
   win_rate: '72.4%', trades_per_mo: '3.14 / mo', profit_10y: '+$6,438.11',
-  spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84,
-  qqq_price: 508.15, qqq_mean: 509.30, qqq_dip: 503.40, qqq_dist: 4.75,
+  spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84, spy_dist_pct: 0.76,
+  qqq_price: 714.88, qqq_mean: 715.44, qqq_dip: 710.30, qqq_dist: 4.58, qqq_dist_pct: 0.64,
   payout_days: 5,
 };
 
 const MAX_RADAR_POINTS = 32;
-let radarHistory = [];
+let spyHistory = [];
+let qqqHistory = [];
 let radarAnimId = null;
 let radarPulsePhase = 0;
 
-function pushRadarTick(price) {
-  radarHistory.push(price);
-  if (radarHistory.length > MAX_RADAR_POINTS) radarHistory.shift();
+function pushSpyTick(price) {
+  spyHistory.push(price);
+  if (spyHistory.length > MAX_RADAR_POINTS) spyHistory.shift();
 }
 
-// Seed initial historical trajectory
+function pushQqqTick(price) {
+  qqqHistory.push(price);
+  if (qqqHistory.length > MAX_RADAR_POINTS) qqqHistory.shift();
+}
+
+// Seed initial historical trajectory for both SPY and QQQ
 (function seedRadar() {
-  const base = telemetryData.spy_price;
-  const synth = [
-    -10.09, -8.70, -7.49, -5.19, -6.79, -4.30, -2.99,
-    -1.80, -0.89, -2.50, -4.19, -2.80, -1.49, 0.91, -0.40, -1.19, -1.79, 0
-  ];
-  synth.forEach(d => pushRadarTick(base + d));
+  const synthSpy = [-10.09, -8.70, -7.49, -5.19, -6.79, -4.30, -2.99, -1.80, -0.89, -2.50, -4.19, -2.80, -1.49, 0.91, -0.40, -1.19, -1.79, 0];
+  synthSpy.forEach(d => pushSpyTick(telemetryData.spy_price + d));
+
+  const synthQqq = [-8.50, -7.10, -6.20, -4.90, -5.40, -3.20, -2.10, -3.50, -1.80, -0.90, 0.80, -0.40, -1.20, -2.20, -0.80, 0];
+  synthQqq.forEach(d => pushQqqTick(telemetryData.qqq_price + d));
 })();
+
+function switchRadarAsset(asset) {
+  if (activeRadarAsset === asset) return;
+  activeRadarAsset = asset;
+  triggerHaptic('selection');
+
+  document.getElementById('pill-spy')?.classList.toggle('active', asset === 'SPY');
+  document.getElementById('pill-qqq')?.classList.toggle('active', asset === 'QQQ');
+
+  document.getElementById('card-spec-spy')?.classList.toggle('highlight', asset === 'SPY');
+  document.getElementById('card-spec-qqq')?.classList.toggle('highlight', asset === 'QQQ');
+
+  renderRadarChart();
+}
 
 // =========================================================================
 // TELEGRAM SDK
@@ -167,6 +189,8 @@ function triggerHaptic(type = 'medium') {
   if (tg && tg.HapticFeedback) {
     if (type === 'notification') {
       tg.HapticFeedback.notificationOccurred('success');
+    } else if (type === 'selection') {
+      tg.HapticFeedback.selectionChanged();
     } else {
       tg.HapticFeedback.impactOccurred(type);
     }
@@ -301,18 +325,17 @@ function renderRadarChart(pulsePhase = 0) {
 
   const colors = getChartColors();
 
-  // Price history points
-  const pricePoints = radarHistory.length >= 3 ? [...radarHistory] : [
-    754.20, 756.80, 759.10, 757.50, 761.30,
-    763.40, 760.10, 762.80, 765.20, 763.10,
-    762.50, telemetryData.spy_price
-  ];
+  // Pick dataset based on active asset
+  const isSpy = activeRadarAsset === 'SPY';
+  const history = isSpy ? spyHistory : qqqHistory;
+  const curPrice = isSpy ? telemetryData.spy_price : telemetryData.qqq_price;
+  const dipPrice = isSpy ? (telemetryData.spy_dip || 758.45) : (telemetryData.qqq_dip || 710.30);
+  const meanPrice = isSpy ? (telemetryData.spy_mean || 764.13) : (telemetryData.qqq_mean || 715.44);
 
-  const dipPrice = telemetryData.spy_dip || 758.45;
-  const meanPrice = telemetryData.spy_mean || 764.13;
+  const pricePoints = history.length >= 3 ? [...history] : [curPrice - 3, curPrice - 1, curPrice];
 
-  const minP = Math.min(...pricePoints, dipPrice) - 1.8;
-  const maxP = Math.max(...pricePoints, meanPrice) + 1.8;
+  const minP = Math.min(...pricePoints, dipPrice) - 1.5;
+  const maxP = Math.max(...pricePoints, meanPrice) + 1.5;
   const range = Math.max(0.01, maxP - minP);
 
   const getX = (i) => (i / (pricePoints.length - 1)) * (w - 24) + 12;
@@ -400,8 +423,8 @@ function renderRadarChart(pulsePhase = 0) {
   // Dynamic Badges
   const badgeTarget = document.getElementById('badge-target');
   const badgeEntry = document.getElementById('badge-entry');
-  if (badgeTarget) badgeTarget.textContent = `5d Target: $${meanPrice.toFixed(2)}`;
-  if (badgeEntry) badgeEntry.textContent = `Dip Trigger: $${dipPrice.toFixed(2)}`;
+  if (badgeTarget) badgeTarget.textContent = `${activeRadarAsset} 5d Target: $${meanPrice.toFixed(2)}`;
+  if (badgeEntry) badgeEntry.textContent = `${activeRadarAsset} Dip Trigger: $${dipPrice.toFixed(2)}`;
 }
 
 // Continuous Radar Animation Loop (Pulsing Ripple Beacon)
@@ -417,24 +440,48 @@ function startRadarLoop() {
   radarAnimId = requestAnimationFrame(loop);
 }
 
-// Real-Time Radar Micro-Drift (Undulating Live Feel Every 3 Seconds)
+// Real-Time Radar Micro-Drift for BOTH SPY and QQQ
 function tickRadarMicroDrift() {
-  if (currentTab !== 'radar') return;
-  const lastPrice = radarHistory.length > 0 ? radarHistory[radarHistory.length - 1] : telemetryData.spy_price;
-  const mean = telemetryData.spy_mean || 764.13;
-  // Natural mean-reverting micro-jitter
-  const drift = (mean - lastPrice) * 0.025 + (Math.random() - 0.49) * 0.10;
-  const newPrice = Math.round((lastPrice + drift) * 100) / 100;
-  pushRadarTick(newPrice);
+  // 1. SPY micro-jitter
+  const lastSpy = spyHistory.length > 0 ? spyHistory[spyHistory.length - 1] : telemetryData.spy_price;
+  const meanSpy = telemetryData.spy_mean || 764.13;
+  const driftSpy = (meanSpy - lastSpy) * 0.025 + (Math.random() - 0.49) * 0.10;
+  const newSpy = Math.round((lastSpy + driftSpy) * 100) / 100;
+  pushSpyTick(newSpy);
+  telemetryData.spy_price = newSpy;
+  telemetryData.spy_dist = Math.max(0, newSpy - (telemetryData.spy_dip || 758.45));
+  telemetryData.spy_dist_pct = (telemetryData.spy_dist / newSpy) * 100;
 
+  // 2. QQQ micro-jitter
+  const lastQqq = qqqHistory.length > 0 ? qqqHistory[qqqHistory.length - 1] : telemetryData.qqq_price;
+  const meanQqq = telemetryData.qqq_mean || 715.44;
+  const driftQqq = (meanQqq - lastQqq) * 0.025 + (Math.random() - 0.49) * 0.12;
+  const newQqq = Math.round((lastQqq + driftQqq) * 100) / 100;
+  pushQqqTick(newQqq);
+  telemetryData.qqq_price = newQqq;
+  telemetryData.qqq_dist = Math.max(0, newQqq - (telemetryData.qqq_dip || 710.30));
+  telemetryData.qqq_dist_pct = (telemetryData.qqq_dist / newQqq) * 100;
+
+  // Update Matrix Readout Cards
+  updateMatrixUI();
+}
+
+function updateMatrixUI() {
   const spyEl = document.getElementById('spy-price');
-  if (spyEl) spyEl.textContent = `$${newPrice.toFixed(2)}`;
-  const dipDistEl = document.getElementById('dip-dist');
-  const dipPrice = telemetryData.spy_dip || 758.45;
-  if (dipDistEl) {
-    const dist = Math.max(0, newPrice - dipPrice);
-    dipDistEl.textContent = `+$${dist.toFixed(2)}`;
-  }
+  const spyDistEl = document.getElementById('spy-dip-dist');
+  const spyTargetEl = document.getElementById('spy-dip-target');
+
+  const qqqEl = document.getElementById('qqq-price');
+  const qqqDistEl = document.getElementById('qqq-dip-dist');
+  const qqqTargetEl = document.getElementById('qqq-dip-target');
+
+  if (spyEl) spyEl.textContent = `$${telemetryData.spy_price.toFixed(2)}`;
+  if (spyDistEl) spyDistEl.textContent = `+$${telemetryData.spy_dist.toFixed(2)} (+${telemetryData.spy_dist_pct.toFixed(2)}%)`;
+  if (spyTargetEl) spyTargetEl.textContent = `$${(telemetryData.spy_dip || 758.45).toFixed(2)}`;
+
+  if (qqqEl) qqqEl.textContent = `$${telemetryData.qqq_price.toFixed(2)}`;
+  if (qqqDistEl) qqqDistEl.textContent = `+$${telemetryData.qqq_dist.toFixed(2)} (+${telemetryData.qqq_dist_pct.toFixed(2)}%)`;
+  if (qqqTargetEl) qqqTargetEl.textContent = `$${(telemetryData.qqq_dip || 710.30).toFixed(2)}`;
 }
 
 // =========================================================================
@@ -501,34 +548,75 @@ function animateActivityRing() {
 }
 
 // =========================================================================
-// P2P CALCULATOR
+// P2P CALCULATOR (Dual-Mode: Slider + Custom Number Input)
 // =========================================================================
 
 function setupP2PCalculator() {
   const slider = document.getElementById('p2p-slider');
-  if (!slider) return;
-  slider.addEventListener('input', (e) => {
-    updateP2P(parseFloat(e.target.value));
-    triggerHaptic('light');
+  const customInput = document.getElementById('p2p-custom-input');
+
+  if (slider) {
+    slider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      updateP2P(val, false);
+      highlightChip(val);
+      triggerHaptic('light');
+    });
+  }
+
+  if (customInput) {
+    customInput.addEventListener('input', (e) => {
+      let val = parseFloat(e.target.value);
+      if (isNaN(val) || val < 0) val = 0;
+      updateP2P(val, true);
+      if (slider && val >= 50 && val <= 3000) slider.value = val;
+      highlightChip(val);
+    });
+
+    customInput.addEventListener('focus', () => {
+      highlightChip('custom');
+    });
+  }
+}
+
+function focusCustomInput() {
+  triggerHaptic('medium');
+  const input = document.getElementById('p2p-custom-input');
+  if (input) {
+    input.focus();
+    input.select();
+  }
+  highlightChip('custom');
+}
+
+function highlightChip(val) {
+  document.querySelectorAll('.chip-preset').forEach(chip => {
+    if (val === 'custom') {
+      chip.classList.toggle('active', chip.id === 'chip-custom');
+    } else {
+      chip.classList.toggle('active', chip.textContent.includes(`$${val}`) && chip.id !== 'chip-custom');
+    }
   });
 }
 
 function setSlider(val) {
   const slider = document.getElementById('p2p-slider');
-  if (slider) {
-    slider.value = val;
-    updateP2P(val);
-    triggerHaptic('medium');
-    document.querySelectorAll('.chip-preset').forEach(chip => {
-      chip.classList.toggle('active', chip.textContent.includes(`$${val}`));
-    });
-  }
+  const customInput = document.getElementById('p2p-custom-input');
+  if (slider && val <= 3000) slider.value = val;
+  if (customInput) customInput.value = val;
+  updateP2P(val, false);
+  highlightChip(val);
+  triggerHaptic('medium');
 }
 
-function updateP2P(usd) {
-  const usdEl = document.getElementById('p2p-usd-display');
+function updateP2P(usd, fromInput = false) {
+  const customInput = document.getElementById('p2p-custom-input');
   const nairaEl = document.getElementById('p2p-naira-display');
-  if (usdEl) usdEl.textContent = Math.round(usd).toLocaleString();
+
+  if (!fromInput && customInput && document.activeElement !== customInput) {
+    customInput.value = usd;
+  }
+
   const naira = usd * LIVE_P2P_RATE;
   if (nairaEl) nairaEl.textContent = `₦${Math.round(naira).toLocaleString()}`;
 }
@@ -593,12 +681,15 @@ function parseQueryParams() {
       const s = parseFloat(params.get('spy'));
       if (!isNaN(s) && s > 100) {
         telemetryData.spy_price = s;
-        pushRadarTick(s);
+        pushSpyTick(s);
       }
     }
     if (params.has('qqq')) {
       const q = parseFloat(params.get('qqq'));
-      if (!isNaN(q) && q > 100) telemetryData.qqq_price = q;
+      if (!isNaN(q) && q > 100) {
+        telemetryData.qqq_price = q;
+        pushQqqTick(q);
+      }
     }
     if (params.has('cap')) {
       const c = parseFloat(params.get('cap'));
@@ -614,26 +705,23 @@ async function syncTelemetry() {
     const data = await res.json();
     telemetryData = { ...telemetryData, ...data };
 
-    if (data.spy_price) pushRadarTick(data.spy_price);
+    if (data.spy_price) pushSpyTick(data.spy_price);
+    if (data.qqq_price) pushQqqTick(data.qqq_price);
 
     const balEl = document.getElementById('balance-val');
     const buffEl = document.getElementById('buffer-val');
-    const spyEl = document.getElementById('spy-price');
-    const qqqEl = document.getElementById('qqq-price');
-    const dipDistEl = document.getElementById('dip-dist');
-
     if (balEl) balEl.textContent = `$${data.capital.toFixed(2)}`;
     if (buffEl) buffEl.textContent = `$${data.buffer.toFixed(2)}`;
-    if (spyEl) spyEl.textContent = `$${data.spy_price.toFixed(2)}`;
-    if (qqqEl) qqqEl.textContent = `$${data.qqq_price.toFixed(2)}`;
-    if (dipDistEl) dipDistEl.textContent = `+$${data.spy_dist.toFixed(2)}`;
+
+    updateMatrixUI();
 
     if (data.live_p2p_rate && !isNaN(data.live_p2p_rate)) {
       LIVE_P2P_RATE = parseFloat(data.live_p2p_rate);
       const subEl = document.getElementById('p2p-rate-subtitle');
       if (subEl) subEl.textContent = `Live Market Rate: 1 USDT = ₦${LIVE_P2P_RATE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-      const slider = document.getElementById('p2p-slider');
-      if (slider) updateP2P(parseFloat(slider.value));
+      const input = document.getElementById('p2p-custom-input');
+      const curVal = input ? parseFloat(input.value) : 600;
+      updateP2P(curVal);
     }
 
     if (data.wallet_address) {
@@ -644,7 +732,7 @@ async function syncTelemetry() {
 
     if (currentTab === 'radar') renderRadarChart();
   } catch (e) {
-    // Offline fallback — graceful continue
+    // Offline fallback
   }
 }
 
@@ -656,7 +744,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // 1. Apply theme
   applyTheme(getPreferredTheme());
 
-  // 2. Parse URL params (for instant hydration from Telegram Bot)
+  // 2. Parse URL params
   parseQueryParams();
 
   // 3. Init UI and SDK
@@ -665,7 +753,8 @@ window.addEventListener('DOMContentLoaded', () => {
   setupP2PCalculator();
   initGSAPAnimations();
 
-  // 4. Start Live Radar Animation Loop & Countdown Clock
+  // 4. Initial Matrix & Radar Render
+  updateMatrixUI();
   startRadarLoop();
   updateSessionCountdown();
   setInterval(updateSessionCountdown, 1000);

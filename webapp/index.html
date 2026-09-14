@@ -25,7 +25,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   
-  <link rel="stylesheet" href="style.css?v=6.2">
+  <link rel="stylesheet" href="style.css?v=6.3">
 </head>
 <body>
   <div class="apple-shell">
@@ -146,6 +146,12 @@
               </button>
             </div>
 
+            <!-- Asset Switcher Pills for Radar -->
+            <div class="radar-asset-pills">
+              <button class="radar-pill active" id="pill-spy" onclick="switchRadarAsset('SPY')">SPY • S&P 500</button>
+              <button class="radar-pill" id="pill-qqq" onclick="switchRadarAsset('QQQ')">QQQ • Nasdaq 100</button>
+            </div>
+
             <!-- Apple Stocks Minimalist Interactive Chart -->
             <div class="chart-box">
               <div class="chart-live-badge"><span class="live-dot"></span> LIVE</div>
@@ -156,23 +162,38 @@
               </div>
             </div>
 
-            <!-- Monospace Market Matrix -->
-            <div class="specs-grid">
-              <div class="spec-cell">
-                <span class="spec-lbl">SPY MARKET</span>
-                <span class="spec-val font-mono" id="spy-price">$764.29</span>
+            <!-- Dual-Asset Market Matrix: SPY & QQQ Individual Dip Distances -->
+            <div class="dual-matrix-container">
+              <!-- SPY Card -->
+              <div class="asset-spec-card highlight" id="card-spec-spy">
+                <div class="card-top-line">
+                  <span class="asset-tag">SPY (S&P 500)</span>
+                  <span class="asset-price font-mono" id="spy-price">$764.29</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="spy-dip-dist">+$5.84 (+0.76%)</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b id="spy-dip-target">$758.45</b></span>
+                  <span class="status-badge badge-waiting" id="spy-status-badge">WAITING DIP</span>
+                </div>
               </div>
-              <div class="spec-cell">
-                <span class="spec-lbl">QQQ MARKET</span>
-                <span class="spec-val font-mono" id="qqq-price">$508.15</span>
-              </div>
-              <div class="spec-cell">
-                <span class="spec-lbl">DIP DISTANCE</span>
-                <span class="spec-val font-mono val-green" id="dip-dist">+$5.84 (+0.76%)</span>
-              </div>
-              <div class="spec-cell">
-                <span class="spec-lbl">RADAR STATUS</span>
-                <span class="spec-val font-mono val-cyan">WAITING DIP</span>
+
+              <!-- QQQ Card -->
+              <div class="asset-spec-card" id="card-spec-qqq">
+                <div class="card-top-line">
+                  <span class="asset-tag">QQQ (Nasdaq 100)</span>
+                  <span class="asset-price font-mono" id="qqq-price">$714.88</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="qqq-dip-dist">+$4.58 (+0.64%)</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b id="qqq-dip-target">$710.30</b></span>
+                  <span class="status-badge badge-waiting" id="qqq-status-badge">WAITING DIP</span>
+                </div>
               </div>
             </div>
 
@@ -330,20 +351,21 @@
 
             <!-- Apple Pay Style Interactive Slider -->
             <div class="p2p-calc-box">
-              <div class="calc-label">WITHDRAWAL AMOUNT</div>
+              <div class="calc-label">WITHDRAWAL AMOUNT (TAP NUMBER TO EDIT)</div>
               <div class="calc-hero-val">
                 <span class="calc-sym">$</span>
-                <span class="calc-amount" id="p2p-usd-display">600</span>
+                <input type="number" class="p2p-amount-input font-mono" id="p2p-custom-input" min="1" max="100000" step="any" value="600" title="Type custom amount">
                 <span class="calc-unit">USDT</span>
               </div>
 
-              <input type="range" class="apple-slider" id="p2p-slider" min="50" max="3000" step="50" value="600">
+              <input type="range" class="apple-slider" id="p2p-slider" min="50" max="3000" step="25" value="600">
 
               <div class="quick-chips">
-                <button class="chip-preset" onclick="setSlider(300)">$300</button>
-                <button class="chip-preset active" onclick="setSlider(600)">$600 Target</button>
-                <button class="chip-preset" onclick="setSlider(1000)">$1,000</button>
-                <button class="chip-preset" onclick="setSlider(2500)">$2,500</button>
+                <button class="chip-preset" id="chip-300" onclick="setSlider(300)">$300</button>
+                <button class="chip-preset active" id="chip-600" onclick="setSlider(600)">$600 Target</button>
+                <button class="chip-preset" id="chip-1062" onclick="setSlider(1062.5)">$1,062.50</button>
+                <button class="chip-preset" id="chip-2000" onclick="setSlider(2000)">$2,000</button>
+                <button class="chip-preset chip-custom" id="chip-custom" onclick="focusCustomInput()">Custom ✍️</button>
               </div>
 
               <!-- Estimated Bank Deposit -->
@@ -377,6 +399,6 @@
     </footer>
   </div>
 
-  <script src="app.js?v=6.2"></script>
+  <script src="app.js?v=6.3"></script>
 </body>
 </html>
