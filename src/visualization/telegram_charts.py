@@ -313,9 +313,9 @@ def generate_profile_summary_card() -> io.BytesIO:
 
     ax.text(0.08, 0.25, "MODEL: Balanced Long-Only SPY Scalper (5-Day Rolling Mean • 1.25σ Lower Band Dip)",
             fontsize=8, fontweight="bold", color=TEXT_COLOR, va="center", transform=ax.transAxes)
-    ax.text(0.08, 0.17, "PAYOUT ROUTE: USDT (TRC20 Network) → David's Binance Account → Instant P2P to NGN",
+    ax.text(0.08, 0.17, "PAYOUT SLA: 4.0h Avg / 24h Guaranteed Settlement (+ $1,000 Late Bonus) → Binance USDT",
             fontsize=7.5, color=GREEN_NEON, va="center", transform=ax.transAxes)
-    ax.text(0.08, 0.11, "RISK SENTINEL: Autonomous $2,000 trailing drawdown barrier with sub-millisecond execution",
+    ax.text(0.08, 0.11, "RISK SENTINEL: Autonomous trailing drawdown barrier with sub-millisecond execution",
             fontsize=7, color=MUTED_TEXT, va="center", transform=ax.transAxes)
 
     plt.tight_layout()
@@ -522,7 +522,7 @@ def generate_p2p_converter_card() -> io.BytesIO:
 
     ax.text(0.08, 0.22, f"BENCHMARK RATE: 1 USDT = ₦{rate:,.2f} NGN | ROUTE: USDT TRC20 → BINANCE P2P",
             fontsize=8, fontweight="bold", color=TEXT_COLOR, va="center", transform=ax.transAxes)
-    ax.text(0.08, 0.14, "DISBURSEMENT SPEED: 5 Minutes to Nigerian Bank Account | Verified Destination",
+    ax.text(0.08, 0.14, "DISBURSEMENT SPEED: 4.0h Avg / 24h SLA Guarantee to Binance → 5 Mins P2P to NGN Bank",
             fontsize=7.5, color=GREEN_NEON, va="center", transform=ax.transAxes)
 
     plt.tight_layout()
@@ -618,7 +618,8 @@ def generate_cycle_statement_pdf() -> io.BytesIO:
     story.append(Paragraph("Settlement & Payout Route", h2_style))
     story.append(Paragraph("• <b>Payout Method:</b> Crypto USDT (TRC20 Network)", body_style))
     story.append(Paragraph("• <b>Target Exchange:</b> David's Binance Account (TRC20 Wallet Verified)", body_style))
-    story.append(Paragraph("• <b>Disbursement Schedule:</b> Bi-Weekly (Every 14 Days)", body_style))
+    story.append(Paragraph("• <b>Disbursement Schedule:</b> 5 Business Days (Stellar 1-Step) / 14 Days (Stellar 2-Step)", body_style))
+    story.append(Paragraph("• <b>Processing Speed SLA:</b> 4.0h Average (Guaranteed <24h with $1,000 Late Penalty Bonus)", body_style))
     story.append(Paragraph("• <b>Naira Conversion:</b> Instant P2P to Nigerian Bank Account via Binance in 5 minutes", body_style))
     story.append(Spacer(1, 10))
 

@@ -2,11 +2,20 @@ name: AgentQuant 24/7 Automated Daily Trader
 
 on:
   schedule:
-    # Runs Monday through Friday at 19:45 UTC (8:45 PM West Africa Time / 3:45 PM New York Time)
-    # 15 minutes before the US market close to execute end-of-day scalper signals.
+    # 1. Market Open Scan: 13:35 UTC (2:35 PM West Africa Time / 9:35 AM New York Time)
+    - cron: '35 13 * * 1-5'
+    # 2. Market Close Scan: 19:45 UTC (8:45 PM West Africa Time / 3:45 PM New York Time)
     - cron: '45 19 * * 1-5'
   workflow_dispatch:
-    # Allows manual trigger at any time from GitHub UI or mobile app
+    inputs:
+      mode:
+        description: 'Execution Mode (execute or dry-run)'
+        required: true
+        default: 'execute'
+        type: choice
+        options:
+          - execute
+          - dry-run
 
 jobs:
   trade:
@@ -32,5 +41,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CTRADER_ACCOUNT_ID: ${{ secrets.CTRADER_ACCOUNT_ID }}
           CTRADER_ACCESS_TOKEN: ${{ secrets.CTRADER_ACCESS_TOKEN }}
+          EXEC_MODE: ${{ inputs.mode || 'execute' }}
         run: |
-          python scripts/daily_signal_scanner.py --notify
+          if [ "$EXEC_MODE" = "dry-run" ]; then
+            python scripts/daily_signal_scanner.py --dry-run --notify
+          else
+            python scripts/daily_signal_scanner.py --execute --notify
+          fi
