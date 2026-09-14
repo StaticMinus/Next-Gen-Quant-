@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AgentQuant Pro Terminal</title>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Google Fonts: Outfit & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Terminal Navigation Bar -->
+    <header class="terminal-header">
+      <div class="brand">
+        <span class="logo-pulse"></span>
+        <div class="brand-text">
+          <span class="brand-title">AGENTQUANT</span>
+          <span class="brand-sub">PRO TERMINAL v5.2</span>
+        </div>
+      </div>
+      <div class="status-pill" id="connection-pill">
+        <span class="dot"></span>
+        <span class="status-label">cTrader #3028655</span>
+      </div>
+    </header>
+
+    <!-- Hero Capital & Equity Card -->
+    <section class="hero-card">
+      <div class="card-glass">
+        <div class="card-meta">
+          <span class="label">PORTFOLIO EQUITY</span>
+          <span class="badge badge-cash" id="hero-badge">100% CASH</span>
+        </div>
+        <div class="equity-value" id="equity-val">$6,000.00</div>
+        <div class="equity-sub">
+          <span class="currency">USD</span>
+          <span class="naira" id="naira-val">~₦9,990,000 NGN</span>
+          <span class="delta positive">+0.00%</span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <span class="m-label">BALANCE</span>
+            <span class="m-val" id="balance-val">$6,000.00</span>
+          </div>
+          <div class="metric-item">
+            <span class="m-label">SAFE BUFFER</span>
+            <span class="m-val highlight-green" id="buffer-val">$360.00</span>
+          </div>
+          <div class="metric-item">
+            <span class="m-label">NEXT PAYOUT</span>
+            <span class="m-val highlight-amber" id="payout-days">5 Days</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab Navigation Dock -->
+    <nav class="nav-dock">
+      <button class="nav-tab active" data-tab="radar">
+        <span class="nav-icon">📡</span>
+        <span class="nav-text">Radar</span>
+      </button>
+      <button class="nav-tab" data-tab="risk">
+        <span class="nav-icon">🛡️</span>
+        <span class="nav-text">Sentinel</span>
+      </button>
+      <button class="nav-tab" data-tab="payout">
+        <span class="nav-icon">⏳</span>
+        <span class="nav-text">Payouts</span>
+      </button>
+      <button class="nav-tab" data-tab="p2p">
+        <span class="nav-icon">🏦</span>
+        <span class="nav-text">P2P Naira</span>
+      </button>
+    </nav>
+
+    <!-- Tab 1: Live Market Radar & Candlestick Chart -->
+    <main class="tab-content active" id="tab-radar">
+      <div class="panel-box">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>SPY MEAN REVERSION RADAR</span>
+            <span class="session-badge" id="market-session-badge">🟡 PRE-MARKET</span>
+          </div>
+          <button class="btn-refresh" id="btn-refresh-radar" title="Refresh Live Data">⚡ Refresh</button>
+        </div>
+
+        <!-- Interactive Canvas Chart -->
+        <div class="chart-container">
+          <canvas id="radar-chart" width="360" height="200"></canvas>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-dot mean"></span> 5d Target ($764.13)</span>
+            <span class="legend-item"><span class="legend-dot dip"></span> Dip Entry ($758.45)</span>
+          </div>
+        </div>
+
+        <!-- Market Scan Cards -->
+        <div class="radar-cards-list">
+          <div class="radar-card">
+            <div class="rc-header">
+              <span class="rc-ticker">SPY</span>
+              <span class="rc-name">S&P 500 ETF</span>
+              <span class="rc-price" id="spy-price">$764.29</span>
+            </div>
+            <div class="rc-body">
+              <div class="rc-row">
+                <span>5d Mean Target:</span>
+                <span class="mono" id="spy-mean">$764.13</span>
+              </div>
+              <div class="rc-row">
+                <span>Dip Buy Level (1.25σ):</span>
+                <span class="mono highlight-green" id="spy-dip">$758.45</span>
+              </div>
+              <div class="rc-row">
+                <span>Distance to Dip:</span>
+                <span class="mono" id="spy-dist">+$5.84 (0.76%)</span>
+              </div>
+            </div>
+            <div class="rc-status waiting" id="spy-status-pill">🟢 WAITING FOR DIP PULL-BACK</div>
+          </div>
+
+          <div class="radar-card">
+            <div class="rc-header">
+              <span class="rc-ticker">QQQ</span>
+              <span class="rc-name">Nasdaq 100 ETF</span>
+              <span class="rc-price" id="qqq-price">$714.88</span>
+            </div>
+            <div class="rc-body">
+              <div class="rc-row">
+                <span>5d Mean Target:</span>
+                <span class="mono" id="qqq-mean">$715.44</span>
+              </div>
+              <div class="rc-row">
+                <span>Dip Buy Level (1.25σ):</span>
+                <span class="mono highlight-green" id="qqq-dip">$704.16</span>
+              </div>
+              <div class="rc-row">
+                <span>Hard Stop Loss (-3%):</span>
+                <span class="mono highlight-red" id="qqq-stop">$693.43</span>
+              </div>
+            </div>
+            <div class="rc-status safe">🟢 100% CASH PRESERVED</div>
+          </div>
+        </div>
+
+        <div class="info-note">
+          ⏱️ US Session Open at <b>2:30 PM West Africa Time (WAT)</b>. Algorithm enters strictly upon 1.25σ band touch.
+        </div>
+      </div>
+    </main>
+
+    <!-- Tab 2: Risk Guardian Sentinel -->
+    <section class="tab-content" id="tab-risk">
+      <div class="panel-box">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>RISK GUARDIAN SENTINEL</span>
+            <span class="badge badge-safe">100% HEALTHY</span>
+          </div>
+        </div>
+
+        <!-- Circular Risk Gauge -->
+        <div class="gauge-wrapper">
+          <div class="gauge-ring">
+            <svg viewBox="0 0 120 120" class="circular-chart">
+              <path class="circle-bg" d="M18 60 a 42 42 0 0 1 84 0 a 42 42 0 0 1 -84 0" />
+              <path class="circle" stroke-dasharray="100, 100" d="M18 60 a 42 42 0 0 1 84 0 a 42 42 0 0 1 -84 0" id="gauge-path" />
+            </svg>
+            <div class="gauge-content">
+              <span class="gauge-pct">0.00%</span>
+              <span class="gauge-sub">DRAWDOWN</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="risk-stats-grid">
+          <div class="rs-card">
+            <span class="rs-label">MAX LOSS BARRIER</span>
+            <span class="rs-val highlight-red">$360.00 (6.0%)</span>
+            <span class="rs-sub">Trailing Balance</span>
+          </div>
+          <div class="rs-card">
+            <span class="rs-label">DAILY LOSS LIMIT</span>
+            <span class="rs-val highlight-amber">$180.00 (3.0%)</span>
+            <span class="rs-sub">Resets at 00:00 UTC</span>
+          </div>
+          <div class="rs-card">
+            <span class="rs-label">BUFFER REMAINING</span>
+            <span class="rs-val highlight-green">$360.00</span>
+            <span class="rs-sub">~₦599,400 NGN Safe</span>
+          </div>
+          <div class="rs-card">
+            <span class="rs-label">MAX EXPOSURE</span>
+            <span class="rs-val highlight-cyan">0.38% / trade</span>
+            <span class="rs-sub">~$23.00 risk/setup</span>
+          </div>
+        </div>
+
+        <!-- Emergency Kill Switch Slider -->
+        <div class="killswitch-box">
+          <div class="ks-meta">
+            <span class="ks-title">EMERGENCY 100% CASH LOCK</span>
+            <span class="ks-desc">Instantly flattens all orders and locks capital.</span>
+          </div>
+          <button class="btn-killswitch" id="btn-killswitch">🛑 LOCK 100% CASH</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Payout Countdown & Scaling Roadmap -->
+    <section class="tab-content" id="tab-payout">
+      <div class="panel-box">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>WEEKLY PAYOUT GOAL TRACKER</span>
+            <span class="badge badge-gold">5-DAY CYCLE</span>
+          </div>
+        </div>
+
+        <div class="payout-banner">
+          <div class="pb-left">
+            <span class="pb-sub">NEXT PAYOUT WINDOW</span>
+            <span class="pb-highlight">FRIDAY (5 BUSINESS DAYS)</span>
+          </div>
+          <div class="pb-sla">
+            <span>4.0h Avg SLA</span>
+            <span class="sla-badge">Guaranteed &lt;24h</span>
+          </div>
+        </div>
+
+        <!-- Challenge Progress -->
+        <div class="progress-section">
+          <div class="ps-header">
+            <span>Phase 1 Profit Target</span>
+            <span class="mono">$0.00 / $600.00 (0.0%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="bonus-card">
+          <div class="bonus-icon">🎁</div>
+          <div class="bonus-info">
+            <span class="b-title">+$90.00 PHASE 1 BONUS WAITING</span>
+            <span class="b-desc">15% of your Phase 1 profits paid in cash on your 1st funded withdrawal, plus 100% challenge fee refund ($39.99).</span>
+          </div>
+        </div>
+
+        <!-- Scaling Ladder -->
+        <div class="ladder-list">
+          <div class="ladder-item active">
+            <div class="li-num">1</div>
+            <div class="li-info">
+              <span class="li-title">Stage 1: Base Fleet ($6,000)</span>
+              <span class="li-payout">~₦500k – ₦710k / cycle</span>
+            </div>
+            <span class="li-badge current">ACTIVE</span>
+          </div>
+          <div class="ladder-item">
+            <div class="li-num">2</div>
+            <div class="li-info">
+              <span class="li-title">Stage 2: Pro Fleet ($50,000)</span>
+              <span class="li-payout">~₦1.78M / cycle</span>
+            </div>
+            <span class="li-badge next">NEXT</span>
+          </div>
+          <div class="ladder-item">
+            <div class="li-num">3</div>
+            <div class="li-info">
+              <span class="li-title">Stage 3: Enterprise Fleet ($200,000)</span>
+              <span class="li-payout">~₦7.12M / cycle</span>
+            </div>
+            <span class="li-badge">LOCKED</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 4: Binance P2P Naira Converter -->
+    <section class="tab-content" id="tab-p2p">
+      <div class="panel-box">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>BINANCE P2P NAIRA CONVERTER</span>
+            <span class="badge badge-cyan">LIVE ₦1,665</span>
+          </div>
+        </div>
+
+        <div class="p2p-calc-box">
+          <div class="calc-group">
+            <label for="usdt-input">PAYOUT AMOUNT (USDT):</label>
+            <div class="input-wrap">
+              <span class="prefix">$</span>
+              <input type="number" id="usdt-input" value="350" min="50" max="50000" step="50">
+              <span class="suffix">USDT</span>
+            </div>
+          </div>
+
+          <div class="slider-wrap">
+            <input type="range" id="usdt-slider" min="50" max="5000" step="50" value="350">
+            <div class="slider-ticks">
+              <span>$50</span>
+              <span>$1,000</span>
+              <span>$2,500</span>
+              <span>$5,000</span>
+            </div>
+          </div>
+
+          <div class="p2p-result-card">
+            <div class="res-label">ESTIMATED NIGERIAN BANK DEPOSIT</div>
+            <div class="res-naira" id="calc-naira-output">₦582,750 NGN</div>
+            <div class="res-breakdown">
+              <span>Rate: 1 USDT = ₦1,665.00</span>
+              <span>Network: TRC20 (Zero Fee)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settlement-info">
+          <div class="si-row">
+            <span>Destination Wallet:</span>
+            <span class="mono">Binance USDT (TRC20)</span>
+          </div>
+          <div class="si-row">
+            <span>Average Arrival Time:</span>
+            <span class="mono highlight-green">4.0 Hours</span>
+          </div>
+          <div class="si-row">
+            <span>Delayed &gt;24h Bonus:</span>
+            <span class="mono highlight-gold">+$1,000.00 Cash</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Action Floating Footer -->
+    <footer class="terminal-footer">
+      <div class="footer-status">
+        <span class="pulse-dot"></span>
+        <span id="footer-update-time">Sync: Sub-50ms Active</span>
+      </div>
+      <button class="btn-primary" id="btn-quick-overview">👤 In-Chat Menu</button>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

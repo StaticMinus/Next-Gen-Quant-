@@ -52,9 +52,48 @@ from src.visualization.telegram_charts import (
 )
 from src.integrations.risk_guardian import guardian
 from src.integrations.ctrader_mcp_client import CTraderMCPClient
+from src.integrations.webapp_server import launch_server_in_thread
 
 ctrader_client = CTraderMCPClient()
 _LAST_SYNC_TIME = 0.0
+
+USER_NAV_STACK = {}
+
+def push_nav(user_id: str, page: str):
+    if user_id not in USER_NAV_STACK:
+        USER_NAV_STACK[user_id] = ["cmd_overview"]
+    stack = USER_NAV_STACK[user_id]
+    if not stack or stack[-1] != page:
+        stack.append(page)
+    if len(stack) > 10:
+        USER_NAV_STACK[user_id] = stack[-10:]
+
+def pop_nav(user_id: str) -> str:
+    stack = USER_NAV_STACK.get(user_id, [])
+    if len(stack) > 1:
+        stack.pop()
+        return stack[-1]
+    return "cmd_overview"
+
+BREADCRUMBS = {
+    "cmd_overview": "🧭 <b>Terminal › Overview</b>",
+    "cmd_balance": "🧭 <b>Terminal › Balance & Risk</b>",
+    "cmd_signals": "🧭 <b>Terminal › Live Market Radar</b>",
+    "cmd_trades": "🧭 <b>Terminal › Active Trades</b>",
+    "cmd_tracker": "🧭 <b>Terminal › Payout & Scaling</b>",
+    "cmd_models_menu": "🧭 <b>Terminal › Prop Models</b>",
+    "cmd_p2p_rate": "🧭 <b>Terminal › Binance P2P Rate</b>",
+    "cmd_trade_logic": "🧭 <b>Terminal › Mean Reversion Logic</b>",
+    "cmd_hist_overview": "🧭 <b>Terminal › Trade History</b>",
+    "cmd_hist_7d": "🧭 <b>Terminal › History (7d)</b>",
+    "cmd_hist_14d": "🧭 <b>Terminal › History (14d)</b>",
+    "cmd_hist_30d": "🧭 <b>Terminal › History (30d)</b>",
+    "cmd_hist_all": "🧭 <b>Terminal › History (All-Time)</b>",
+    "cmd_withdraw": "🧭 <b>Terminal › Crypto Payout</b>",
+}
+
+def get_breadcrumb(cmd: str) -> str:
+    return BREADCRUMBS.get(cmd, "🧭 <b>Terminal</b>")
 
 def async_send_radar_chart(chat_id):
     try:
@@ -349,8 +388,9 @@ def ack_callback(cq_id: str, text: str = ""):
 
 
 def register_bot_commands():
-    """Registers standard Telegram / commands menu for 1-tap thumb navigation."""
+    """Registers standard Telegram / commands menu for 1-tap thumb navigation and chat menu button."""
     commands = [
+        {"command": "app", "description": "📱 Open AgentQuant Pro Mini App"},
         {"command": "overview", "description": "👤 Master Profile & Capital Snapshot"},
         {"command": "balance", "description": "💰 Balance & Risk Sentinel"},
         {"command": "radar", "description": "📡 Live Market Dip Scanner"},
@@ -367,6 +407,15 @@ def register_bot_commands():
     ]
     res = api_call("setMyCommands", {"commands": commands})
     print("[+] Bot commands registered with Telegram:", res.get("ok", False))
+
+    menu_res = api_call("setChatMenuButton", {
+        "menu_button": {
+            "type": "web_app",
+            "text": "⚡ Pro App",
+            "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}
+        }
+    })
+    print("[+] Telegram Chat Menu Button configured:", menu_res.get("ok", False))
 
 
 def send_photo_buffer(chat_id, buf, caption=""):
@@ -407,9 +456,9 @@ def get_persistent_bottom_keyboard():
     """Permanent keyboard docked at bottom of Telegram chat — no scrolling needed."""
     return {
         "keyboard": [
-            [{"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}, {"text": "📡 Live Radar"}],
-            [{"text": "📊 Active Trades"}, {"text": "💸 Withdraw Crypto"}, {"text": "⏳ Payout & Goals"}],
-            [{"text": "🏦 Binance P2P"}, {"text": "📈 15Y PnL Chart"}, {"text": "📑 Export PDF"}]
+            [{"text": "📱 Pro Mini App"}, {"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}],
+            [{"text": "📡 Live Radar"}, {"text": "📊 Active Trades"}, {"text": "💸 Withdraw Crypto"}],
+            [{"text": "⏳ Payout & Goals"}, {"text": "🏦 Binance P2P"}, {"text": "📈 15Y PnL Chart"}]
         ],
         "resize_keyboard": True,
         "is_persistent": True
@@ -420,16 +469,19 @@ def get_main_menu_markup():
     return {
         "inline_keyboard": [
             [
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+            ],
+            [
                 {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
                 {"text": "💰 Balance & Risk", "callback_data": "cmd_balance"},
             ],
             [
-                {"text": "🖼️ Profile Card", "callback_data": "cmd_card_profile"},
-                {"text": "📈 15Y PnL Chart", "callback_data": "cmd_chart_pnl"},
-            ],
-            [
                 {"text": "📡 Live Radar", "callback_data": "cmd_signals"},
                 {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
+            ],
+            [
+                {"text": "🖼️ Profile Card", "callback_data": "cmd_card_profile"},
+                {"text": "📈 15Y PnL Chart", "callback_data": "cmd_chart_pnl"},
             ],
             [
                 {"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"},
@@ -466,8 +518,8 @@ def get_history_markup(active_tab="overview"):
                 {"text": "📑 Export PDF Statement", "callback_data": "cmd_export_pdf"},
             ],
             [
-                {"text": "🔙 Back to Overview", "callback_data": "cmd_overview"},
-                {"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"},
+                {"text": "🔙 Back", "callback_data": "cmd_back"},
+                {"text": "🏠 Overview", "callback_data": "cmd_overview"},
             ],
         ]
     }
@@ -477,15 +529,16 @@ def get_tracker_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "⚙️ Switch Prop Account Model", "callback_data": "cmd_models_menu"},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
                 {"text": "🖼️ Visual Goal Roadmap", "callback_data": "cmd_chart_roadmap"},
             ],
             [
+                {"text": "⚙️ Switch Prop Account Model", "callback_data": "cmd_models_menu"},
                 {"text": "💸 Request Payout Now", "callback_data": "cmd_withdraw"},
-                {"text": "📑 Export PDF Statement", "callback_data": "cmd_export_pdf"},
             ],
             [
-                {"text": "🔙 Back to Overview", "callback_data": "cmd_overview"},
+                {"text": "🔙 Back", "callback_data": "cmd_back"},
+                {"text": "🏠 Overview", "callback_data": "cmd_overview"},
             ],
         ]
     }
@@ -516,8 +569,8 @@ def get_models_markup():
                  "callback_data": "set_model_futures_rapid_25k"}
             ],
             [
-                {"text": "⏳ Back to Payout Tracker", "callback_data": "cmd_tracker"},
-                {"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}
+                {"text": "🔙 Back", "callback_data": "cmd_back"},
+                {"text": "🏠 Overview", "callback_data": "cmd_overview"}
             ]
         ]
     }
@@ -527,15 +580,16 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
                 {"text": "🕯️ Chart SPY Dip", "callback_data": "cmd_chart_radar_spy"},
-                {"text": "🎫 Trade Ticket Card", "callback_data": "cmd_card_ticket"},
             ],
             [
-                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
+                {"text": "🎫 Trade Ticket Card", "callback_data": "cmd_card_ticket"},
                 {"text": "⚡ Refresh Radar", "callback_data": "cmd_signals"},
             ],
             [
-                {"text": "🔙 Back to Overview", "callback_data": "cmd_overview"},
+                {"text": "🔙 Back", "callback_data": "cmd_back"},
+                {"text": "🏠 Overview", "callback_data": "cmd_overview"},
             ],
         ]
     }
@@ -546,8 +600,8 @@ def get_balance_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "🛡️ View Risk Gauge Card", "callback_data": "cmd_card_risk"},
-                {"text": "🖼️ Profile Card", "callback_data": "cmd_card_profile"},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+                {"text": "🛡️ Risk Sentinel Card", "callback_data": "cmd_card_risk"},
             ],
             [
                 {"text": "🟢 Resume Trading" if is_halted else "🛑 Emergency Kill Switch",
@@ -555,7 +609,7 @@ def get_balance_markup():
             ],
             [
                 {"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"},
-                {"text": "🔙 Overview", "callback_data": "cmd_overview"},
+                {"text": "🔙 Back", "callback_data": "cmd_back"},
             ],
         ]
     }
@@ -568,31 +622,35 @@ def get_balance_markup():
 def render_overview_text():
     curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
-    now_str = datetime.now().strftime("%H:%M:%S WAT • %d %b")
+    now_str = datetime.now().strftime("%H:%M:%S WAT")
     capital = _CACHE.get("capital", 6000.0)
     equity = _CACHE.get("equity", 6000.0)
     naira_val = capital * LIVE_P2P_RATE
     is_halted = guardian.state["trading_halted"]
-    status_str = "🔴 <b>HALTED (100% CASH)</b>" if is_halted else "🟢 <b>LIVE & CONNECTED (0.00% DD)</b>"
+    status_pill = "[ HALTED // 100% CASH ]" if is_halted else "[ LIVE // 100% CASH PRESERVED ]"
 
     text = (
-        "⚡ <b>AGENTQUANT // PROFILE OVERVIEW</b>\n"
+        f"{get_breadcrumb('cmd_overview')}\n"
         "────────────────────────────\n"
-        "👤 <b>Trader:</b> David <i>(Funded Pro)</i>\n"
-        f"🏢 <b>Prop Firm:</b> FundedNext • cTrader (<code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
-        f"⚡ <b>Program:</b> <code>{m['name']}</code> (Active • Phase 1)\n"
-        "⚙️ <b>Engine:</b> Balanced SPY Scalper (5d Mean • 1.25σ)\n"
-        f"🔋 <b>Status:</b> {status_str}\n"
+        "👤 <b>TRADER:</b> David <i>(Funded Pro)</i>\n"
+        f"⚡ <b>STATUS:</b> <code>{status_pill}</code>\n"
         "────────────────────────────\n"
-        f"💰 <b>Balance:</b> <code>${capital:,.2f}</code> (~₦{naira_val:,.0f})\n"
-        f"📈 <b>Equity:</b> <code>${equity:,.2f}</code>\n"
-        f"🎯 <b>Profit Target:</b> <code>$600.00</code> ($0.00 / 0.0%)\n"
-        f"🛡️ <b>Drawdown Barrier:</b> <code>{m['max_loss_pct']}</code> (0.00% DD)\n"
-        f"⏱️ <b>Disbursement:</b> <code>{m['cycle_name']} • 4h Avg SLA</code>\n"
-        "💼 <b>Crypto Payout:</b> <code>USDT (TRC20) • Binance</code>\n"
-        f"⏱️ <i>Updated: {now_str}</i>\n"
+        f"💰 <b>EQUITY:</b>  <code>${equity:,.2f} USD</code> (~₦{naira_val:,.0f})\n"
+        f"🛡️ <b>BUFFER:</b>  <code>$360.00 SAFE</code> (0.00% DD)\n"
+        f"🎯 <b>TARGET:</b>  <code>$600.00</code> ($0.00 / 0.0%)\n"
+        f"⏱️ <b>PAYOUT:</b>  <code>Every 5 Business Days</code>\n"
+        f"⚡ <b>UPDATED:</b> <code>{now_str}</code>\n"
         "────────────────────────────\n"
-        "👇 <i>Select an option below:</i>"
+        "<blockquote expandable>\n"
+        "<b>Institutional Execution Specifications</b>\n"
+        f"• Prop Firm: FundedNext Stellar 1-Step (cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
+        "• Minimum Trading Days: Just 2 Days (Phase 1 auto-passes)\n"
+        "• Payout Frequency: Every 5 Business Days (Weekly Cycle)\n"
+        "• Payout SLA: 4.0h Avg (Guaranteed &lt;24h to Binance USDT)\n"
+        "• Challenge Bonus: +$90.00 Cash (15% of Phase 1) + Fee Refund ($39.99)\n"
+        "• Late Penalty SLA: +$1,000 Cash Bonus to trader if &gt;24h\n"
+        "</blockquote>\n"
+        "👇 <i>Select a terminal option below or open Web App:</i>"
     )
     return text
 
@@ -606,27 +664,33 @@ def render_balance_text():
     buffer_left = min(dd_data["buffer_left"], m["max_loss"])
     buffer_naira = buffer_left * LIVE_P2P_RATE
     is_halted = guardian.state["trading_halted"]
-    status_tag = "🔴 <b>EMERGENCY CASH LOCK ACTIVE</b>" if is_halted else "🟢 <b>100% DIALED IN (Safe)</b>"
+    status_tag = "[ HALTED // 100% CASH ]" if is_halted else "[ SENTINEL // BUFFER 100% SAFE ]"
     now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
-        "💰 <b>BALANCE & RISK TELEMETRY (LIVE CTRADER)</b>\n"
+        f"{get_breadcrumb('cmd_balance')}\n"
         "────────────────────────────\n"
-        f"• <b>Account ID:</b> <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
-        f"• <b>Active Model:</b> <code>{m['name']}</code>\n"
-        f"• <b>Live Balance:</b> <code>${capital:,.2f} USD</code> (~₦{capital * LIVE_P2P_RATE:,.0f})\n"
-        f"• <b>Current Equity:</b> <code>${equity:,.2f} USD</code>\n"
-        "• <b>Floating Exposure:</b> <code>$0.00 (100% Cash)</code>\n"
-        "• <b>Today's Net Realized:</b> <code>+$0.00 (+0.0%)</code>\n"
+        f"🛡️ <b>SENTINEL STATUS:</b> <code>{status_tag}</code>\n"
+        f"⏱️ <b>TELEMETRY TIME:</b>   <code>{now_str}</code>\n"
         "────────────────────────────\n"
-        "🛡️ <b>RISK GUARDIAN SENTINEL</b>\n"
-        f"• <b>Max Loss Limit:</b> <code>${m['max_loss']:,.2f}</code> ({m['max_loss_pct']})\n"
-        f"• <b>Daily Loss Limit:</b> <code>${m['daily_loss']:,.2f}</code> ({m['daily_loss_pct']})\n"
-        f"• <b>Buffer Remaining:</b> 🟢 <code>${buffer_left:,.2f}</code> (~₦{buffer_naira:,.0f})\n"
-        f"• <b>System Health:</b> {status_tag}\n"
-        f"• <b>Telemetry Time:</b> <code>{now_str}</code>\n"
+        "<pre>\n"
+        "METRIC               VALUE           LIMIT / STATUS\n"
+        "───────────────────────────────────────────────────\n"
+        f"Live Balance       ${capital:8.2f}     cTrader #3028655\n"
+        f"Account Equity     ${equity:8.2f}     100% Cash / Flat\n"
+        f"Max Loss Barrier   ${m['max_loss']:8.2f}     6.0% Trailing\n"
+        f"Daily Loss Limit   ${m['daily_loss']:8.2f}     3.0% Reset Daily\n"
+        f"Buffer Remaining   ${buffer_left:8.2f}     ~₦{buffer_naira:,.0f} Safe\n"
+        "</pre>\n"
         "────────────────────────────\n"
-        "⚡ <i>Payouts settle in ~4 hours (24h SLA Guarantee) to Binance USDT.</i>"
+        "<blockquote expandable>\n"
+        "<b>Risk Guardian Sentinel Protocol</b>\n"
+        "• Sizing Engine: Dynamic 0.38% - 0.50% capital risk per setup (~$23 - $30)\n"
+        "• Drawdown Metric: Strict balance & equity trailing protection\n"
+        "• Emergency Response: Automated 100% Cash Flattening within 50ms of limit touch\n"
+        "• Settlement Guarantee: 4.0h Avg Payout SLA to Binance USDT\n"
+        "</blockquote>\n"
+        "⚡ <i>Account is 100% healthy. Kill switch armed.</i>"
     )
     return text
 
@@ -637,11 +701,11 @@ def render_signals_text():
     spy_l = _CACHE.get("spy_lower_band", spy_p - 5.84)
     spy_dist = _CACHE.get("spy_dist", 5.84)
     spy_dist_pct = _CACHE.get("spy_dist_pct", 0.76)
-    spy_sig = _CACHE.get("spy_signal", "🟢 <b>WAITING FOR DIP ENTRY</b>")
 
     qqq_p = _CACHE.get("qqq_price", 714.88)
     qqq_m = _CACHE.get("qqq_mean_5d", qqq_p + 0.56)
     qqq_l = _CACHE.get("qqq_lower_band", qqq_p - 5.12)
+    qqq_dist = qqq_p - qqq_l
 
     now = datetime.now()
     now_hour = now.hour
@@ -652,39 +716,40 @@ def render_signals_text():
 
     if total_mins < open_mins:
         diff_m = open_mins - total_mins
-        hrs = diff_m // 60
-        mins = diff_m % 60
-        session_str = f"🟡 <b>PRE-MARKET</b> (Opens in {hrs}h {mins}m at 2:30 PM WAT)"
+        session_str = f"🟡 PRE-MARKET (Opens in {diff_m // 60}h {diff_m % 60}m at 2:30 PM WAT)"
     elif total_mins < close_mins:
-        session_str = "🟢 <b>LIVE US MARKET OPEN</b> (Active Execution Session)"
+        session_str = "🟢 LIVE US MARKET OPEN (Active Execution)"
     else:
-        session_str = "⚪ <b>MARKET CLOSED</b> (Next Session Tomorrow 2:30 PM WAT)"
+        session_str = "⚪ MARKET CLOSED (Next Session 2:30 PM WAT)"
 
     ts = _CACHE.get("last_scan_time_str", now.strftime("%H:%M:%S WAT"))
 
     text = (
-        "📡 <b>LIVE MARKET RADAR & DIP SCANNER</b>\n"
+        f"{get_breadcrumb('cmd_signals')}\n"
         "────────────────────────────\n"
-        f"⏱️ <b>Market Session:</b> {session_str}\n"
-        f"⚡ <b>Live Scan:</b> <code>{ts}</code>\n"
+        f"⏱️ <b>SESSION:</b> <code>{session_str}</code>\n"
+        f"⚡ <b>SCANNED:</b> <code>{ts}</code>\n"
         "────────────────────────────\n"
-        f"🇺🇸 <b>SPY (S&P 500 ETF)</b> • <code>${spy_p:.2f}</code>\n"
-        f"• <b>5d Mean (Target):</b> <code>${spy_m:.2f}</code>\n"
-        f"• <b>Dip Entry (1.25σ):</b> <code>${spy_l:.2f}</code>\n"
-        f"• <b>Distance to Dip:</b> <code>${spy_dist:+.2f} ({spy_dist_pct:+.2f}%)</code>\n"
-        f"• <b>Radar Signal:</b> {spy_sig}\n"
+        "<pre>\n"
+        "ASSET   PRICE   DIP TARGET   DIST TO DIP   STATUS\n"
+        "─────────────────────────────────────────────────\n"
+        f"SPY   ${spy_p:6.2f}   ${spy_l:6.2f}    +${spy_dist:4.2f} (0.8%)   WAIT\n"
+        f"QQQ   ${qqq_p:6.2f}   ${qqq_l:6.2f}    +${qqq_dist:4.2f} (1.5%)   WAIT\n"
+        "</pre>\n"
         "────────────────────────────\n"
-        f"🇺🇸 <b>QQQ (Nasdaq 100 ETF)</b> • <code>${qqq_p:.2f}</code>\n"
-        f"• <b>5d Mean (Target):</b> <code>${qqq_m:.2f}</code>\n"
-        f"• <b>Dip Entry (1.25σ):</b> <code>${qqq_l:.2f}</code>\n"
-        f"• <b>Safety Stop:</b> <code>${qqq_p * 0.97:.2f} (-3.0%)</code>\n"
-        "• <b>Status:</b> 🟢 <b>100% CASH PRESERVED</b>\n"
+        f"• <b>SPY Mean Target:</b> <code>${spy_m:.2f}</code> | <b>Dip:</b> <code>${spy_l:.2f}</code>\n"
+        f"• <b>QQQ Mean Target:</b> <code>${qqq_m:.2f}</code> | <b>Dip:</b> <code>${qqq_l:.2f}</code>\n"
+        f"• <b>Current Signal:</b> <code>[ RADAR // PATIENT CASH HOLDING ]</code>\n"
         "────────────────────────────\n"
-        "🛡️ <b>DISCIPLINE REMINDER:</b>\n"
-        "• Entries occur ONLY when price touches or dips under the 1.25σ Lower Band.\n"
-        "• Zero FOMO trades. 100% automated statistical execution.\n"
-        "────────────────────────────\n"
-        "👇 <i>Tap 'Chart SPY Dip' below to view the visual entry chart:</i>"
+        "<blockquote expandable>\n"
+        "<b>Quantitative Entry & Exit Parameters</b>\n"
+        "• Model: 5-Day Rolling Mean Reversion (1.25σ Lower Band)\n"
+        "• Entry Rule: Long orders submitted ONLY when price touches/penetrates 1.25σ band\n"
+        "• Target Exit: Mean touch (zero greed) or 5-bar max hold\n"
+        "• Stop Loss: Strict -3.00% fixed at order dispatch ($731.57 on SPY)\n"
+        "• Account Barrier: 100% Risk Guardian Sentinel protection active\n"
+        "</blockquote>\n"
+        "👇 <i>Tap below to view the visual entry chart or open Web App:</i>"
     )
     return text
 
@@ -695,29 +760,39 @@ def render_trades_text():
 
     if not positions:
         text = (
-            "📊 <b>ACTIVE TRADES & POSITIONS</b>\n"
+            f"{get_breadcrumb('cmd_trades')}\n"
             "────────────────────────────\n"
-            "🟢 <b>STATUS: 100% CASH / FLAT</b>\n"
-            "• <b>Active Positions:</b> <code>0</code>\n"
-            "• <b>Pending Orders:</b> <code>0</code>\n"
-            "• <b>Broker / Account:</b> FundedNext cTrader <code>#3028655</code>\n"
-            "• <b>Market Session:</b> US Market Open at 2:30 PM WAT\n"
-            "• <b>Today's Realized:</b> <code>+$0.00</code>\n"
-            "• <b>Floating P&L:</b> <code>$0.00</code>\n"
-            f"• <b>Last Checked:</b> <code>{now_str}</code>\n"
+            "🟢 <b>STATUS:</b> <code>[ FLAT // 100% CASH PRESERVED ]</code>\n"
+            f"⏱️ <b>SESSION:</b> <code>US Market Session • 2:30 PM WAT</code>\n"
+            f"⚡ <b>SCANNED:</b> <code>{now_str}</code>\n"
             "────────────────────────────\n"
-            "🛡️ <b>DISCIPLINE GUARANTEE:</b>\n"
-            "• The algorithm never forces trades.\n"
-            "• Entries trigger ONLY when SPY or QQQ dips below 1.25σ Lower Band.\n"
-            "• 90% of winning trading is patient cash holding.\n"
+            "<pre>\n"
+            "ACTIVE POSITIONS : 0\n"
+            "PENDING ORDERS   : 0\n"
+            "ACCOUNT EXPOSURE : $0.00 (0.00%)\n"
+            "TODAY'S REALIZED : +$0.00 (+0.00%)\n"
+            "CTRADER ACCOUNT  : #3028655\n"
+            "</pre>\n"
             "────────────────────────────\n"
+            "<blockquote expandable>\n"
+            "<b>Institutional Execution Guarantee</b>\n"
+            "• Zero FOMO / Impulsive Entries: Algorithm triggers strictly on 1.25σ band touch\n"
+            "• Maximum Open Trades: 1 position active per asset (SPY / QQQ / IWM)\n"
+            "• Stop Loss Protocol: Hard 3.00% stop loss fixed at order submission\n"
+            "• Holding Duration: Target exit at mean reversion (Avg 1.8 bars / max 5 bars)\n"
+            "</blockquote>\n"
             "✨ <i>Waiting for Market Open at 2:30 PM West Africa Time.</i>"
         )
         return text
     else:
         lines = [
-            "📊 <b>ACTIVE OPEN POSITIONS (LIVE CTRADER)</b>\n"
-            "────────────────────────────\n"
+            f"{get_breadcrumb('cmd_trades')}\n",
+            "────────────────────────────\n",
+            "📊 <b>ACTIVE POSITIONS (LIVE CTRADER #3028655)</b>\n",
+            "────────────────────────────\n",
+            "<pre>\n",
+            "SYMBOL   SIDE   LOTS    ENTRY        FLOATING P&L\n",
+            "─────────────────────────────────────────────────\n"
         ]
         total_pnl = 0.0
         for pos in positions:
@@ -727,8 +802,11 @@ def render_trades_text():
             entry = pos.get("price", 0.0)
             pnl = pos.get("profit", 0.0)
             total_pnl += pnl
-            lines.append(f"• <b>{sym}</b>: {side} {vol:.2f} lots @ ${entry:,.2f} | P&L: ${pnl:+,.2f}\n")
-        lines.append(f"────────────────────────────\n• <b>Floating Exposure:</b> <code>${total_pnl:+,.2f}</code>\n• <b>Checked:</b> <code>{now_str}</code>\n🛡️ <i>Risk Guardian is monitoring stops.</i>")
+            lines.append(f"{sym:6s}   {side:4s}   {vol:4.2f}  ${entry:7.2f}    ${pnl:+8.2f}\n")
+        lines.append("</pre>\n────────────────────────────\n")
+        lines.append(f"• <b>Total Floating Exposure:</b> <code>${total_pnl:+,.2f}</code>\n")
+        lines.append(f"• <b>Telemetry Time:</b> <code>{now_str}</code>\n")
+        lines.append("<blockquote expandable><b>Risk Guardian Sentinel:</b> Monitoring automated stops. Sub-50ms kill switch active.</blockquote>")
         return "".join(lines)
 
 
@@ -743,26 +821,29 @@ def render_tracker_text():
     now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
-        "⏳ <b>PAYOUT COUNTDOWN & GOAL TRACKER</b>\n"
+        f"{get_breadcrumb('cmd_tracker')}\n"
         "────────────────────────────\n"
-        f"🏢 <b>Account Model:</b> <code>{m['name']}</code>\n"
-        f"⏱️ <b>Next Payout In:</b> 🟢 <b>{days_left} Days ({p_date})</b>\n"
-        f"🔄 <b>Payout Frequency:</b> <code>{m['cycle_name']}</code>\n"
-        "⚡ <b>Turnaround SLA:</b> <code>4.0h Avg • 24h Max Guarantee</code>\n"
-        "🛡️ <b>Late SLA Penalty:</b> <code>+$1,000 Cash Bonus to Trader if >24h</code>\n"
+        f"🏢 <b>PROGRAM:</b> <code>{m['name']}</code>\n"
+        f"⏱️ <b>PAYOUT:</b>  <code>Every 5 Business Days ({p_date})</code>\n"
+        f"⚡ <b>STATUS:</b>  <code>[ CYCLE // 5D PAYOUT ELIGIBLE ]</code>\n"
         "────────────────────────────\n"
-        f"💎 <b>Accrued This Cycle:</b> <code>+${cycle_profit:,.2f} USD</code>\n"
-        f"💰 <b>Your 85% Take-Home:</b> <code>+${split_85:,.2f} USDT</code>\n"
-        f"🏦 <b>Estimated Bank Value:</b> <code>~₦{naira_val:,.0f} NGN</code>\n"
-        f"🎁 <b>Challenge Reward Bonus:</b> <code>+${m['challenge_bonus']:,.2f} (1st Payout)</code>\n"
+        "<pre>\n"
+        "CYCLE METRIC            USD VALUE        EST. NAIRA (P2P)\n"
+        "─────────────────────────────────────────────────────────\n"
+        f"Accrued Profit         +${cycle_profit:7.2f}         ₦{cycle_profit * LIVE_P2P_RATE:,.0f}\n"
+        f"Trader 85% Cut         +${split_85:7.2f}         ₦{naira_val:,.0f}\n"
+        f"Phase 1 Cash Bonus     +${m['challenge_bonus']:7.2f}         ₦{m['challenge_bonus'] * LIVE_P2P_RATE:,.0f}\n"
+        f"Fee Refund (100%)       +$39.99         ₦{39.99 * LIVE_P2P_RATE:,.0f}\n"
+        "</pre>\n"
         "────────────────────────────\n"
-        "🎯 <b>SCALE-UP MILESTONE PROGRESS</b>\n"
-        f"• <b>Current Base:</b> <code>{m['name']}</code> ({m['badge']})\n"
-        "• <b>Live Account ID:</b> <code>#3028655</code>\n"
-        "• <b>Phase Progress:</b> <code>[░░░░░░░░░░] 0.0% ($0.00 / $600.00)</code>\n"
-        "• <b>Settlement Channel:</b> <code>Binance USDT (TRC20)</code>\n"
-        f"• <b>Updated:</b> <code>{now_str}</code>\n"
-        "────────────────────────────\n"
+        "<blockquote expandable>\n"
+        "<b>Payout Policy & Scale-Up Terms</b>\n"
+        "• Minimum Trading Days: Just 2 Days before funded issuance\n"
+        "• Payout Frequency: Every 5 business days once funded (Weekly payouts!)\n"
+        "• Turnaround SLA: 4.0h Average • Guaranteed &lt;24h to Binance USDT (TRC20)\n"
+        "• SLA Late Penalty: FundedNext pays +$1,000 cash bonus if delayed &gt;24h\n"
+        "• Challenge Profit Share: 15% of Phase 1 profit (+$90.00 cash) paid on 1st payout\n"
+        "</blockquote>\n"
         "👇 <i>Tap below to switch model, view visual roadmap or export PDF:</i>"
     )
     return text
@@ -1082,6 +1163,16 @@ def handle_update(update: dict):
         new_text = ""
         markup = get_main_menu_markup()
 
+        # Stateful Navigation Stack
+        if data == "cmd_back":
+            data = pop_nav(user_id)
+        elif data in [
+            "cmd_overview", "cmd_balance", "cmd_signals", "cmd_trades",
+            "cmd_tracker", "cmd_models_menu", "cmd_p2p_rate", "cmd_trade_logic",
+            "cmd_hist_overview", "cmd_withdraw"
+        ]:
+            push_nav(user_id, data)
+
         # Navigation Callbacks
         if data in ["cmd_overview", "cmd_menu", "cmd_refresh"]:
             new_text = render_overview_text()
@@ -1104,14 +1195,14 @@ def handle_update(update: dict):
                 "inline_keyboard": [
                     [{"text": "🏦 View P2P Card", "callback_data": "cmd_card_p2p"}],
                     [{"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"}],
-                    [{"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}]
+                    [{"text": "🔙 Back", "callback_data": "cmd_back"}, {"text": "🏠 Overview", "callback_data": "cmd_overview"}]
                 ]
             }
         elif data == "cmd_trade_logic":
             new_text = render_trade_logic_text()
             markup = {
                 "inline_keyboard": [
-                    [{"text": "🔙 Back to Overview", "callback_data": "cmd_overview"}]
+                    [{"text": "🔙 Back", "callback_data": "cmd_back"}, {"text": "🏠 Overview", "callback_data": "cmd_overview"}]
                 ]
             }
 
@@ -1293,7 +1384,27 @@ def handle_update(update: dict):
             return
 
         # Bottom Menu & Slash Command Routing
-        if any(cmd in text for cmd in ["/start", "/menu", "/overview", "/profile", "👤 overview", "overview", "start", "menu"]):
+        if any(cmd in text for cmd in ["/app", "/webapp", "📱 pro mini app", "pro mini app", "app"]):
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "⚡ <b>AGENTQUANT PRO WEB TERMINAL</b>\n"
+                    "────────────────────────────\n"
+                    "• Full Android Hardware Back Button Hook\n"
+                    "• Interactive Touch Radar Dip Chart\n"
+                    "• Live Binance P2P Naira Converter\n"
+                    "• Real-time cTrader Drawdown Gauge\n\n"
+                    "Tap below to open the Web Terminal:"
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "🚀 Launch AgentQuant Pro Web App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}}],
+                        [{"text": "🔙 Back", "callback_data": "cmd_back"}]
+                    ]
+                }
+            })
+        elif any(cmd in text for cmd in ["/start", "/menu", "/overview", "/profile", "👤 overview", "overview", "start", "menu"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_overview_text(),
@@ -1417,6 +1528,10 @@ def run_polling():
     bg_thread = threading.Thread(target=background_telemetry_loop, daemon=True, name="TelemetryWorker")
     bg_thread.start()
     print("[+] Background Telemetry & Radar Worker Thread started.")
+
+    # Start local Mini App HTTP server
+    launch_server_in_thread(8080)
+    print("[+] Mini App Web Server started on http://localhost:8080")
 
     last_offset = 0
     while True:
