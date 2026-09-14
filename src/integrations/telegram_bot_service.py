@@ -416,7 +416,6 @@ _CACHE = {
     "qqq_dist": 4.75,
     "qqq_dist_pct": 0.93,
     "qqq_signal": "🟢 <b>WAITING (Dip is $4.75 away)</b>",
-    "iwm_price": 288.89,
     "capital": 6000.0,
     "equity": 6000.0,
     "free_margin": 6000.0,
@@ -870,7 +869,7 @@ def render_trades_text():
             "<blockquote expandable>\n"
             "<b>Institutional Execution Guarantee</b>\n"
             "• Zero FOMO / Impulsive Entries: Algorithm triggers strictly on 1.25σ band touch\n"
-            "• Maximum Open Trades: 1 position active per asset (SPY / QQQ / IWM)\n"
+            "• Maximum Open Trades: 1 position active per asset (Dual-Asset: SPY / QQQ)\n"
             "• Stop Loss Protocol: Hard 3.00% stop loss fixed at order submission\n"
             "• Holding Duration: Target exit at mean reversion (Avg 1.8 bars / max 5 bars)\n"
             "</blockquote>\n"

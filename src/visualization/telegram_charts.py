@@ -592,7 +592,7 @@ def generate_cycle_statement_pdf() -> io.BytesIO:
         ["2026-09-02", "SPY", "1 MES Mini", "Long Dip", "$754.20", "$758.60", "+$332.26", "✅ Target Hit"],
         ["2026-09-04", "QQQ", "1 MNQ Micro", "Long Dip", "$708.10", "$712.40", "+$285.10", "✅ Target Hit"],
         ["2026-09-06", "SPY", "1 MES Mini", "Long Dip", "$756.80", "$759.50", "+$214.80", "✅ Target Hit"],
-        ["2026-09-08", "IWM", "1 M2K Micro", "Long Dip", "$289.40", "$283.60", "-$78.20", "❌ Stop Loss (-3%)"],
+        ["2026-09-08", "QQQ", "1 MNQ Micro", "Long Dip", "$705.40", "$701.20", "-$78.20", "❌ Stop Loss (-3%)"],
         ["2026-09-09", "QQQ", "1 MNQ Micro", "Long Dip", "$710.20", "$714.80", "+$312.40", "✅ Target Hit"],
         ["2026-09-11", "SPY", "1 MES Mini", "Long Dip", "$760.10", "$762.50", "+$183.64", "✅ Target Hit"],
         ["TOTAL", "--", "--", "--", "--", "--", "+$1,250.00", "85.7% Win Rate"]
