@@ -1,73 +1,161 @@
 /**
- * AgentQuant Pro Terminal — Apple-Style Minimalist UI Controller
- * Powered by GreenSock Animation Platform (GSAP) & Telegram WebApp SDK
+ * AgentQuant Pro Terminal v6 — Minimalist Controller
+ * Live Radar • Multi-Provider P2P Rate • Dark/Light Theme • Telegram WebApp SDK
  */
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 let LIVE_P2P_RATE = 1518.40;
 
+// =========================================================================
+// THEME SYSTEM (Dark / Light)
+// =========================================================================
+
+function getPreferredTheme() {
+  try {
+    const saved = localStorage.getItem('agentquant_theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch (e) {}
+  if (tg && tg.colorScheme) return tg.colorScheme;
+  return 'dark';
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+
+  if (tg && tg.setHeaderColor) {
+    const bg = theme === 'dark' ? '#000000' : '#F2F2F7';
+    tg.setHeaderColor(bg);
+    tg.setBackgroundColor(bg);
+  }
+
+  try { localStorage.setItem('agentquant_theme', theme); } catch (e) {}
+  if (currentTab === 'radar') renderRadarChart();
+}
+
+function toggleTheme() {
+  triggerHaptic('light');
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// =========================================================================
+// MULTI-PROVIDER LIVE P2P RATE FETCHER (Binance + CryptoCompare + CoinGecko)
+// =========================================================================
+
 async function fetchLiveBinanceRate() {
+  let newRate = null;
+
+  // Provider 1: Binance Official USDT/NGN
   try {
     const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTNGN', { cache: 'no-store' });
-    if (!res.ok) throw new Error('Binance HTTP ' + res.status);
-    const data = await res.json();
-    if (data && data.price) {
-      const price = parseFloat(data.price);
-      if (!isNaN(price) && price > 500) {
-        LIVE_P2P_RATE = price;
-        const subEl = document.getElementById('p2p-rate-subtitle');
-        if (subEl) {
-          subEl.textContent = `Live Binance Rate: 1 USDT = ₦${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        }
-        const slider = document.getElementById('p2p-slider');
-        if (slider) {
-          updateP2P(parseFloat(slider.value));
-        }
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.price) {
+        const p = parseFloat(data.price);
+        if (!isNaN(p) && p > 500) newRate = p;
       }
     }
-  } catch (err) {
-    console.warn('Binance direct fetch fallback to cached/telemetry rate:', err);
+  } catch (e) {}
+
+  // Provider 2: CryptoCompare USDT -> NGN
+  if (!newRate) {
+    try {
+      const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=USDT&tsyms=NGN', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.NGN) {
+          const p = parseFloat(data.NGN);
+          if (!isNaN(p) && p > 500) newRate = p;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Provider 3: CoinGecko Tether -> NGN
+  if (!newRate) {
+    try {
+      const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=ngn', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.tether && data.tether.ngn) {
+          const p = parseFloat(data.tether.ngn);
+          if (!isNaN(p) && p > 500) newRate = p;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Provider 4: Local Telemetry Endpoint (if running with webapp_server)
+  if (!newRate) {
+    try {
+      const res = await fetch('/api/telemetry');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.live_p2p_rate) {
+          const p = parseFloat(data.live_p2p_rate);
+          if (!isNaN(p) && p > 500) newRate = p;
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (newRate) {
+    LIVE_P2P_RATE = newRate;
+    const subEl = document.getElementById('p2p-rate-subtitle');
+    if (subEl) {
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      subEl.textContent = `Live Market Rate: 1 USDT = ₦${newRate.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} • ${nowStr}`;
+    }
+    const slider = document.getElementById('p2p-slider');
+    if (slider) updateP2P(parseFloat(slider.value));
   }
 }
 
-// Application State
+// =========================================================================
+// APPLICATION STATE & RADAR BUFFER
+// =========================================================================
+
 let currentTab = 'radar';
 const navHistory = ['radar'];
 let telemetryData = {
-  capital: 6000.0,
-  equity: 6000.0,
-  buffer: 360.0,
+  capital: 6000.0, equity: 6000.0, buffer: 360.0,
   strategy_name: 'Dual-Asset Scalper (SPY + QQQ)',
-  win_rate: '72.4%',
-  trades_per_mo: '3.14 / mo',
-  profit_10y: '+$6,438.11',
-  spy_price: 764.29,
-  spy_mean: 764.13,
-  spy_dip: 758.45,
-  spy_dist: 5.84,
-  qqq_price: 508.15,
-  qqq_mean: 509.30,
-  qqq_dip: 503.40,
-  qqq_dist: 4.75,
+  win_rate: '72.4%', trades_per_mo: '3.14 / mo', profit_10y: '+$6,438.11',
+  spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84,
+  qqq_price: 508.15, qqq_mean: 509.30, qqq_dip: 503.40, qqq_dist: 4.75,
   payout_days: 5,
 };
 
+const MAX_RADAR_POINTS = 32;
+let radarHistory = [];
+let radarAnimId = null;
+let radarPulsePhase = 0;
+
+function pushRadarTick(price) {
+  radarHistory.push(price);
+  if (radarHistory.length > MAX_RADAR_POINTS) radarHistory.shift();
+}
+
+// Seed initial historical trajectory
+(function seedRadar() {
+  const base = telemetryData.spy_price;
+  const synth = [
+    -10.09, -8.70, -7.49, -5.19, -6.79, -4.30, -2.99,
+    -1.80, -0.89, -2.50, -4.19, -2.80, -1.49, 0.91, -0.40, -1.19, -1.79, 0
+  ];
+  synth.forEach(d => pushRadarTick(base + d));
+})();
+
 // =========================================================================
-// 1. TELEGRAM SDK INITIALIZATION & ANDROID HARDWARE BACK BUTTON HOOK
+// TELEGRAM SDK
 // =========================================================================
 
 function initTelegram() {
   if (tg) {
     tg.ready();
     tg.expand();
-
-    // Set Apple-style dark OLED chrome
-    if (tg.setHeaderColor) {
-      tg.setHeaderColor('#000000');
-      tg.setBackgroundColor('#000000');
-    }
-
-    // Android Hardware & Top-Left Back Button Hook
     if (tg.BackButton) {
       tg.BackButton.show();
       tg.BackButton.onClick(handleAndroidBack);
@@ -88,8 +176,8 @@ function triggerHaptic(type = 'medium') {
 function handleAndroidBack() {
   triggerHaptic('light');
   if (navHistory.length > 1) {
-    navHistory.pop(); // remove current
-    const prevTab = navHistory.pop(); // get previous
+    navHistory.pop();
+    const prevTab = navHistory.pop();
     switchTab(prevTab, false);
   } else {
     if (tg) tg.close();
@@ -97,36 +185,26 @@ function handleAndroidBack() {
 }
 
 // =========================================================================
-// 2. GSAP ENTRANCE & TAB SWITCHING SYSTEM
+// GSAP ENTRANCE & TAB SWITCHING
 // =========================================================================
 
 function initGSAPAnimations() {
   if (typeof gsap === 'undefined') return;
-
-  // Staggered Entrance of Shell Elements
   gsap.from('.top-nav, .hero-widget, .segmented-control, .views-wrapper, .bottom-bar', {
-    opacity: 0,
-    y: 20,
-    duration: 0.7,
-    stagger: 0.08,
-    ease: 'power3.out',
+    opacity: 0, y: 16, duration: 0.5, stagger: 0.06, ease: 'power3.out',
   });
-
-  // Animate initial balance count-up
   animateBalance(6000.0);
 }
 
 function animateBalance(targetValue) {
   if (typeof gsap === 'undefined') {
-    document.getElementById('equity-val').textContent = targetValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const el = document.getElementById('equity-val');
+    if (el) el.textContent = targetValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return;
   }
-
   const obj = { val: 0 };
   gsap.to(obj, {
-    val: targetValue,
-    duration: 1.2,
-    ease: 'power2.out',
+    val: targetValue, duration: 0.9, ease: 'power2.out',
     onUpdate: () => {
       const el = document.getElementById('equity-val');
       if (el) el.textContent = obj.val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -145,192 +223,277 @@ function switchTab(tabName, pushToHistory = true) {
   const tabIndexMap = { radar: 0, sentinel: 1, payouts: 2, p2p: 3 };
   const targetIndex = tabIndexMap[tabName] ?? 0;
 
-  // 1. Move the Segmented Indicator Slider
   const slider = document.getElementById('segment-slider');
-  if (slider) {
-    slider.style.transform = `translateX(${targetIndex * 100}%)`;
-  }
+  if (slider) slider.style.transform = `translateX(${targetIndex * 100}%)`;
 
-  // 2. Update button active classes
   document.querySelectorAll('.segment-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabName);
   });
 
-  // 3. GSAP Cross-fade & slide transition between views
   if (typeof gsap !== 'undefined' && currentView) {
     gsap.to(currentView, {
-      opacity: 0,
-      y: -10,
-      duration: 0.18,
-      ease: 'power2.in',
+      opacity: 0, y: -6, duration: 0.12, ease: 'power2.in',
       onComplete: () => {
         currentView.classList.remove('active');
         currentView.style.display = 'none';
-
         targetView.style.display = 'block';
         targetView.classList.add('active');
-        gsap.fromTo(targetView, 
-          { opacity: 0, y: 14, scale: 0.985 },
-          { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'power2.out' }
+        gsap.fromTo(targetView,
+          { opacity: 0, y: 8 },
+          { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }
         );
-
-        if (tabName === 'radar') {
-          requestAnimationFrame(renderRadarChart);
-        } else if (tabName === 'sentinel') {
-          animateActivityRing();
-        }
+        if (tabName === 'radar') renderRadarChart();
+        else if (tabName === 'sentinel') animateActivityRing();
       }
     });
   } else {
     if (currentView) currentView.classList.remove('active');
     targetView.classList.add('active');
-    if (tabName === 'radar') requestAnimationFrame(renderRadarChart);
+    if (tabName === 'radar') renderRadarChart();
   }
 
   currentTab = tabName;
-  if (pushToHistory) {
-    navHistory.push(tabName);
-  }
+  if (pushToHistory) navHistory.push(tabName);
 }
 
 function setupSegmentedNav() {
   document.querySelectorAll('.segment-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      switchTab(tab, true);
+      switchTab(btn.dataset.tab, true);
     });
   });
 }
 
 // =========================================================================
-// 3. APPLE STOCKS MINIMALIST CANVAS CHART (SPY RADAR)
+// LIVE RADAR CHART (Theme-Aware, Animated Beacon Loop)
 // =========================================================================
 
-function renderRadarChart() {
+function getChartColors() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    line: style.getPropertyValue('--chart-line').trim(),
+    fillTop: style.getPropertyValue('--chart-fill-top').trim(),
+    fillBottom: style.getPropertyValue('--chart-fill-bottom').trim(),
+    meanLine: style.getPropertyValue('--chart-mean-line').trim(),
+    dipLine: style.getPropertyValue('--chart-dip-line').trim(),
+    dot: style.getPropertyValue('--chart-dot').trim(),
+    dotGlow: style.getPropertyValue('--chart-dot-glow').trim(),
+  };
+}
+
+function renderRadarChart(pulsePhase = 0) {
   const canvas = document.getElementById('radarChart');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
 
   const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+  }
+  ctx.save();
   ctx.scale(dpr, dpr);
 
   const w = rect.width;
   const h = rect.height;
-
-  // Clear canvas
   ctx.clearRect(0, 0, w, h);
 
-  // 12-day SPY synthetic path ending at current price
-  const basePrice = telemetryData.spy_price || 764.29;
+  const colors = getChartColors();
+
+  // Price history points
+  const pricePoints = radarHistory.length >= 3 ? [...radarHistory] : [
+    754.20, 756.80, 759.10, 757.50, 761.30,
+    763.40, 760.10, 762.80, 765.20, 763.10,
+    762.50, telemetryData.spy_price
+  ];
+
   const dipPrice = telemetryData.spy_dip || 758.45;
   const meanPrice = telemetryData.spy_mean || 764.13;
 
-  const pricePoints = [
-    754.20, 756.80, 759.10, 757.50, 761.30, 
-    763.40, 760.10, 762.80, 765.20, 763.10, 
-    762.50, basePrice
-  ];
+  const minP = Math.min(...pricePoints, dipPrice) - 1.8;
+  const maxP = Math.max(...pricePoints, meanPrice) + 1.8;
+  const range = Math.max(0.01, maxP - minP);
 
-  const minP = Math.min(...pricePoints, dipPrice) - 3.0;
-  const maxP = Math.max(...pricePoints, meanPrice) + 3.0;
-  const range = maxP - minP;
+  const getX = (i) => (i / (pricePoints.length - 1)) * (w - 24) + 12;
+  const getY = (p) => h - 22 - ((p - minP) / range) * (h - 42);
 
-  const getX = (index) => (index / (pricePoints.length - 1)) * (w - 30) + 15;
-  const getY = (price) => h - 25 - ((price - minP) / range) * (h - 45);
-
-  // 1. Draw Subtle Mean Target Dashed Line
+  // Mean Target Guideline
   const yMean = getY(meanPrice);
   ctx.save();
-  ctx.strokeStyle = 'rgba(100, 210, 255, 0.4)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(15, yMean);
-  ctx.lineTo(w - 15, yMean);
-  ctx.stroke();
-  ctx.restore();
-
-  // 2. Draw Dip Entry Trigger Dashed Line
-  const yDip = getY(dipPrice);
-  ctx.save();
-  ctx.strokeStyle = 'rgba(48, 209, 88, 0.5)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = colors.meanLine;
+  ctx.lineWidth = 0.8;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
-  ctx.moveTo(15, yDip);
-  ctx.lineTo(w - 15, yDip);
+  ctx.moveTo(12, yMean);
+  ctx.lineTo(w - 12, yMean);
   ctx.stroke();
   ctx.restore();
 
-  // 3. Draw Gradient Area Fill under price curve
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, 'rgba(100, 210, 255, 0.25)');
-  grad.addColorStop(1, 'rgba(100, 210, 255, 0.00)');
-
-  ctx.beginPath();
-  ctx.moveTo(getX(0), getY(pricePoints[0]));
-  for (let i = 1; i < pricePoints.length; i++) {
-    const prevX = getX(i - 1);
-    const prevY = getY(pricePoints[i - 1]);
-    const currX = getX(i);
-    const currY = getY(pricePoints[i]);
-    const midX = (prevX + currX) / 2;
-    ctx.bezierCurveTo(midX, prevY, midX, currY, currX, currY);
-  }
-  ctx.lineTo(getX(pricePoints.length - 1), h - 10);
-  ctx.lineTo(getX(0), h - 10);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // 4. Draw Main Price Stroke Line
-  ctx.beginPath();
-  ctx.moveTo(getX(0), getY(pricePoints[0]));
-  for (let i = 1; i < pricePoints.length; i++) {
-    const prevX = getX(i - 1);
-    const prevY = getY(pricePoints[i - 1]);
-    const currX = getX(i);
-    const currY = getY(pricePoints[i]);
-    const midX = (prevX + currX) / 2;
-    ctx.bezierCurveTo(midX, prevY, midX, currY, currX, currY);
-  }
-  ctx.strokeStyle = '#64D2FF';
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  // 5. Draw Glowing Current Price Dot
-  const lastX = getX(pricePoints.length - 1);
-  const lastY = getY(basePrice);
-
+  // Dip Trigger Guideline
+  const yDip = getY(dipPrice);
   ctx.save();
-  ctx.shadowColor = '#64D2FF';
-  ctx.shadowBlur = 12;
-  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = colors.dipLine;
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([3, 3]);
   ctx.beginPath();
-  ctx.arc(lastX, lastY, 4.5, 0, Math.PI * 2);
+  ctx.moveTo(12, yDip);
+  ctx.lineTo(w - 12, yDip);
+  ctx.stroke();
+  ctx.restore();
+
+  // Smooth Bezier Curve Path
+  const curvePath = new Path2D();
+  curvePath.moveTo(getX(0), getY(pricePoints[0]));
+  for (let i = 1; i < pricePoints.length; i++) {
+    const px = getX(i - 1), py = getY(pricePoints[i - 1]);
+    const cx = getX(i), cy = getY(pricePoints[i]);
+    const mx = (px + cx) / 2;
+    curvePath.bezierCurveTo(mx, py, mx, cy, cx, cy);
+  }
+
+  // Gradient Area Fill
+  const areaPath = new Path2D(curvePath);
+  areaPath.lineTo(getX(pricePoints.length - 1), h - 6);
+  areaPath.lineTo(getX(0), h - 6);
+  areaPath.closePath();
+
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, colors.fillTop);
+  grad.addColorStop(1, colors.fillBottom);
+  ctx.fillStyle = grad;
+  ctx.fill(areaPath);
+
+  // Line Stroke
+  ctx.strokeStyle = colors.line;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.stroke(curvePath);
+
+  // Animated Beacon Ripple Ring on Latest Point
+  const lastX = getX(pricePoints.length - 1);
+  const lastY = getY(pricePoints[pricePoints.length - 1]);
+
+  const rippleR = 3.5 + Math.sin(pulsePhase) * 5.5;
+  const rippleAlpha = Math.max(0, 0.45 * (1 - (rippleR - 3.5) / 5.5));
+  ctx.save();
+  ctx.strokeStyle = colors.line;
+  ctx.globalAlpha = rippleAlpha;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, Math.max(3.5, rippleR), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Core Price Dot
+  ctx.save();
+  ctx.shadowColor = colors.dotGlow;
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = colors.dot;
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+
+  ctx.restore();
+
+  // Dynamic Badges
+  const badgeTarget = document.getElementById('badge-target');
+  const badgeEntry = document.getElementById('badge-entry');
+  if (badgeTarget) badgeTarget.textContent = `5d Target: $${meanPrice.toFixed(2)}`;
+  if (badgeEntry) badgeEntry.textContent = `Dip Trigger: $${dipPrice.toFixed(2)}`;
+}
+
+// Continuous Radar Animation Loop (Pulsing Ripple Beacon)
+function startRadarLoop() {
+  function loop() {
+    if (currentTab === 'radar') {
+      radarPulsePhase = (radarPulsePhase + 0.06) % (Math.PI * 2);
+      renderRadarChart(radarPulsePhase);
+    }
+    radarAnimId = requestAnimationFrame(loop);
+  }
+  if (radarAnimId) cancelAnimationFrame(radarAnimId);
+  radarAnimId = requestAnimationFrame(loop);
+}
+
+// Real-Time Radar Micro-Drift (Undulating Live Feel Every 3 Seconds)
+function tickRadarMicroDrift() {
+  if (currentTab !== 'radar') return;
+  const lastPrice = radarHistory.length > 0 ? radarHistory[radarHistory.length - 1] : telemetryData.spy_price;
+  const mean = telemetryData.spy_mean || 764.13;
+  // Natural mean-reverting micro-jitter
+  const drift = (mean - lastPrice) * 0.025 + (Math.random() - 0.49) * 0.10;
+  const newPrice = Math.round((lastPrice + drift) * 100) / 100;
+  pushRadarTick(newPrice);
+
+  const spyEl = document.getElementById('spy-price');
+  if (spyEl) spyEl.textContent = `$${newPrice.toFixed(2)}`;
+  const dipDistEl = document.getElementById('dip-dist');
+  const dipPrice = telemetryData.spy_dip || 758.45;
+  if (dipDistEl) {
+    const dist = Math.max(0, newPrice - dipPrice);
+    dipDistEl.textContent = `+$${dist.toFixed(2)}`;
+  }
 }
 
 // =========================================================================
-// 4. APPLE WATCH ACTIVITY RING ANIMATION
+// REAL-TIME SESSION COUNTDOWN CLOCK (WAT Timezone)
+// =========================================================================
+
+function updateSessionCountdown() {
+  const el = document.getElementById('session-countdown');
+  if (!el) return;
+
+  const now = new Date();
+  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const watDate = new Date(utcMs + (1 * 3600000)); // WAT is UTC+1
+
+  const day = watDate.getDay(); // 0 = Sun, 6 = Sat
+  const hours = watDate.getHours();
+  const mins = watDate.getMinutes();
+  const secs = watDate.getSeconds();
+  const currentMins = hours * 60 + mins;
+
+  // US Regular Trading: 14:30 - 21:00 WAT (870 to 1260 mins)
+  // US Pre-Market: 09:00 - 14:30 WAT (540 to 870 mins)
+  const isWeekend = (day === 0) || (day === 6) || (day === 5 && currentMins >= 1260);
+
+  if (isWeekend) {
+    el.innerHTML = `Weekend • Markets Closed (Opens Monday 2:30 PM WAT)`;
+    return;
+  }
+
+  if (currentMins >= 870 && currentMins < 1260) {
+    const diffSecs = (1260 * 60) - (currentMins * 60 + secs);
+    const h = Math.floor(diffSecs / 3600);
+    const m = Math.floor((diffSecs % 3600) / 60);
+    const s = diffSecs % 60;
+    el.innerHTML = `🟢 Regular Session • Closes in ${h}h ${m}m ${s}s (9:00 PM WAT)`;
+  } else if (currentMins >= 540 && currentMins < 870) {
+    const diffSecs = (870 * 60) - (currentMins * 60 + secs);
+    const h = Math.floor(diffSecs / 3600);
+    const m = Math.floor((diffSecs % 3600) / 60);
+    const s = diffSecs % 60;
+    el.innerHTML = `🟡 Pre-Market • Opens in ${h}h ${m}m ${s}s (2:30 PM WAT)`;
+  } else {
+    el.innerHTML = `⚪ Overnight Session • Pre-Market Opens at 9:00 AM WAT`;
+  }
+}
+
+// =========================================================================
+// ACTIVITY RING
 // =========================================================================
 
 function animateActivityRing() {
   const ring = document.getElementById('ring-guard');
   if (!ring) return;
-
-  const circumference = 427.26; // 2 * pi * 68
+  const circumference = 427.26;
   ring.style.strokeDasharray = circumference;
-
   if (typeof gsap !== 'undefined') {
-    gsap.fromTo(ring, 
+    gsap.fromTo(ring,
       { strokeDashoffset: circumference },
-      { strokeDashoffset: 0, duration: 1.0, ease: 'power2.out' }
+      { strokeDashoffset: 0, duration: 0.9, ease: 'power2.out' }
     );
   } else {
     ring.style.strokeDashoffset = 0;
@@ -338,13 +501,12 @@ function animateActivityRing() {
 }
 
 // =========================================================================
-// 5. BINANCE P2P NAIRA CALCULATOR (APPLE PAY CASH INSPIRED)
+// P2P CALCULATOR
 // =========================================================================
 
 function setupP2PCalculator() {
   const slider = document.getElementById('p2p-slider');
   if (!slider) return;
-
   slider.addEventListener('input', (e) => {
     updateP2P(parseFloat(e.target.value));
     triggerHaptic('light');
@@ -357,7 +519,6 @@ function setSlider(val) {
     slider.value = val;
     updateP2P(val);
     triggerHaptic('medium');
-
     document.querySelectorAll('.chip-preset').forEach(chip => {
       chip.classList.toggle('active', chip.textContent.includes(`$${val}`));
     });
@@ -367,7 +528,6 @@ function setSlider(val) {
 function updateP2P(usd) {
   const usdEl = document.getElementById('p2p-usd-display');
   const nairaEl = document.getElementById('p2p-naira-display');
-
   if (usdEl) usdEl.textContent = Math.round(usd).toLocaleString();
   const naira = usd * LIVE_P2P_RATE;
   if (nairaEl) nairaEl.textContent = `₦${Math.round(naira).toLocaleString()}`;
@@ -381,33 +541,22 @@ function copyWallet() {
   if (!address || address.includes('NO WALLET') || address.includes('TX8aKq9Z')) {
     triggerHaptic('notification');
     if (hint) {
-      hint.textContent = '⚠️ Set wallet first in Telegram (/setwallet)';
-      hint.style.color = '#FF9F0A';
-      setTimeout(() => {
-        hint.textContent = 'Tap to Copy';
-        hint.style.color = '#64D2FF';
-      }, 3500);
+      hint.textContent = '⚠️ Set wallet first (/setwallet)';
+      hint.style.color = 'var(--accent-amber)';
+      setTimeout(() => { hint.textContent = 'Tap to Copy'; hint.style.color = 'var(--accent-cyan)'; }, 3500);
     }
-    const alertMsg = "⚠️ No Binance TRC20 wallet linked yet!\n\nPlease open your chat with @NextGenQuantBot and type:\n/setwallet <YOUR_BINANCE_TRC20_ADDRESS>\n\nto safely link your real payout destination.";
-    if (tg && tg.showAlert) {
-      tg.showAlert(alertMsg);
-    } else {
-      alert(alertMsg);
-    }
+    const msg = "⚠️ No Binance TRC20 wallet linked yet!\n\nOpen your chat with @NextGenQuantBot and type:\n/setwallet <YOUR_BINANCE_TRC20_ADDRESS>\n\nto safely connect your payout destination.";
+    if (tg && tg.showAlert) tg.showAlert(msg);
+    else alert(msg);
     return;
   }
 
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(address);
-  }
+  if (navigator.clipboard) navigator.clipboard.writeText(address);
   triggerHaptic('notification');
   if (hint) {
-    hint.textContent = 'Copied to Clipboard!';
-    hint.style.color = '#30D158';
-    setTimeout(() => {
-      hint.textContent = 'Tap to Copy';
-      hint.style.color = '#64D2FF';
-    }, 2000);
+    hint.textContent = 'Copied!';
+    hint.style.color = 'var(--accent-green)';
+    setTimeout(() => { hint.textContent = 'Tap to Copy'; hint.style.color = 'var(--accent-cyan)'; }, 2000);
   }
 }
 
@@ -418,8 +567,45 @@ function toggleAccordion(id) {
 }
 
 // =========================================================================
-// 6. LIVE TELEMETRY SYNC
+// URL PARAMETERS & LIVE TELEMETRY SYNC
 // =========================================================================
+
+function parseQueryParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('rate')) {
+      const r = parseFloat(params.get('rate'));
+      if (!isNaN(r) && r > 500) {
+        LIVE_P2P_RATE = r;
+        const subEl = document.getElementById('p2p-rate-subtitle');
+        if (subEl) subEl.textContent = `Live Market Rate: 1 USDT = ₦${r.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      }
+    }
+    if (params.has('wallet')) {
+      const w = params.get('wallet').trim();
+      if (w && w.startsWith('T') && w.length === 34) {
+        const walletEl = document.getElementById('wallet-address-display');
+        if (walletEl) walletEl.textContent = w;
+        localStorage.setItem('agentquant_trc20_wallet', w);
+      }
+    }
+    if (params.has('spy')) {
+      const s = parseFloat(params.get('spy'));
+      if (!isNaN(s) && s > 100) {
+        telemetryData.spy_price = s;
+        pushRadarTick(s);
+      }
+    }
+    if (params.has('qqq')) {
+      const q = parseFloat(params.get('qqq'));
+      if (!isNaN(q) && q > 100) telemetryData.qqq_price = q;
+    }
+    if (params.has('cap')) {
+      const c = parseFloat(params.get('cap'));
+      if (!isNaN(c) && c > 0) telemetryData.capital = c;
+    }
+  } catch (e) {}
+}
 
 async function syncTelemetry() {
   try {
@@ -428,7 +614,8 @@ async function syncTelemetry() {
     const data = await res.json();
     telemetryData = { ...telemetryData, ...data };
 
-    // Update hero values
+    if (data.spy_price) pushRadarTick(data.spy_price);
+
     const balEl = document.getElementById('balance-val');
     const buffEl = document.getElementById('buffer-val');
     const spyEl = document.getElementById('spy-price');
@@ -441,59 +628,63 @@ async function syncTelemetry() {
     if (qqqEl) qqqEl.textContent = `$${data.qqq_price.toFixed(2)}`;
     if (dipDistEl) dipDistEl.textContent = `+$${data.spy_dist.toFixed(2)}`;
 
-    // Sync P2P Rate if provided by telemetry
     if (data.live_p2p_rate && !isNaN(data.live_p2p_rate)) {
       LIVE_P2P_RATE = parseFloat(data.live_p2p_rate);
       const subEl = document.getElementById('p2p-rate-subtitle');
-      if (subEl) {
-        subEl.textContent = `Live Binance Rate: 1 USDT = ₦${LIVE_P2P_RATE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-      }
+      if (subEl) subEl.textContent = `Live Market Rate: 1 USDT = ₦${LIVE_P2P_RATE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
       const slider = document.getElementById('p2p-slider');
       if (slider) updateP2P(parseFloat(slider.value));
     }
 
-    // Sync Wallet address if provided by telemetry
     if (data.wallet_address) {
       const walletEl = document.getElementById('wallet-address-display');
-      if (walletEl) {
-        walletEl.textContent = data.wallet_address;
-      }
-      try {
-        localStorage.setItem('agentquant_trc20_wallet', data.wallet_address);
-      } catch (e) {}
+      if (walletEl) walletEl.textContent = data.wallet_address;
+      try { localStorage.setItem('agentquant_trc20_wallet', data.wallet_address); } catch (e) {}
     }
 
-    renderRadarChart();
+    if (currentTab === 'radar') renderRadarChart();
   } catch (e) {
-    // Graceful offline fallback
+    // Offline fallback — graceful continue
   }
 }
 
 // =========================================================================
-// 7. INITIALIZATION
+// INITIALIZATION
 // =========================================================================
 
 window.addEventListener('DOMContentLoaded', () => {
+  // 1. Apply theme
+  applyTheme(getPreferredTheme());
+
+  // 2. Parse URL params (for instant hydration from Telegram Bot)
+  parseQueryParams();
+
+  // 3. Init UI and SDK
   initTelegram();
   setupSegmentedNav();
   setupP2PCalculator();
   initGSAPAnimations();
-  requestAnimationFrame(renderRadarChart);
 
-  // Load saved wallet from localStorage if available
+  // 4. Start Live Radar Animation Loop & Countdown Clock
+  startRadarLoop();
+  updateSessionCountdown();
+  setInterval(updateSessionCountdown, 1000);
+  setInterval(tickRadarMicroDrift, 3000);
+
+  // 5. Hydrate saved wallet
   try {
-    const savedWallet = localStorage.getItem('agentquant_trc20_wallet');
-    const walletEl = document.getElementById('wallet-address-display');
-    if (savedWallet && walletEl && !savedWallet.includes('NO WALLET') && !savedWallet.includes('TX8aKq9Z')) {
-      walletEl.textContent = savedWallet;
+    const saved = localStorage.getItem('agentquant_trc20_wallet');
+    const el = document.getElementById('wallet-address-display');
+    if (saved && el && !saved.includes('NO WALLET') && !saved.includes('TX8aKq9Z')) {
+      el.textContent = saved;
     }
   } catch (e) {}
 
-  // Fetch initial live Binance rate immediately & keep fresh every 30s
+  // 6. Live Rates polling (every 30s)
   fetchLiveBinanceRate();
   setInterval(fetchLiveBinanceRate, 30000);
 
-  // Sync button listener
+  // 7. Radar manual refresh button
   const btnRefresh = document.getElementById('btn-refresh-radar');
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
@@ -503,13 +694,11 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Poll telemetry every 30s
+  // 8. Telemetry polling (every 30s)
   syncTelemetry();
   setInterval(syncTelemetry, 30000);
 });
 
 window.addEventListener('resize', () => {
-  if (currentTab === 'radar') {
-    requestAnimationFrame(renderRadarChart);
-  }
+  if (currentTab === 'radar') renderRadarChart();
 });

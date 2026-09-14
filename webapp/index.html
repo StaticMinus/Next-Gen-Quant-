@@ -35,13 +35,16 @@
         </div>
         <div class="brand-titles">
           <span class="brand-name">AgentQuant</span>
-          <span class="brand-version">Pro 5.2</span>
+          <span class="brand-version">Pro 6.0</span>
         </div>
       </div>
 
-      <div class="island-pill" id="status-pill">
-        <span class="pulse-indicator"></span>
-        <span class="pill-text">cTrader #3028655</span>
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" id="theme-toggle" title="Toggle Theme" onclick="toggleTheme()">🌙</button>
+        <div class="island-pill" id="status-pill">
+          <span class="pulse-indicator"></span>
+          <span class="pill-text">cTrader #3028655</span>
+        </div>
       </div>
     </header>
 
@@ -141,10 +144,11 @@
 
             <!-- Apple Stocks Minimalist Interactive Chart -->
             <div class="chart-box">
+              <div class="chart-live-badge"><span class="live-dot"></span> LIVE</div>
               <canvas id="radarChart" width="380" height="190"></canvas>
               <div class="chart-badges">
-                <span class="badge-tag tag-target">5d Target: $764.13</span>
-                <span class="badge-tag tag-entry">Dip Trigger: $758.45</span>
+                <span class="badge-tag tag-target" id="badge-target">5d Target: $764.13</span>
+                <span class="badge-tag tag-entry" id="badge-entry">Dip Trigger: $758.45</span>
               </div>
             </div>
 

@@ -538,11 +538,23 @@ def get_persistent_bottom_keyboard():
     }
 
 
+def get_webapp_url() -> str:
+    wallet = _CACHE.get("wallet_address", "")
+    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
+    spy = _CACHE.get("spy_price", 764.29)
+    qqq = _CACHE.get("qqq_price", 508.15)
+    cap = _CACHE.get("capital", 6000.0)
+    params = f"?rate={rate}&spy={spy}&qqq={qqq}&cap={cap}"
+    if wallet and wallet.startswith("T") and len(wallet) == 34:
+        params += f"&wallet={wallet}"
+    return f"https://staticminus.github.io/agentquant-pro/{params}"
+
+
 def get_main_menu_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
             ],
             [
                 {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
@@ -602,7 +614,7 @@ def get_tracker_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
                 {"text": "🖼️ Visual Goal Roadmap", "callback_data": "cmd_chart_roadmap"},
             ],
             [
@@ -653,7 +665,7 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
             ],
             [
                 {"text": "🕯️ SPY Dip Chart", "callback_data": "cmd_chart_radar_spy"},
@@ -676,7 +688,7 @@ def get_balance_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
                 {"text": "🛡️ Risk Sentinel Card", "callback_data": "cmd_card_risk"},
             ],
             [
@@ -1542,7 +1554,7 @@ def handle_update(update: dict):
                 "parse_mode": "HTML",
                 "reply_markup": {
                     "inline_keyboard": [
-                        [{"text": "🚀 Launch AgentQuant Pro Web App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}}],
+                        [{"text": "🚀 Launch AgentQuant Pro Web App", "web_app": {"url": get_webapp_url()}}],
                         [{"text": "🔙 Back", "callback_data": "cmd_back"}]
                     ]
                 }
