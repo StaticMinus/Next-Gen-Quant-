@@ -35,7 +35,18 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 API_BASE = f"https://api.telegram.org/bot{TOKEN}"
-LIVE_P2P_RATE = 1365.0  # Dynamic Binance P2P USDT/NGN Benchmark
+LIVE_P2P_RATE = 1518.40  # Dynamic Binance P2P USDT/NGN Benchmark
+WALLET_FILE = Path("cache/user_wallet.txt")
+
+def load_user_wallet() -> str:
+    try:
+        if WALLET_FILE.exists():
+            w = WALLET_FILE.read_text(encoding="utf-8").strip()
+            if w and len(w) == 34 and w.startswith("T"):
+                return w
+    except Exception:
+        pass
+    return "⚠️ NO WALLET LINKED — Use /setwallet in Telegram"
 
 http_session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50, max_retries=2)
@@ -140,8 +151,8 @@ def async_send_ticket_card(chat_id, ticker="SPY"):
 
 def async_send_p2p_card(chat_id):
     try:
-        buf = generate_p2p_converter_card()
-        caption = f"🏦 <b>Binance P2P Naira Conversion Matrix</b>\n• Benchmark: 1 USDT = ₦{LIVE_P2P_RATE:,.2f} | Current Rate Active"
+        buf = generate_p2p_converter_card(rate=LIVE_P2P_RATE)
+        caption = f"🏦 <b>Binance P2P Naira Conversion Matrix</b>\n• Benchmark: 1 USDT = ₦{LIVE_P2P_RATE:,.2f} | Current Live Rate"
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
         print(f"[!] Error in async_send_p2p_card: {e}")
@@ -258,6 +269,19 @@ def sync_market_radar_worker():
             _CACHE["qqq_lower_band"] = qqq_price * 0.985
             _CACHE["qqq_dist"] = qqq_price - (qqq_price * 0.985)
             _CACHE["qqq_dist_pct"] = 1.5
+
+        # Fetch live Binance USDTNGN rate
+        try:
+            b_resp = http_session.get("https://api.binance.com/api/v3/ticker/price?symbol=USDTNGN", timeout=5)
+            if b_resp.status_code == 200:
+                b_data = b_resp.json()
+                if "price" in b_data:
+                    global LIVE_P2P_RATE
+                    p_val = round(float(b_data["price"]), 2)
+                    LIVE_P2P_RATE = p_val
+                    _CACHE["live_p2p_rate"] = p_val
+        except Exception:
+            pass
 
         _CACHE["last_market_scan"] = time.time()
         _CACHE["last_scan_time_str"] = datetime.now().strftime("%H:%M:%S WAT")
@@ -398,7 +422,8 @@ _CACHE = {
     "free_margin": 6000.0,
     "cycle_profit": 0.0,
     "positions": [],
-    "wallet_address": "TX8aKq9Z...BinanceTRC20",
+    "wallet_address": load_user_wallet(),
+    "live_p2p_rate": LIVE_P2P_RATE,
     "days_until_payout": 5,
     "payout_date": "Friday (5-Day Cycle)",
     "last_telemetry_sync": 0.0,
@@ -450,7 +475,8 @@ def register_bot_commands():
         {"command": "risk", "description": "🛡️ Risk Safety Gauge Card"},
         {"command": "ticket", "description": "🎫 Live Trade Ticket Card"},
         {"command": "chart", "description": "📈 15-Year Visual Equity Curve"},
-        {"command": "pdf", "description": "📑 Export Official Cycle PDF"}
+        {"command": "pdf", "description": "📑 Export Official Cycle PDF"},
+        {"command": "setwallet", "description": "🔗 Link your Binance TRC20 Wallet"}
     ]
     res = api_call("setMyCommands", {"commands": commands})
     print("[+] Bot commands registered with Telegram:", res.get("ok", False))
@@ -1442,6 +1468,61 @@ def handle_update(update: dict):
                 "chat_id": chat_id,
                 "text": "🔒 <b>Access Denied:</b> This terminal is locked to the primary authorized trader.",
                 "parse_mode": "HTML"
+            })
+            return
+
+        # /setwallet <address> — Link your Binance TRC20 deposit wallet
+        raw_text = m.get("text", "").strip()
+        if raw_text.lower().startswith("/setwallet"):
+            parts = raw_text.split(maxsplit=1)
+            if len(parts) < 2 or not parts[1].strip():
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": (
+                        "⚠️ <b>USAGE:</b> <code>/setwallet YOUR_TRC20_ADDRESS</code>\n\n"
+                        "Example:\n<code>/setwallet TLkJxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>\n\n"
+                        "• Must be a 34-character Tron address starting with <b>T</b>\n"
+                        "• This is your <b>Binance USDT (TRC20) deposit address</b>\n"
+                        "• Find it in Binance → Deposit → USDT → TRC20 network"
+                    ),
+                    "parse_mode": "HTML",
+                    "reply_markup": get_main_menu_markup(),
+                })
+                return
+            addr = parts[1].strip()
+            if len(addr) != 34 or not addr.startswith("T"):
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": (
+                        "❌ <b>Invalid TRC20 address.</b>\n\n"
+                        f"You entered: <code>{addr}</code>\n\n"
+                        "• A valid TRC20 address is exactly <b>34 characters</b> and starts with <b>T</b>\n"
+                        "• Please double-check in Binance → Deposit → USDT → TRC20"
+                    ),
+                    "parse_mode": "HTML",
+                })
+                return
+            # Save to disk and cache
+            try:
+                WALLET_FILE.parent.mkdir(parents=True, exist_ok=True)
+                WALLET_FILE.write_text(addr, encoding="utf-8")
+            except Exception as e:
+                print(f"[!] Error saving wallet: {e}")
+            _CACHE["wallet_address"] = addr
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "✅ <b>TRC20 WALLET LINKED SUCCESSFULLY</b>\n"
+                    "────────────────────────────\n"
+                    f"• Address: <code>{addr}</code>\n"
+                    "• Network: <code>USDT (TRC20 / Tron)</code>\n"
+                    "• Status: 🟢 <b>VERIFIED & SAVED</b>\n"
+                    "────────────────────────────\n"
+                    "Your payouts will now be routed to this wallet.\n"
+                    "You can update it anytime with <code>/setwallet</code>."
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_main_menu_markup(),
             })
             return
 

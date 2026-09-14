@@ -30,7 +30,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
             try:
-                from src.integrations.telegram_bot_service import _CACHE
+                from src.integrations.telegram_bot_service import _CACHE, LIVE_P2P_RATE
                 payload = {
                     "capital": _CACHE.get("capital", 6000.0),
                     "equity": _CACHE.get("equity", 6000.0),
@@ -44,6 +44,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     "qqq_dip": _CACHE.get("qqq_lower_band", 704.16),
                     "payout_days": _CACHE.get("days_until_payout", 5),
                     "account_id": _CACHE.get("account_id", "3028655"),
+                    "live_p2p_rate": _CACHE.get("live_p2p_rate", LIVE_P2P_RATE),
+                    "wallet_address": _CACHE.get("wallet_address", "⚠️ NO WALLET LINKED — Use /setwallet in Telegram"),
                 }
             except Exception:
                 payload = {
@@ -59,6 +61,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     "qqq_dip": 704.16,
                     "payout_days": 5,
                     "account_id": "3028655",
+                    "live_p2p_rate": 1518.40,
+                    "wallet_address": "⚠️ NO WALLET LINKED — Use /setwallet in Telegram",
                 }
 
             self.wfile.write(json.dumps(payload).encode("utf-8"))

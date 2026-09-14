@@ -315,7 +315,7 @@
             <div class="panel-header-row">
               <div>
                 <div class="panel-title">Binance P2P Naira Converter</div>
-                <div class="panel-subtitle">Benchmark Rate: 1 USDT = ₦1,665.00</div>
+                <div class="panel-subtitle" id="p2p-rate-subtitle">Live Binance Rate: 1 USDT = ₦1,518.40</div>
               </div>
               <div class="apple-chip chip-amber">LIVE P2P</div>
             </div>
@@ -341,17 +341,17 @@
               <!-- Estimated Bank Deposit -->
               <div class="naira-output-card">
                 <span class="output-label">ESTIMATED NIGERIAN BANK DEPOSIT</span>
-                <div class="naira-output-num" id="p2p-naira-display">₦999,000</div>
+                <div class="naira-output-num" id="p2p-naira-display">₦911,040</div>
                 <span class="output-sub">Instant zero-fee Binance P2P settlement</span>
               </div>
 
               <!-- TRC20 Wallet Address Box -->
               <div class="wallet-box" onclick="copyWallet()">
                 <div class="wallet-meta">
-                  <span class="wallet-label">DEFAULT TRC20 WALLET</span>
+                  <span class="wallet-label">YOUR BINANCE TRC20 DEPOSIT WALLET</span>
                   <span class="wallet-copy-hint" id="copy-hint">Tap to Copy</span>
                 </div>
-                <div class="wallet-address font-mono">TX8aKq9Zf...BinanceTRC20</div>
+                <div class="wallet-address font-mono" id="wallet-address-display">⚠️ NO WALLET LINKED — Use /setwallet in Telegram</div>
               </div>
             </div>
           </div>

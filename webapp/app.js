@@ -4,7 +4,31 @@
  */
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-const LIVE_P2P_RATE = 1365.0;
+let LIVE_P2P_RATE = 1518.40;
+
+async function fetchLiveBinanceRate() {
+  try {
+    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=USDTNGN', { cache: 'no-store' });
+    if (!res.ok) throw new Error('Binance HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.price) {
+      const price = parseFloat(data.price);
+      if (!isNaN(price) && price > 500) {
+        LIVE_P2P_RATE = price;
+        const subEl = document.getElementById('p2p-rate-subtitle');
+        if (subEl) {
+          subEl.textContent = `Live Binance Rate: 1 USDT = ₦${price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
+        const slider = document.getElementById('p2p-slider');
+        if (slider) {
+          updateP2P(parseFloat(slider.value));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Binance direct fetch fallback to cached/telemetry rate:', err);
+  }
+}
 
 // Application State
 let currentTab = 'radar';
@@ -350,12 +374,33 @@ function updateP2P(usd) {
 }
 
 function copyWallet() {
-  const address = 'TX8aKq9Zf...BinanceTRC20';
+  const addressEl = document.getElementById('wallet-address-display');
+  const address = addressEl ? addressEl.textContent.trim() : '';
+  const hint = document.getElementById('copy-hint');
+
+  if (!address || address.includes('NO WALLET') || address.includes('TX8aKq9Z')) {
+    triggerHaptic('notification');
+    if (hint) {
+      hint.textContent = '⚠️ Set wallet first in Telegram (/setwallet)';
+      hint.style.color = '#FF9F0A';
+      setTimeout(() => {
+        hint.textContent = 'Tap to Copy';
+        hint.style.color = '#64D2FF';
+      }, 3500);
+    }
+    const alertMsg = "⚠️ No Binance TRC20 wallet linked yet!\n\nPlease open your chat with @NextGenQuantBot and type:\n/setwallet <YOUR_BINANCE_TRC20_ADDRESS>\n\nto safely link your real payout destination.";
+    if (tg && tg.showAlert) {
+      tg.showAlert(alertMsg);
+    } else {
+      alert(alertMsg);
+    }
+    return;
+  }
+
   if (navigator.clipboard) {
     navigator.clipboard.writeText(address);
   }
   triggerHaptic('notification');
-  const hint = document.getElementById('copy-hint');
   if (hint) {
     hint.textContent = 'Copied to Clipboard!';
     hint.style.color = '#30D158';
@@ -396,6 +441,28 @@ async function syncTelemetry() {
     if (qqqEl) qqqEl.textContent = `$${data.qqq_price.toFixed(2)}`;
     if (dipDistEl) dipDistEl.textContent = `+$${data.spy_dist.toFixed(2)}`;
 
+    // Sync P2P Rate if provided by telemetry
+    if (data.live_p2p_rate && !isNaN(data.live_p2p_rate)) {
+      LIVE_P2P_RATE = parseFloat(data.live_p2p_rate);
+      const subEl = document.getElementById('p2p-rate-subtitle');
+      if (subEl) {
+        subEl.textContent = `Live Binance Rate: 1 USDT = ₦${LIVE_P2P_RATE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      }
+      const slider = document.getElementById('p2p-slider');
+      if (slider) updateP2P(parseFloat(slider.value));
+    }
+
+    // Sync Wallet address if provided by telemetry
+    if (data.wallet_address) {
+      const walletEl = document.getElementById('wallet-address-display');
+      if (walletEl) {
+        walletEl.textContent = data.wallet_address;
+      }
+      try {
+        localStorage.setItem('agentquant_trc20_wallet', data.wallet_address);
+      } catch (e) {}
+    }
+
     renderRadarChart();
   } catch (e) {
     // Graceful offline fallback
@@ -413,16 +480,31 @@ window.addEventListener('DOMContentLoaded', () => {
   initGSAPAnimations();
   requestAnimationFrame(renderRadarChart);
 
+  // Load saved wallet from localStorage if available
+  try {
+    const savedWallet = localStorage.getItem('agentquant_trc20_wallet');
+    const walletEl = document.getElementById('wallet-address-display');
+    if (savedWallet && walletEl && !savedWallet.includes('NO WALLET') && !savedWallet.includes('TX8aKq9Z')) {
+      walletEl.textContent = savedWallet;
+    }
+  } catch (e) {}
+
+  // Fetch initial live Binance rate immediately & keep fresh every 30s
+  fetchLiveBinanceRate();
+  setInterval(fetchLiveBinanceRate, 30000);
+
   // Sync button listener
   const btnRefresh = document.getElementById('btn-refresh-radar');
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
       triggerHaptic('medium');
+      fetchLiveBinanceRate();
       syncTelemetry();
     });
   }
 
   // Poll telemetry every 30s
+  syncTelemetry();
   setInterval(syncTelemetry, 30000);
 });
 

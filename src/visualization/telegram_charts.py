@@ -465,7 +465,7 @@ def generate_trade_signal_card(ticker: str = "SPY", entry: float = 754.20, targe
     return buf
 
 
-def generate_p2p_converter_card() -> io.BytesIO:
+def generate_p2p_converter_card(rate: float = 1518.40) -> io.BytesIO:
     """Generates the Binance P2P USDT/NGN Exchange Converter Card."""
     fig, ax = plt.subplots(figsize=(9, 4.6), dpi=105)
     apply_dark_theme(fig, ax)
@@ -486,7 +486,6 @@ def generate_p2p_converter_card() -> io.BytesIO:
     ax.text(0.05, 0.83, "Direct Crypto Settlement from Prop Firm to Nigerian Bank Account",
             fontsize=8, color=MUTED_TEXT, va="top", transform=ax.transAxes)
 
-    rate = 1665.0
     items = [
         {"usd": "$500 USDT", "ngn": f"₦{500 * rate:,.0f}", "label": "Half Cycle", "x": 0.05},
         {"usd": "$1,062.50 USDT", "ngn": f"₦{1062.5 * rate:,.0f}", "label": "CURRENT 14D PAYOUT", "x": 0.36, "highlight": True},
