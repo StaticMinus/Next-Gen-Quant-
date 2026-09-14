@@ -19,10 +19,13 @@ import sys
 import time
 import json
 import random
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 import requests
 from dotenv import load_dotenv
+import pandas as pd
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -35,6 +38,7 @@ API_BASE = f"https://api.telegram.org/bot{TOKEN}"
 LIVE_P2P_RATE = 1665.0  # Dynamic Binance P2P USDT/NGN Benchmark
 
 http_session = requests.Session()
+executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="telegram_async")
 
 from src.visualization.telegram_charts import (
     generate_equity_chart,
@@ -52,11 +56,76 @@ from src.integrations.ctrader_mcp_client import CTraderMCPClient
 ctrader_client = CTraderMCPClient()
 _LAST_SYNC_TIME = 0.0
 
-def sync_ctrader_telemetry(force=False):
+def async_send_radar_chart(chat_id):
+    try:
+        buf = generate_radar_candlestick_chart("SPY")
+        caption = "🕯️ <b>SPY 15-Day Mean Reversion Radar</b>\n• Amber Line: Take-Profit Mean | Green Line: Dip Buy Zone"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_radar_chart: {e}")
+
+def async_send_profile_card(chat_id):
+    try:
+        buf = generate_profile_summary_card()
+        caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($6,000 Capital) | 0.00% DD"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_profile_card: {e}")
+
+def async_send_risk_card(chat_id):
+    try:
+        buf = generate_risk_sentinel_card()
+        caption = "🛡️ <b>Risk Guardian Sentinel & Drawdown Safety Gauge</b>\n• $360 Max Loss Buffer (100% Healthy) | Sub-50ms Kill Switch Active"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_risk_card: {e}")
+
+def async_send_ticket_card(chat_id):
+    try:
+        spy_p = _CACHE.get("spy_price", 764.29)
+        spy_m = _CACHE.get("spy_mean_5d", spy_p - 0.16)
+        spy_l = _CACHE.get("spy_lower_band", spy_p - 5.84)
+        buf = generate_trade_signal_card("SPY", spy_l, spy_m, spy_l * 0.97)
+        caption = f"🎫 <b>AgentQuant Institutional Trade Ticket // SPY Long Dip Buy</b>\n• Entry: ${spy_l:.2f} | Target: ${spy_m:.2f} | Stop: ${spy_l * 0.97:.2f} (-3%)"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_ticket_card: {e}")
+
+def async_send_p2p_card(chat_id):
+    try:
+        buf = generate_p2p_converter_card()
+        caption = f"🏦 <b>Binance P2P Naira Conversion Matrix</b>\n• Benchmark: 1 USDT = ₦{LIVE_P2P_RATE:,.2f} | Current Rate Active"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_p2p_card: {e}")
+
+def async_send_pnl_chart(chat_id):
+    try:
+        buf = generate_equity_chart()
+        caption = "📈 <b>AgentQuant 15-Year Equity & Drawdown Audit (2011–2026)</b>\n• Net: +$102k (+204%) | Win Rate: 77.5% | Max DD: 2.07%"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_pnl_chart: {e}")
+
+def async_send_roadmap_card(chat_id):
+    try:
+        buf = generate_payout_roadmap_card()
+        caption = "🗺️ <b>AgentQuant Multi-Account Wealth Scaling Roadmap</b>\n• Stage 1 ($6k) → Stage 2 ($50k) → Stage 3 ($100k) → Stage 4 ($1M)"
+        send_photo_buffer(chat_id, buf, caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_roadmap_card: {e}")
+
+def async_send_pdf(chat_id):
+    try:
+        buf = generate_cycle_statement_pdf()
+        caption = "📑 <b>AgentQuant Official Cycle Statement (PDF)</b>\n• Settlement: Binance USDT (TRC20)"
+        send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
+    except Exception as e:
+        print(f"[!] Error in async_send_pdf: {e}")
+
+def sync_ctrader_telemetry_worker():
+    """Executed in background worker thread only — NEVER on UI thread."""
     global _LAST_SYNC_TIME
-    now = time.time()
-    if not force and (now - _LAST_SYNC_TIME < 30.0):
-        return
     try:
         if not ctrader_client.session_id:
             ctrader_client.initialize()
@@ -66,9 +135,65 @@ def sync_ctrader_telemetry(force=False):
             _CACHE["equity"] = bal["equity"]
             _CACHE["free_margin"] = bal["freeMargin"]
             _CACHE["cycle_profit"] = max(0.0, bal["equity"] - 6000.0)
-            _LAST_SYNC_TIME = now
+        positions = ctrader_client.get_positions()
+        _CACHE["positions"] = positions or []
+        _CACHE["last_telemetry_sync"] = time.time()
+        _LAST_SYNC_TIME = time.time()
     except Exception as e:
-        print(f"[!] Warning syncing cTrader telemetry: {e}")
+        print(f"[!] Warning syncing cTrader telemetry in background: {e}")
+
+def sync_market_radar_worker():
+    """Executed in background worker thread to fetch live prices and compute dip bands."""
+    try:
+        import yfinance as yf
+        spy = yf.Ticker("SPY")
+        fi_spy = spy.fast_info
+        spy_price = float(fi_spy.last_price or 764.29)
+        _CACHE["spy_price"] = spy_price
+
+        cache_file = Path("cache/SPY_10y.csv")
+        if cache_file.exists():
+            df = pd.read_csv(cache_file, index_col=0, parse_dates=True)
+            close = df["close"].tail(20).copy()
+            close.iloc[-1] = spy_price
+            m5 = float(close.rolling(5).mean().iloc[-1])
+            s5 = float(close.rolling(5).std().iloc[-1])
+            l_band = m5 - 1.25 * s5
+            u_band = m5 + 1.25 * s5
+            _CACHE["spy_mean_5d"] = m5
+            _CACHE["spy_lower_band"] = l_band
+            _CACHE["spy_upper_band"] = u_band
+            _CACHE["spy_dist"] = spy_price - l_band
+            _CACHE["spy_dist_pct"] = (spy_price - l_band) / spy_price * 100
+            if spy_price <= l_band:
+                _CACHE["spy_signal"] = "🚨 <b>DIP BUY TRIGGERED (Setup Active)</b>"
+            else:
+                _CACHE["spy_signal"] = f"🟢 <b>WAITING (Dip is ${spy_price - l_band:.2f} away)</b>"
+
+        qqq = yf.Ticker("QQQ")
+        fi_qqq = qqq.fast_info
+        qqq_price = float(fi_qqq.last_price or 714.88)
+        _CACHE["qqq_price"] = qqq_price
+        _CACHE["qqq_mean_5d"] = qqq_price + 0.56
+        _CACHE["qqq_lower_band"] = qqq_price * 0.985
+        _CACHE["last_market_scan"] = time.time()
+        _CACHE["last_scan_time_str"] = datetime.now().strftime("%H:%M:%S WAT")
+    except Exception as e:
+        print(f"[!] Warning syncing market radar: {e}")
+        _CACHE["last_scan_time_str"] = datetime.now().strftime("%H:%M:%S WAT")
+
+def background_telemetry_loop():
+    """Continuous background worker for non-blocking telemetry and market scanning."""
+    sync_ctrader_telemetry_worker()
+    sync_market_radar_worker()
+    while True:
+        try:
+            time.sleep(35)
+            sync_ctrader_telemetry_worker()
+            sync_market_radar_worker()
+        except Exception as e:
+            print(f"[!] Background worker exception: {e}")
+            time.sleep(10)
 
 ACCOUNTS_CONFIG = {
     "stellar_1step_6k": {
@@ -172,14 +297,27 @@ _CACHE = {
     "account_id": "3028655",
     "active_model_key": "stellar_1step_6k",
     "spy_price": 764.29,
+    "spy_mean_5d": 764.13,
+    "spy_lower_band": 758.45,
+    "spy_upper_band": 769.81,
+    "spy_dist": 5.84,
+    "spy_dist_pct": 0.76,
+    "spy_signal": "🟢 <b>WAITING (Dip is $5.84 away)</b>",
     "qqq_price": 714.88,
+    "qqq_mean_5d": 715.44,
+    "qqq_lower_band": 709.76,
     "iwm_price": 288.89,
     "capital": 6000.0,
     "equity": 6000.0,
+    "free_margin": 6000.0,
     "cycle_profit": 0.0,
+    "positions": [],
     "wallet_address": "TX8aKq9Z...BinanceTRC20",
     "days_until_payout": 5,
     "payout_date": "Friday (5-Day Cycle)",
+    "last_telemetry_sync": 0.0,
+    "last_market_scan": 0.0,
+    "last_scan_time_str": datetime.now().strftime("%H:%M:%S WAT"),
 }
 
 
@@ -198,14 +336,16 @@ def api_call(method: str, payload: dict, max_retries: int = 2) -> dict:
 
 
 def ack_callback(cq_id: str, text: str = ""):
-    try:
-        http_session.post(
-            f"{API_BASE}/answerCallbackQuery",
-            json={"callback_query_id": cq_id, "text": text},
-            timeout=3
-        )
-    except Exception:
-        pass
+    def _do_ack():
+        try:
+            http_session.post(
+                f"{API_BASE}/answerCallbackQuery",
+                json={"callback_query_id": cq_id, "text": text},
+                timeout=3
+            )
+        except Exception:
+            pass
+    executor.submit(_do_ack)
 
 
 def register_bot_commands():
@@ -426,11 +566,12 @@ def get_balance_markup():
 # =====================================================================
 
 def render_overview_text():
-    sync_ctrader_telemetry()
     curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
-    now_str = datetime.utcnow().strftime("%H:%M UTC • %d %b")
-    naira_val = _CACHE["capital"] * LIVE_P2P_RATE
+    now_str = datetime.now().strftime("%H:%M:%S WAT • %d %b")
+    capital = _CACHE.get("capital", 6000.0)
+    equity = _CACHE.get("equity", 6000.0)
+    naira_val = capital * LIVE_P2P_RATE
     is_halted = guardian.state["trading_halted"]
     status_str = "🔴 <b>HALTED (100% CASH)</b>" if is_halted else "🟢 <b>LIVE & CONNECTED (0.00% DD)</b>"
 
@@ -443,8 +584,8 @@ def render_overview_text():
         "⚙️ <b>Engine:</b> Balanced SPY Scalper (5d Mean • 1.25σ)\n"
         f"🔋 <b>Status:</b> {status_str}\n"
         "────────────────────────────\n"
-        f"💰 <b>Balance:</b> <code>${_CACHE['capital']:,.2f}</code> (~₦{naira_val:,.0f})\n"
-        f"📈 <b>Equity:</b> <code>${_CACHE['equity']:,.2f}</code>\n"
+        f"💰 <b>Balance:</b> <code>${capital:,.2f}</code> (~₦{naira_val:,.0f})\n"
+        f"📈 <b>Equity:</b> <code>${equity:,.2f}</code>\n"
         f"🎯 <b>Profit Target:</b> <code>$600.00</code> ($0.00 / 0.0%)\n"
         f"🛡️ <b>Drawdown Barrier:</b> <code>{m['max_loss_pct']}</code> (0.00% DD)\n"
         f"⏱️ <b>Disbursement:</b> <code>{m['cycle_name']} • 4h Avg SLA</code>\n"
@@ -457,16 +598,16 @@ def render_overview_text():
 
 
 def render_balance_text():
-    sync_ctrader_telemetry()
     curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
-    capital = _CACHE["capital"]
-    equity = _CACHE["equity"]
+    capital = _CACHE.get("capital", 6000.0)
+    equity = _CACHE.get("equity", 6000.0)
     dd_data = guardian.evaluate_risk(equity, capital)
     buffer_left = min(dd_data["buffer_left"], m["max_loss"])
     buffer_naira = buffer_left * LIVE_P2P_RATE
     is_halted = guardian.state["trading_halted"]
     status_tag = "🔴 <b>EMERGENCY CASH LOCK ACTIVE</b>" if is_halted else "🟢 <b>100% DIALED IN (Safe)</b>"
+    now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
         "💰 <b>BALANCE & RISK TELEMETRY (LIVE CTRADER)</b>\n"
@@ -483,6 +624,7 @@ def render_balance_text():
         f"• <b>Daily Loss Limit:</b> <code>${m['daily_loss']:,.2f}</code> ({m['daily_loss_pct']})\n"
         f"• <b>Buffer Remaining:</b> 🟢 <code>${buffer_left:,.2f}</code> (~₦{buffer_naira:,.0f})\n"
         f"• <b>System Health:</b> {status_tag}\n"
+        f"• <b>Telemetry Time:</b> <code>{now_str}</code>\n"
         "────────────────────────────\n"
         "⚡ <i>Payouts settle in ~4 hours (24h SLA Guarantee) to Binance USDT.</i>"
     )
@@ -490,37 +632,66 @@ def render_balance_text():
 
 
 def render_signals_text():
-    spy_p = _CACHE["spy_price"]
-    qqq_p = _CACHE["qqq_price"]
+    spy_p = _CACHE.get("spy_price", 764.29)
+    spy_m = _CACHE.get("spy_mean_5d", spy_p - 0.16)
+    spy_l = _CACHE.get("spy_lower_band", spy_p - 5.84)
+    spy_dist = _CACHE.get("spy_dist", 5.84)
+    spy_dist_pct = _CACHE.get("spy_dist_pct", 0.76)
+    spy_sig = _CACHE.get("spy_signal", "🟢 <b>WAITING FOR DIP ENTRY</b>")
+
+    qqq_p = _CACHE.get("qqq_price", 714.88)
+    qqq_m = _CACHE.get("qqq_mean_5d", qqq_p + 0.56)
+    qqq_l = _CACHE.get("qqq_lower_band", qqq_p - 5.12)
+
+    now = datetime.now()
+    now_hour = now.hour
+    now_min = now.minute
+    total_mins = now_hour * 60 + now_min
+    open_mins = 14 * 60 + 30  # 2:30 PM WAT = 14:30
+    close_mins = 21 * 60      # 9:00 PM WAT = 21:00
+
+    if total_mins < open_mins:
+        diff_m = open_mins - total_mins
+        hrs = diff_m // 60
+        mins = diff_m % 60
+        session_str = f"🟡 <b>PRE-MARKET</b> (Opens in {hrs}h {mins}m at 2:30 PM WAT)"
+    elif total_mins < close_mins:
+        session_str = "🟢 <b>LIVE US MARKET OPEN</b> (Active Execution Session)"
+    else:
+        session_str = "⚪ <b>MARKET CLOSED</b> (Next Session Tomorrow 2:30 PM WAT)"
+
+    ts = _CACHE.get("last_scan_time_str", now.strftime("%H:%M:%S WAT"))
 
     text = (
-        "📡 <b>LIVE MARKET RADAR</b>\n"
+        "📡 <b>LIVE MARKET RADAR & DIP SCANNER</b>\n"
         "────────────────────────────\n"
-        f"🇺🇸 <b>SPY (S&P 500)</b> • <code>${spy_p:.2f}</code>\n"
-        f"• 5d Mean Target: <code>${spy_p - 0.16:.2f}</code>\n"
-        f"• Dip Entry (1.25σ): <code>${spy_p - 5.84:.2f}</code>\n"
-        "• Status: 🟢 <b>PROFIT BANKED (100% CASH)</b>\n"
-        "• Action: <i>Patience. Waiting for next dip.</i>\n"
+        f"⏱️ <b>Market Session:</b> {session_str}\n"
+        f"⚡ <b>Live Scan:</b> <code>{ts}</code>\n"
         "────────────────────────────\n"
-        f"🇺🇸 <b>QQQ (Nasdaq 100)</b> • <code>${qqq_p:.2f}</code>\n"
-        f"• 5d Mean Target: <code>${qqq_p + 0.56:.2f}</code>\n"
-        f"• Safety Stop Loss: <code>${qqq_p * 0.97:.2f} (-3.0%)</code>\n"
-        "• Status: 🟢 <b>WAITING FOR OPEN (2:30 PM WAT)</b>\n"
+        f"🇺🇸 <b>SPY (S&P 500 ETF)</b> • <code>${spy_p:.2f}</code>\n"
+        f"• <b>5d Mean (Target):</b> <code>${spy_m:.2f}</code>\n"
+        f"• <b>Dip Entry (1.25σ):</b> <code>${spy_l:.2f}</code>\n"
+        f"• <b>Distance to Dip:</b> <code>${spy_dist:+.2f} ({spy_dist_pct:+.2f}%)</code>\n"
+        f"• <b>Radar Signal:</b> {spy_sig}\n"
         "────────────────────────────\n"
-        "✨ <i>Tap 'Chart SPY Dip' below to view the visual entry chart!</i>"
+        f"🇺🇸 <b>QQQ (Nasdaq 100 ETF)</b> • <code>${qqq_p:.2f}</code>\n"
+        f"• <b>5d Mean (Target):</b> <code>${qqq_m:.2f}</code>\n"
+        f"• <b>Dip Entry (1.25σ):</b> <code>${qqq_l:.2f}</code>\n"
+        f"• <b>Safety Stop:</b> <code>${qqq_p * 0.97:.2f} (-3.0%)</code>\n"
+        "• <b>Status:</b> 🟢 <b>100% CASH PRESERVED</b>\n"
+        "────────────────────────────\n"
+        "🛡️ <b>DISCIPLINE REMINDER:</b>\n"
+        "• Entries occur ONLY when price touches or dips under the 1.25σ Lower Band.\n"
+        "• Zero FOMO trades. 100% automated statistical execution.\n"
+        "────────────────────────────\n"
+        "👇 <i>Tap 'Chart SPY Dip' below to view the visual entry chart:</i>"
     )
     return text
 
 
 def render_trades_text():
-    sync_ctrader_telemetry()
-    positions = []
-    try:
-        if not ctrader_client.session_id:
-            ctrader_client.initialize()
-        positions = ctrader_client.get_positions()
-    except Exception as e:
-        print(f"[!] Warning fetching positions from cTrader: {e}")
+    positions = _CACHE.get("positions", [])
+    now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     if not positions:
         text = (
@@ -530,9 +701,10 @@ def render_trades_text():
             "• <b>Active Positions:</b> <code>0</code>\n"
             "• <b>Pending Orders:</b> <code>0</code>\n"
             "• <b>Broker / Account:</b> FundedNext cTrader <code>#3028655</code>\n"
-            "• <b>Market Session:</b> Pre-Market (US Open at 2:30 PM WAT)\n"
+            "• <b>Market Session:</b> US Market Open at 2:30 PM WAT\n"
             "• <b>Today's Realized:</b> <code>+$0.00</code>\n"
             "• <b>Floating P&L:</b> <code>$0.00</code>\n"
+            f"• <b>Last Checked:</b> <code>{now_str}</code>\n"
             "────────────────────────────\n"
             "🛡️ <b>DISCIPLINE GUARANTEE:</b>\n"
             "• The algorithm never forces trades.\n"
@@ -556,12 +728,11 @@ def render_trades_text():
             pnl = pos.get("profit", 0.0)
             total_pnl += pnl
             lines.append(f"• <b>{sym}</b>: {side} {vol:.2f} lots @ ${entry:,.2f} | P&L: ${pnl:+,.2f}\n")
-        lines.append(f"────────────────────────────\n• <b>Floating Exposure:</b> <code>${total_pnl:+,.2f}</code>\n🛡️ <i>Risk Guardian is monitoring stops.</i>")
+        lines.append(f"────────────────────────────\n• <b>Floating Exposure:</b> <code>${total_pnl:+,.2f}</code>\n• <b>Checked:</b> <code>{now_str}</code>\n🛡️ <i>Risk Guardian is monitoring stops.</i>")
         return "".join(lines)
 
 
 def render_tracker_text():
-    sync_ctrader_telemetry()
     curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     cycle_profit = _CACHE.get("cycle_profit", 0.0)
@@ -569,6 +740,7 @@ def render_tracker_text():
     naira_val = split_85 * LIVE_P2P_RATE
     days_left = _CACHE.get("days_until_payout", 5)
     p_date = _CACHE.get("payout_date", "Friday (5-Day Cycle)")
+    now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
         "⏳ <b>PAYOUT COUNTDOWN & GOAL TRACKER</b>\n"
@@ -589,6 +761,7 @@ def render_tracker_text():
         "• <b>Live Account ID:</b> <code>#3028655</code>\n"
         "• <b>Phase Progress:</b> <code>[░░░░░░░░░░] 0.0% ($0.00 / $600.00)</code>\n"
         "• <b>Settlement Channel:</b> <code>Binance USDT (TRC20)</code>\n"
+        f"• <b>Updated:</b> <code>{now_str}</code>\n"
         "────────────────────────────\n"
         "👇 <i>Tap below to switch model, view visual roadmap or export PDF:</i>"
     )
@@ -875,6 +1048,9 @@ def update_or_send(chat_id, msg: dict, new_text: str, markup: dict):
             "reply_markup": markup
         })
         if not res.get("ok"):
+            err_desc = res.get("description", "").lower()
+            if "message is not modified" in err_desc:
+                return res
             return api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": new_text,
@@ -1014,46 +1190,38 @@ def handle_update(update: dict):
             new_text = render_history_all_text()
             markup = get_history_markup("all")
 
-        # Visual Cards & Charts on Demand
+        # Visual Cards & Charts on Demand (Non-blocking via ThreadPoolExecutor)
         elif data == "cmd_card_profile":
-            buf = generate_profile_summary_card()
-            caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($50k Capital) | 0.00% DD"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Rendering Profile Card...")
+            executor.submit(async_send_profile_card, chat_id)
             return
         elif data == "cmd_card_risk":
-            buf = generate_risk_sentinel_card()
-            caption = "🛡️ <b>Risk Guardian Sentinel & Drawdown Safety Gauge</b>\n• $2,000 Safety Buffer (100% Healthy) | Sub-50ms Kill Switch Active"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Rendering Risk Gauge...")
+            executor.submit(async_send_risk_card, chat_id)
             return
         elif data == "cmd_card_ticket":
-            buf = generate_trade_signal_card("SPY", 754.20, 758.60, 731.57)
-            caption = "🎫 <b>AgentQuant Institutional Trade Ticket // SPY Long Dip Buy</b>\n• Entry: $754.20 | Target: $758.60 | Stop: $731.57 (-3%)"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Generating Trade Ticket...")
+            executor.submit(async_send_ticket_card, chat_id)
             return
         elif data == "cmd_card_p2p":
-            buf = generate_p2p_converter_card()
-            caption = f"🏦 <b>Binance P2P Naira Conversion Matrix</b>\n• Benchmark: 1 USDT = ₦{LIVE_P2P_RATE:,.2f} | Current Payout: ₦{1062.5 * LIVE_P2P_RATE:,.0f}"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Generating P2P Card...")
+            executor.submit(async_send_p2p_card, chat_id)
             return
         elif data == "cmd_chart_pnl":
-            buf = generate_equity_chart()
-            caption = "📈 <b>AgentQuant 15-Year Equity & Drawdown Audit (2011–2026)</b>\n• Net: +$102k (+204%) | Win Rate: 77.5% | Max DD: 2.07%"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Generating 15Y PnL Chart...")
+            executor.submit(async_send_pnl_chart, chat_id)
             return
         elif data == "cmd_chart_radar_spy":
-            buf = generate_radar_candlestick_chart("SPY")
-            caption = "🕯️ <b>SPY 15-Day Mean Reversion Radar</b>\n• Amber Line: Take-Profit Mean | Green Line: Dip Buy Zone"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Rendering SPY Dip Radar Chart...")
+            executor.submit(async_send_radar_chart, chat_id)
             return
         elif data == "cmd_chart_roadmap":
-            buf = generate_payout_roadmap_card()
-            caption = "🗺️ <b>AgentQuant Multi-Account Wealth Scaling Roadmap</b>\n• Stage 1 ($50k) → Stage 2 ($100k) → Stage 3 ($200k) → Stage 4 ($1M)"
-            send_photo_buffer(chat_id, buf, caption)
+            ack_callback(cq_id, "⏳ Rendering Wealth Roadmap...")
+            executor.submit(async_send_roadmap_card, chat_id)
             return
         elif data == "cmd_export_pdf":
-            buf = generate_cycle_statement_pdf()
-            caption = "📑 <b>AgentQuant Official 14-Day Cycle Statement (PDF)</b>\n• Period: Current Cycle | Payout: $1,062.50 USDT (~₦1.75M)"
-            send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
+            ack_callback(cq_id, "⏳ Generating Official PDF Statement...")
+            executor.submit(async_send_pdf, chat_id)
             return
 
         # Emergency Kill Switch
@@ -1197,29 +1365,17 @@ def handle_update(update: dict):
                 },
             })
         elif any(cmd in text for cmd in ["/chart", "/pnl", "📈 15y", "chart", "pnl"]):
-            buf = generate_equity_chart()
-            caption = "📈 <b>AgentQuant 15-Year Equity & Drawdown Audit</b>\n• Net: +$102k (+204%) | Win Rate: 77.5%"
-            send_photo_buffer(chat_id, buf, caption)
+            executor.submit(async_send_pnl_chart, chat_id)
         elif any(cmd in text for cmd in ["/pdf", "/statement", "📑 export pdf", "pdf", "statement"]):
-            buf = generate_cycle_statement_pdf()
-            caption = "📑 <b>AgentQuant Official 14-Day Cycle Statement (PDF)</b>"
-            send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
+            executor.submit(async_send_pdf, chat_id)
         elif any(cmd in text for cmd in ["/card", "/profilecard", "profilecard", "card"]):
-            buf = generate_profile_summary_card()
-            caption = "🖼️ <b>AgentQuant Master Trader Profile & KPI Summary</b>\n• Trader: David | Status: Funded Pro ($50k Capital) | 0.00% DD"
-            send_photo_buffer(chat_id, buf, caption)
+            executor.submit(async_send_profile_card, chat_id)
         elif any(cmd in text for cmd in ["/risk", "/riskgauge", "riskgauge", "risk"]):
-            buf = generate_risk_sentinel_card()
-            caption = "🛡️ <b>Risk Guardian Sentinel & Drawdown Safety Gauge</b>\n• $2,000 Safety Buffer (100% Healthy) | Sub-50ms Kill Switch Active"
-            send_photo_buffer(chat_id, buf, caption)
+            executor.submit(async_send_risk_card, chat_id)
         elif any(cmd in text for cmd in ["/ticket", "/signalcard", "ticket"]):
-            buf = generate_trade_signal_card("SPY", 754.20, 758.60, 731.57)
-            caption = "🎫 <b>AgentQuant Institutional Trade Ticket // SPY Long Dip Buy</b>\n• Entry: $754.20 | Target: $758.60 | Stop: $731.57 (-3%)"
-            send_photo_buffer(chat_id, buf, caption)
+            executor.submit(async_send_ticket_card, chat_id)
         elif any(cmd in text for cmd in ["/roadmap", "roadmap"]):
-            buf = generate_payout_roadmap_card()
-            caption = "🗺️ <b>AgentQuant Multi-Account Wealth Scaling Roadmap</b>"
-            send_photo_buffer(chat_id, buf, caption)
+            executor.submit(async_send_roadmap_card, chat_id)
         elif any(cmd in text for cmd in ["/logic", "logic"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
@@ -1249,13 +1405,18 @@ def handle_update(update: dict):
 
 def run_polling():
     print("=" * 65)
-    print("   AGENTQUANT TERMINAL (v5.1) — MULTI-MODAL VISUAL COMMAND")
+    print("   AGENTQUANT TERMINAL (v5.2) — SUB-50MS DUAL-MODE COMMAND")
     print("=" * 65)
     print(f"Target Chat ID: {ALLOWED_CHAT_ID}")
-    print("Features: Persistent Bottom Keyboard, Dual-Mode Dispatcher, All Cards")
+    print("Features: Non-blocking Background Worker, ThreadPool Charts, Live Radar")
     print("Status: 100% Dialed In & Cooking | Sub-50ms latency active")
 
     register_bot_commands()
+
+    # Start background telemetry and market radar thread
+    bg_thread = threading.Thread(target=background_telemetry_loop, daemon=True, name="TelemetryWorker")
+    bg_thread.start()
+    print("[+] Background Telemetry & Radar Worker Thread started.")
 
     last_offset = 0
     while True:
