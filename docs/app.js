@@ -1,12 +1,12 @@
 /**
- * AgentQuant Pro Terminal — Telegram Mini App (v5.2)
- * Full Android Hardware Back Button Hook & Haptic Feedback Engine
+ * AgentQuant Pro Terminal — Apple-Style Minimalist UI Controller
+ * Powered by GreenSock Animation Platform (GSAP) & Telegram WebApp SDK
  */
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
 const LIVE_P2P_RATE = 1665.0;
 
-// State
+// Application State
 let currentTab = 'radar';
 const navHistory = ['radar'];
 let telemetryData = {
@@ -18,13 +18,11 @@ let telemetryData = {
   spy_dip: 758.45,
   spy_dist: 5.84,
   qqq_price: 714.88,
-  qqq_mean: 715.44,
-  qqq_dip: 704.16,
   payout_days: 5,
 };
 
 // =========================================================================
-// 1. TELEGRAM WEBAPP SDK INITIALIZATION & ANDROID BACK BUTTON HOOK
+// 1. TELEGRAM SDK INITIALIZATION & ANDROID HARDWARE BACK BUTTON HOOK
 // =========================================================================
 
 function initTelegram() {
@@ -32,13 +30,13 @@ function initTelegram() {
     tg.ready();
     tg.expand();
 
-    // Configure header color to dark OLED
+    // Set Apple-style dark OLED chrome
     if (tg.setHeaderColor) {
-      tg.setHeaderColor('#07090e');
-      tg.setBackgroundColor('#07090e');
+      tg.setHeaderColor('#000000');
+      tg.setBackgroundColor('#000000');
     }
 
-    // Android Hardware / Swipe Back Button Integration
+    // Android Hardware & Top-Left Back Button Hook
     if (tg.BackButton) {
       tg.BackButton.show();
       tg.BackButton.onClick(handleAndroidBack);
@@ -63,326 +61,366 @@ function handleAndroidBack() {
     const prevTab = navHistory.pop(); // get previous
     switchTab(prevTab, false);
   } else {
-    // Already at root tab (radar), close WebApp
     if (tg) tg.close();
   }
 }
 
 // =========================================================================
-// 2. TAB NAVIGATION SYSTEM
+// 2. GSAP ENTRANCE & TAB SWITCHING SYSTEM
 // =========================================================================
 
+function initGSAPAnimations() {
+  if (typeof gsap === 'undefined') return;
+
+  // Staggered Entrance of Shell Elements
+  gsap.from('.top-nav, .hero-widget, .segmented-control, .views-wrapper, .bottom-bar', {
+    opacity: 0,
+    y: 20,
+    duration: 0.7,
+    stagger: 0.08,
+    ease: 'power3.out',
+  });
+
+  // Animate initial balance count-up
+  animateBalance(6000.0);
+}
+
+function animateBalance(targetValue) {
+  if (typeof gsap === 'undefined') {
+    document.getElementById('equity-val').textContent = targetValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return;
+  }
+
+  const obj = { val: 0 };
+  gsap.to(obj, {
+    val: targetValue,
+    duration: 1.2,
+    ease: 'power2.out',
+    onUpdate: () => {
+      const el = document.getElementById('equity-val');
+      if (el) el.textContent = obj.val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+  });
+}
+
 function switchTab(tabName, pushToHistory = true) {
-  if (!document.getElementById(`tab-${tabName}`)) return;
+  if (tabName === currentTab) return;
+  const targetView = document.getElementById(`view-${tabName}`);
+  const currentView = document.getElementById(`view-${currentTab}`);
+  if (!targetView) return;
+
   triggerHaptic('medium');
 
-  // Update tabs
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.tab === tabName);
+  const tabIndexMap = { radar: 0, sentinel: 1, payouts: 2, p2p: 3 };
+  const targetIndex = tabIndexMap[tabName] ?? 0;
+
+  // 1. Move the Segmented Indicator Slider
+  const slider = document.getElementById('segment-slider');
+  if (slider) {
+    slider.style.transform = `translateX(${targetIndex * 100}%)`;
+  }
+
+  // 2. Update button active classes
+  document.querySelectorAll('.segment-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
   });
 
-  // Update panels
-  document.querySelectorAll('.tab-content').forEach(panel => {
-    panel.classList.toggle('active', panel.id === `tab-${tabName}`);
-  });
+  // 3. GSAP Cross-fade & slide transition between views
+  if (typeof gsap !== 'undefined' && currentView) {
+    gsap.to(currentView, {
+      opacity: 0,
+      y: -10,
+      duration: 0.18,
+      ease: 'power2.in',
+      onComplete: () => {
+        currentView.classList.remove('active');
+        currentView.style.display = 'none';
+
+        targetView.style.display = 'block';
+        targetView.classList.add('active');
+        gsap.fromTo(targetView, 
+          { opacity: 0, y: 14, scale: 0.985 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'power2.out' }
+        );
+
+        if (tabName === 'radar') {
+          requestAnimationFrame(renderRadarChart);
+        } else if (tabName === 'sentinel') {
+          animateActivityRing();
+        }
+      }
+    });
+  } else {
+    if (currentView) currentView.classList.remove('active');
+    targetView.classList.add('active');
+    if (tabName === 'radar') requestAnimationFrame(renderRadarChart);
+  }
 
   currentTab = tabName;
   if (pushToHistory) {
     navHistory.push(tabName);
   }
-
-  // If radar tab, redraw canvas chart
-  if (tabName === 'radar') {
-    requestAnimationFrame(renderRadarChart);
-  }
 }
 
-function setupNavTabs() {
-  document.querySelectorAll('.nav-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const targetTab = tab.dataset.tab;
-      if (targetTab !== currentTab) {
-        switchTab(targetTab, true);
-      }
+function setupSegmentedNav() {
+  document.querySelectorAll('.segment-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      switchTab(tab, true);
     });
   });
-
-  // Overview quick button in footer
-  const btnOverview = document.getElementById('btn-quick-overview');
-  if (btnOverview) {
-    btnOverview.addEventListener('click', () => {
-      triggerHaptic('medium');
-      if (tg) {
-        tg.sendData(JSON.stringify({ action: 'cmd_overview' }));
-        tg.close();
-      } else {
-        alert("In Telegram, this returns directly to the In-Chat Terminal.");
-      }
-    });
-  }
-
-  // Refresh radar button
-  const btnRefresh = document.getElementById('btn-refresh-radar');
-  if (btnRefresh) {
-    btnRefresh.addEventListener('click', () => {
-      triggerHaptic('light');
-      btnRefresh.textContent = '⏳ Scanning...';
-      fetchTelemetry().then(() => {
-        btnRefresh.textContent = '⚡ Refresh';
-      });
-    });
-  }
-
-  // Killswitch
-  const btnKill = document.getElementById('btn-killswitch');
-  if (btnKill) {
-    btnKill.addEventListener('click', () => {
-      triggerHaptic('notification');
-      const confirmed = confirm("⚠️ CONFIRM EMERGENCY KILL SWITCH:\nHalt all automated trading and preserve 100% Cash?");
-      if (confirmed) {
-        if (tg) {
-          tg.sendData(JSON.stringify({ action: 'cmd_execute_kill_switch' }));
-        }
-        alert("🛑 EMERGENCY KILL SWITCH ACTIVATED.\nAccount locked in 100% Cash.");
-      }
-    });
-  }
 }
 
 // =========================================================================
-// 3. INTERACTIVE CANVAS CANDLESTICK & DIP RADAR CHART
+// 3. APPLE STOCKS MINIMALIST CANVAS CHART (SPY RADAR)
 // =========================================================================
 
 function renderRadarChart() {
-  const canvas = document.getElementById('radar-chart');
+  const canvas = document.getElementById('radarChart');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  
-  // Set real pixel resolution for high DPI displays
   const dpr = window.devicePixelRatio || 1;
+
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * dpr;
   canvas.height = rect.height * dpr;
   ctx.scale(dpr, dpr);
 
-  const width = rect.width;
-  const height = rect.height;
+  const w = rect.width;
+  const h = rect.height;
 
-  // Clear
-  ctx.clearRect(0, 0, width, height);
+  // Clear canvas
+  ctx.clearRect(0, 0, w, h);
 
-  // Simulated 15-day price series around SPY
-  const days = 15;
-  const basePrice = 756.0;
-  const prices = [
-    752.4, 754.1, 755.8, 757.2, 759.0,
-    758.3, 761.5, 760.2, 763.4, 762.1,
-    765.8, 764.0, 766.2, 765.1, telemetryData.spy_price
+  // 12-day SPY synthetic path ending at current price
+  const basePrice = telemetryData.spy_price || 764.29;
+  const dipPrice = telemetryData.spy_dip || 758.45;
+  const meanPrice = telemetryData.spy_mean || 764.13;
+
+  const pricePoints = [
+    754.20, 756.80, 759.10, 757.50, 761.30, 
+    763.40, 760.10, 762.80, 765.20, 763.10, 
+    762.50, basePrice
   ];
 
-  // Calculate 5-day moving average and 1.25 sigma lower band
-  const means = [];
-  const lowerBands = [];
-  for (let i = 0; i < prices.length; i++) {
-    const start = Math.max(0, i - 4);
-    const slice = prices.slice(start, i + 1);
-    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
-    means.push(mean);
-    // standard deviation
-    const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / slice.length;
-    const std = Math.sqrt(variance) || 1.8;
-    lowerBands.push(mean - 1.25 * std);
-  }
+  const minP = Math.min(...pricePoints, dipPrice) - 3.0;
+  const maxP = Math.max(...pricePoints, meanPrice) + 3.0;
+  const range = maxP - minP;
 
-  // Bounds
-  const allVals = [...prices, ...means, ...lowerBands];
-  const minVal = Math.min(...allVals) - 1.5;
-  const maxVal = Math.max(...allVals) + 1.5;
+  const getX = (index) => (index / (pricePoints.length - 1)) * (w - 30) + 15;
+  const getY = (price) => h - 25 - ((price - minP) / range) * (h - 45);
 
-  const padX = 25;
-  const padY = 20;
-  const plotW = width - padX * 2;
-  const plotH = height - padY * 2;
-
-  const getX = (idx) => padX + (idx / (days - 1)) * plotW;
-  const getY = (val) => padY + plotH - ((val - minVal) / (maxVal - minVal)) * plotH;
-
-  // 1. Draw horizontal grid lines
-  ctx.strokeStyle = 'rgba(51, 65, 85, 0.25)';
+  // 1. Draw Subtle Mean Target Dashed Line
+  const yMean = getY(meanPrice);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(100, 210, 255, 0.4)';
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = padY + (plotH / 4) * i;
-    ctx.beginPath();
-    ctx.moveTo(padX, y);
-    ctx.lineTo(width - padX, y);
-    ctx.stroke();
-  }
-
-  // 2. Shaded Dip Buy Zone (between lowerBand and mean)
-  ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
-  ctx.beginPath();
-  for (let i = 0; i < days; i++) {
-    const x = getX(i);
-    const y = getY(means[i]);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  for (let i = days - 1; i >= 0; i--) {
-    const x = getX(i);
-    const y = getY(lowerBands[i]);
-    ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-
-  // 3. Draw 5-Day Mean Line (Amber neon dashed)
-  ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 2;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
-  for (let i = 0; i < days; i++) {
-    const x = getX(i);
-    const y = getY(means[i]);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
+  ctx.moveTo(15, yMean);
+  ctx.lineTo(w - 15, yMean);
   ctx.stroke();
-  ctx.setLineDash([]); // reset
+  ctx.restore();
 
-  // 4. Draw 1.25σ Lower Band (Emerald neon solid)
-  ctx.strokeStyle = '#10b981';
-  ctx.lineWidth = 2;
+  // 2. Draw Dip Entry Trigger Dashed Line
+  const yDip = getY(dipPrice);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(48, 209, 88, 0.5)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
   ctx.beginPath();
-  for (let i = 0; i < days; i++) {
-    const x = getX(i);
-    const y = getY(lowerBands[i]);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
+  ctx.moveTo(15, yDip);
+  ctx.lineTo(w - 15, yDip);
   ctx.stroke();
+  ctx.restore();
 
-  // 5. Draw Price Line (Bright white / cyan gradient)
-  ctx.strokeStyle = '#00f0ff';
+  // 3. Draw Gradient Area Fill under price curve
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(100, 210, 255, 0.25)');
+  grad.addColorStop(1, 'rgba(100, 210, 255, 0.00)');
+
+  ctx.beginPath();
+  ctx.moveTo(getX(0), getY(pricePoints[0]));
+  for (let i = 1; i < pricePoints.length; i++) {
+    const prevX = getX(i - 1);
+    const prevY = getY(pricePoints[i - 1]);
+    const currX = getX(i);
+    const currY = getY(pricePoints[i]);
+    const midX = (prevX + currX) / 2;
+    ctx.bezierCurveTo(midX, prevY, midX, currY, currX, currY);
+  }
+  ctx.lineTo(getX(pricePoints.length - 1), h - 10);
+  ctx.lineTo(getX(0), h - 10);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // 4. Draw Main Price Stroke Line
+  ctx.beginPath();
+  ctx.moveTo(getX(0), getY(pricePoints[0]));
+  for (let i = 1; i < pricePoints.length; i++) {
+    const prevX = getX(i - 1);
+    const prevY = getY(pricePoints[i - 1]);
+    const currX = getX(i);
+    const currY = getY(pricePoints[i]);
+    const midX = (prevX + currX) / 2;
+    ctx.bezierCurveTo(midX, prevY, midX, currY, currX, currY);
+  }
+  ctx.strokeStyle = '#64D2FF';
   ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  for (let i = 0; i < days; i++) {
-    const x = getX(i);
-    const y = getY(prices[i]);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
+  ctx.lineCap = 'round';
   ctx.stroke();
 
-  // 6. Draw dots on price line
-  for (let i = 0; i < days; i++) {
-    const x = getX(i);
-    const y = getY(prices[i]);
-    const isLatest = i === days - 1;
-    ctx.fillStyle = isLatest ? '#00f0ff' : '#94a3b8';
-    ctx.beginPath();
-    ctx.arc(x, y, isLatest ? 5 : 2.5, 0, Math.PI * 2);
-    ctx.fill();
+  // 5. Draw Glowing Current Price Dot
+  const lastX = getX(pricePoints.length - 1);
+  const lastY = getY(basePrice);
 
-    if (isLatest) {
-      // Latest price badge
-      ctx.fillStyle = '#00f0ff';
-      ctx.font = 'bold 11px JetBrains Mono';
-      ctx.textAlign = 'right';
-      ctx.fillText(`$${prices[i].toFixed(2)}`, x - 8, y - 8);
-    }
+  ctx.save();
+  ctx.shadowColor = '#64D2FF';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// =========================================================================
+// 4. APPLE WATCH ACTIVITY RING ANIMATION
+// =========================================================================
+
+function animateActivityRing() {
+  const ring = document.getElementById('ring-guard');
+  if (!ring) return;
+
+  const circumference = 427.26; // 2 * pi * 68
+  ring.style.strokeDasharray = circumference;
+
+  if (typeof gsap !== 'undefined') {
+    gsap.fromTo(ring, 
+      { strokeDashoffset: circumference },
+      { strokeDashoffset: 0, duration: 1.0, ease: 'power2.out' }
+    );
+  } else {
+    ring.style.strokeDashoffset = 0;
   }
 }
 
 // =========================================================================
-// 4. INTERACTIVE BINANCE P2P NAIRA CONVERTER
+// 5. BINANCE P2P NAIRA CALCULATOR (APPLE PAY CASH INSPIRED)
 // =========================================================================
 
-function setupP2PConverter() {
-  const input = document.getElementById('usdt-input');
-  const slider = document.getElementById('usdt-slider');
-  const output = document.getElementById('calc-naira-output');
+function setupP2PCalculator() {
+  const slider = document.getElementById('p2p-slider');
+  if (!slider) return;
 
-  function updateNaira(val) {
-    const amount = parseFloat(val) || 0;
-    const naira = amount * LIVE_P2P_RATE;
-    output.textContent = `₦${naira.toLocaleString('en-US', { maximumFractionDigits: 0 })} NGN`;
-  }
+  slider.addEventListener('input', (e) => {
+    updateP2P(parseFloat(e.target.value));
+    triggerHaptic('light');
+  });
+}
 
-  if (input && slider && output) {
-    input.addEventListener('input', (e) => {
-      const val = parseFloat(e.target.value) || 0;
-      slider.value = val;
-      updateNaira(val);
-    });
+function setSlider(val) {
+  const slider = document.getElementById('p2p-slider');
+  if (slider) {
+    slider.value = val;
+    updateP2P(val);
+    triggerHaptic('medium');
 
-    slider.addEventListener('input', (e) => {
-      triggerHaptic('light');
-      const val = parseFloat(e.target.value) || 0;
-      input.value = val;
-      updateNaira(val);
+    document.querySelectorAll('.chip-preset').forEach(chip => {
+      chip.classList.toggle('active', chip.textContent.includes(`$${val}`));
     });
   }
 }
 
+function updateP2P(usd) {
+  const usdEl = document.getElementById('p2p-usd-display');
+  const nairaEl = document.getElementById('p2p-naira-display');
+
+  if (usdEl) usdEl.textContent = Math.round(usd).toLocaleString();
+  const naira = usd * LIVE_P2P_RATE;
+  if (nairaEl) nairaEl.textContent = `₦${Math.round(naira).toLocaleString()}`;
+}
+
+function copyWallet() {
+  const address = 'TX8aKq9Zf...BinanceTRC20';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(address);
+  }
+  triggerHaptic('notification');
+  const hint = document.getElementById('copy-hint');
+  if (hint) {
+    hint.textContent = 'Copied to Clipboard!';
+    hint.style.color = '#30D158';
+    setTimeout(() => {
+      hint.textContent = 'Tap to Copy';
+      hint.style.color = '#64D2FF';
+    }, 2000);
+  }
+}
+
+function toggleAccordion(id) {
+  triggerHaptic('light');
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('expanded');
+}
+
 // =========================================================================
-// 5. LIVE TELEMETRY INGESTION & UI BINDINGS
+// 6. LIVE TELEMETRY SYNC
 // =========================================================================
 
-async function fetchTelemetry() {
+async function syncTelemetry() {
   try {
     const res = await fetch('/api/telemetry');
-    if (res.ok) {
-      const data = await res.json();
-      telemetryData = { ...telemetryData, ...data };
-      updateUI();
-    }
+    if (!res.ok) return;
+    const data = await res.json();
+    telemetryData = { ...telemetryData, ...data };
+
+    // Update hero values
+    const balEl = document.getElementById('balance-val');
+    const buffEl = document.getElementById('buffer-val');
+    const spyEl = document.getElementById('spy-price');
+    const qqqEl = document.getElementById('qqq-price');
+    const dipDistEl = document.getElementById('dip-dist');
+
+    if (balEl) balEl.textContent = `$${data.capital.toFixed(2)}`;
+    if (buffEl) buffEl.textContent = `$${data.buffer.toFixed(2)}`;
+    if (spyEl) spyEl.textContent = `$${data.spy_price.toFixed(2)}`;
+    if (qqqEl) qqqEl.textContent = `$${data.qqq_price.toFixed(2)}`;
+    if (dipDistEl) dipDistEl.textContent = `+$${data.spy_dist.toFixed(2)}`;
+
+    renderRadarChart();
   } catch (e) {
-    // If running offline/static demo, use mock defaults
-    updateUI();
+    // Graceful offline fallback
   }
 }
 
-function updateUI() {
-  // Balance & Equity
-  const eqEl = document.getElementById('equity-val');
-  const balEl = document.getElementById('balance-val');
-  const bufEl = document.getElementById('buffer-val');
-  const nEl = document.getElementById('naira-val');
-
-  if (eqEl) eqEl.textContent = `$${telemetryData.equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-  if (balEl) balEl.textContent = `$${telemetryData.capital.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-  if (bufEl) bufEl.textContent = `$${telemetryData.buffer.toFixed(2)}`;
-  if (nEl) {
-    const nVal = telemetryData.equity * LIVE_P2P_RATE;
-    nEl.textContent = `~₦${nVal.toLocaleString('en-US', { maximumFractionDigits: 0 })} NGN`;
-  }
-
-  // SPY & QQQ
-  const spyPrice = document.getElementById('spy-price');
-  const spyMean = document.getElementById('spy-mean');
-  const spyDip = document.getElementById('spy-dip');
-  const spyDist = document.getElementById('spy-dist');
-
-  if (spyPrice) spyPrice.textContent = `$${telemetryData.spy_price.toFixed(2)}`;
-  if (spyMean) spyMean.textContent = `$${telemetryData.spy_mean.toFixed(2)}`;
-  if (spyDip) spyDip.textContent = `$${telemetryData.spy_dip.toFixed(2)}`;
-  if (spyDist) {
-    const d = telemetryData.spy_price - telemetryData.spy_dip;
-    const pct = (d / telemetryData.spy_price) * 100;
-    spyDist.textContent = `+$${d.toFixed(2)} (${pct.toFixed(2)}%)`;
-  }
-
-  renderRadarChart();
-}
-
 // =========================================================================
-// 6. INITIALIZATION
+// 7. INITIALIZATION
 // =========================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
   initTelegram();
-  setupNavTabs();
-  setupP2PConverter();
-  fetchTelemetry();
-  setInterval(fetchTelemetry, 25000);
+  setupSegmentedNav();
+  setupP2PCalculator();
+  initGSAPAnimations();
+  requestAnimationFrame(renderRadarChart);
+
+  // Sync button listener
+  const btnRefresh = document.getElementById('btn-refresh-radar');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
+      triggerHaptic('medium');
+      syncTelemetry();
+    });
+  }
+
+  // Poll telemetry every 30s
+  setInterval(syncTelemetry, 30000);
+});
+
+window.addEventListener('resize', () => {
+  if (currentTab === 'radar') {
+    requestAnimationFrame(renderRadarChart);
+  }
 });

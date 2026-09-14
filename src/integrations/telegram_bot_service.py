@@ -169,6 +169,9 @@ def sync_ctrader_telemetry_worker():
         if not ctrader_client.session_id:
             ctrader_client.initialize()
         bal = ctrader_client.get_balance()
+        if bal is None and not ctrader_client.session_id:
+            ctrader_client.initialize()
+            bal = ctrader_client.get_balance()
         if bal and bal.get("balance", 0) > 0:
             _CACHE["capital"] = bal["balance"]
             _CACHE["equity"] = bal["equity"]
@@ -412,7 +415,7 @@ def register_bot_commands():
         "menu_button": {
             "type": "web_app",
             "text": "⚡ Pro App",
-            "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}
+            "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}
         }
     })
     print("[+] Telegram Chat Menu Button configured:", menu_res.get("ok", False))
@@ -469,7 +472,7 @@ def get_main_menu_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
             ],
             [
                 {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
@@ -529,7 +532,7 @@ def get_tracker_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
                 {"text": "🖼️ Visual Goal Roadmap", "callback_data": "cmd_chart_roadmap"},
             ],
             [
@@ -580,7 +583,7 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
                 {"text": "🕯️ Chart SPY Dip", "callback_data": "cmd_chart_radar_spy"},
             ],
             [
@@ -600,7 +603,7 @@ def get_balance_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}},
                 {"text": "🛡️ Risk Sentinel Card", "callback_data": "cmd_card_risk"},
             ],
             [
@@ -1399,7 +1402,7 @@ def handle_update(update: dict):
                 "parse_mode": "HTML",
                 "reply_markup": {
                     "inline_keyboard": [
-                        [{"text": "🚀 Launch AgentQuant Pro Web App", "web_app": {"url": "https://staticminus.github.io/Next-Gen-Quant-/"}}],
+                        [{"text": "🚀 Launch AgentQuant Pro Web App", "web_app": {"url": "https://staticminus.github.io/agentquant-pro/"}}],
                         [{"text": "🔙 Back", "callback_data": "cmd_back"}]
                     ]
                 }

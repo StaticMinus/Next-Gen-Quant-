@@ -54,6 +54,8 @@ class CTraderMCPClient:
                         self.session_id = resp.headers["mcp-session-id"]
 
                     if resp.status_code not in (200, 202):
+                        if resp.status_code == 404 or "Session not found" in resp.text:
+                            self.session_id = None
                         print(f"[!] cTrader MCP HTTP Error {resp.status_code}: {resp.text[:300]}")
                         return None
 
