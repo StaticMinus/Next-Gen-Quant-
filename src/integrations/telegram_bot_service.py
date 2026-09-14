@@ -61,14 +61,18 @@ _CACHE = {
 }
 
 
-def api_call(method: str, payload: dict) -> dict:
+def api_call(method: str, payload: dict, max_retries: int = 2) -> dict:
     url = f"{API_BASE}/{method}"
-    try:
-        resp = http_session.post(url, json=payload, timeout=10)
-        return resp.json()
-    except Exception as e:
-        print(f"[!] Telegram API error on {method}: {e}")
-        return {"ok": False, "error": str(e)}
+    for attempt in range(max_retries):
+        try:
+            resp = http_session.post(url, json=payload, timeout=20)
+            return resp.json()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"[!] Telegram API error on {method}: {e}")
+                return {"ok": False, "error": str(e)}
+            time.sleep(0.5)
+
 
 
 def ack_callback(cq_id: str, text: str = ""):
