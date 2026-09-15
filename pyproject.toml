@@ -23,6 +23,7 @@ dependencies = [
     "rich>=13.7",
     "statsmodels>=0.14",
     "requests>=2.31",
+    "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]
