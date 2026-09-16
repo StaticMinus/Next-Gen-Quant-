@@ -51,7 +51,7 @@ def close_orphan_position():
     if not ctrader_client.initialize():
         print("[!] Could not connect to cTrader MCP. Retrying...")
 
-    max_attempts = 30  # Try for up to ~30 minutes
+    max_attempts = 120  # Try for up to ~90 minutes across rollover window
     attempt = 0
 
     while attempt < max_attempts:
