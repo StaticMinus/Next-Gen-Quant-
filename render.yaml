@@ -5,7 +5,7 @@ services:
     region: frankfurt
     plan: free
     buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && pip install -e ."
-    startCommand: "python -m src.integrations.telegram_bot_service"
+    startCommand: "python -m src.integrations.webapp_server"
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
