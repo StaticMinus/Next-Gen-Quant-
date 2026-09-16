@@ -21,9 +21,11 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import requests
@@ -36,6 +38,11 @@ from src.integrations.telegram_ai_coach import (
     evaluate_market_signals,
     run_autonomous_ai_scan,
 )
+from src.integrations.chacha_romantic_briefings import (
+    render_morning_briefing_chacha,
+    render_nightly_summary_chacha,
+)
+from src.integrations.autonomous_executor import run_autonomous_execution_cycle
 from src.integrations.webapp_server import launch_server_in_thread
 from src.visualization.telegram_charts import (
     generate_cycle_statement_pdf,
@@ -345,7 +352,9 @@ def sync_ctrader_telemetry_worker():
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
 CORE_UNIVERSE = ["GLD", "SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
-_ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
+_ALERTED_SIGNALS = {
+    "GLD_Sniper Dip-Buy": time.time(),
+}  # {ticker_strat: timestamp}
 
 
 def sync_market_radar_worker():
@@ -414,10 +423,52 @@ def check_and_dispatch_autonomous_alerts():
     Autonomous AI Scanning & Alerting Engine.
     Periodically evaluates all 7 assets against the ATLAS-Quant Strategy Triad.
     If a valid signal triggers and hasn't been alerted recently, sends a simple, friendly alert to Telegram.
+    SKIPS tickers that already have an open position (no duplicate alerts on held assets).
     """
     try:
+        # Startup Guard: Do NOT dispatch alerts before telemetry sync has completed initial check
+        if _CACHE.get("last_telemetry_sync") is None:
+            return
+
         signals = evaluate_market_signals()
         now = time.time()
+
+        # Build set of tickers we already hold (from live cTrader positions)
+        held_tickers = set()
+
+        # 1. Enriched positions (keys: symbol_name, display_name, symbol_id)
+        for pos in _CACHE.get("enriched_positions", []):
+            sym = str(
+                pos.get("symbol_name")
+                or pos.get("display_name")
+                or pos.get("symbol")
+                or pos.get("symbolName")
+                or ""
+            ).upper()
+            sym_id = pos.get("symbol_id") or pos.get("symbolId")
+
+            # Map cTrader symbols → our ticker universe
+            if "GOLD" in sym or "XAU" in sym or sym_id == 41:
+                held_tickers.add("GLD")
+            elif any(k in sym for k in ["SPY", "US500", "SP500", "SPX"]):
+                held_tickers.add("SPY")
+            elif any(k in sym for k in ["QQQ", "USTECH", "NAS100", "NDX"]):
+                held_tickers.add("QQQ")
+            elif "AAPL" in sym:
+                held_tickers.add("AAPL")
+            elif "NVDA" in sym:
+                held_tickers.add("NVDA")
+            elif "MSFT" in sym:
+                held_tickers.add("MSFT")
+            elif "META" in sym:
+                held_tickers.add("META")
+
+        # 2. Raw positions fallback (keys: symbolId)
+        for pos in _CACHE.get("positions", []):
+            sym_id = pos.get("symbolId")
+            if sym_id == 41:
+                held_tickers.add("GLD")
+
         friendly_asset_names = {
             "GLD": "Spot Gold (XAUUSD)",
             "QQQ": "Nasdaq Tech (QQQ)",
@@ -428,12 +479,18 @@ def check_and_dispatch_autonomous_alerts():
             "META": "Meta Platforms (META)",
         }
         for s in signals:
-            key = f"{s['ticker']}_{s['strategy']}"
+            ticker = s['ticker']
+
+            # Skip alert if we already have an open position in this ticker
+            if ticker in held_tickers:
+                continue
+
+            key = f"{ticker}_{s['strategy']}"
             last_sent = _ALERTED_SIGNALS.get(key, 0.0)
-            # Cooldown: 1 hour (3,600s) to keep alerts fresh without excessive spam
-            if now - last_sent > 3600:
+            # Cooldown: 8 hours (28,800s) — one alert per ticker per session, not hourly spam
+            if now - last_sent > 28800:
                 _ALERTED_SIGNALS[key] = now
-                dname = friendly_asset_names.get(s['ticker'], s['ticker'])
+                dname = friendly_asset_names.get(ticker, ticker)
                 msg = (
                     f"🚨 <b>Market Opportunity Found: {dname}</b>\n"
                     "────────────────────────────\n"
@@ -447,20 +504,15 @@ def check_and_dispatch_autonomous_alerts():
                     "🤖 <b>Automatic Execution:</b>\n"
                     "The automated server manages entries and exits for you. You do NOT need to take any trades from Telegram!"
                 )
-                markup = {
-                    "inline_keyboard": [
-                        [{"text": "📊 View Active Trades", "callback_data": "cmd_trades"}],
-                        [{"text": "📡 Live Market Radar", "callback_data": "cmd_signals"}, {"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
-                    ]
-                }
                 for cid in get_broadcast_chat_ids():
+                    markup = get_menu_for_user(cid)
                     api_call("sendMessage", {
                         "chat_id": cid,
                         "text": msg,
                         "parse_mode": "HTML",
                         "reply_markup": markup
                     })
-                print(f"[+] Dispatched autonomous alert for {s['ticker']} ({s['strategy']}) to {len(get_broadcast_chat_ids())} chat(s)")
+                print(f"[+] Dispatched autonomous alert for {ticker} ({s['strategy']}) to {len(get_broadcast_chat_ids())} chat(s)")
     except Exception as e:
         print(f"[!] Autonomous alerting engine exception: {e}")
 
@@ -476,6 +528,7 @@ def check_and_dispatch_scheduled_briefings():
     """
     Checks current WAT time and dispatches Morning Briefing (8:30–9:15 WAT)
     and Nightly Wrap-Up (21:30–22:15 WAT) once per calendar day to all partners.
+    Sends tailored romantic briefing to Cha Cha and standard briefing to David.
     """
     try:
         now = datetime.now()
@@ -486,26 +539,28 @@ def check_and_dispatch_scheduled_briefings():
         # Morning Briefing: 8:30 to 9:15 WAT
         if hour == 8 and minute >= 30 and _DISPATCHED_ROUTINES["morning_date"] != today_str:
             _DISPATCHED_ROUTINES["morning_date"] = today_str
-            text = render_morning_briefing_text()
             for cid in get_broadcast_chat_ids():
+                text = get_morning_briefing_for_user(cid)
+                markup = get_menu_for_user(cid)
                 api_call("sendMessage", {
                     "chat_id": cid,
                     "text": text,
                     "parse_mode": "HTML",
-                    "reply_markup": get_main_menu_markup()
+                    "reply_markup": markup
                 })
             print(f"[+] Dispatched scheduled Morning Briefing for {today_str} to {len(get_broadcast_chat_ids())} chat(s)")
 
         # Nightly Wrap-Up: 21:30 to 22:15 WAT (after 21:00 regular US market close)
         if hour == 21 and minute >= 30 and _DISPATCHED_ROUTINES["nightly_date"] != today_str:
             _DISPATCHED_ROUTINES["nightly_date"] = today_str
-            text = render_nightly_summary_text()
             for cid in get_broadcast_chat_ids():
+                text = get_nightly_summary_for_user(cid)
+                markup = get_menu_for_user(cid)
                 api_call("sendMessage", {
                     "chat_id": cid,
                     "text": text,
                     "parse_mode": "HTML",
-                    "reply_markup": get_main_menu_markup()
+                    "reply_markup": markup
                 })
             print(f"[+] Dispatched scheduled Nightly Summary for {today_str} to {len(get_broadcast_chat_ids())} chat(s)")
     except Exception as e:
@@ -543,9 +598,13 @@ def check_and_dispatch_milestone_alerts():
 
 
 def background_telemetry_loop():
-    """Continuous background worker for non-blocking telemetry, 7-asset market scanning, and autonomous alerting."""
+    """Continuous background worker for non-blocking telemetry, 7-asset market scanning, autonomous execution, and alerting."""
     sync_ctrader_telemetry_worker()
     sync_market_radar_worker()
+    try:
+        run_autonomous_execution_cycle()
+    except Exception as e:
+        print(f"[!] Autonomous execution startup error: {e}")
     check_and_dispatch_autonomous_alerts()
     check_and_dispatch_scheduled_briefings()
     check_and_dispatch_milestone_alerts()
@@ -554,6 +613,14 @@ def background_telemetry_loop():
             time.sleep(35)
             sync_ctrader_telemetry_worker()
             sync_market_radar_worker()
+            # 100% Autonomous Trade Execution (Max 2 Positions, Hard Stops)
+            try:
+                auto_trades = run_autonomous_execution_cycle()
+                if auto_trades:
+                    print(f"[+] Autonomous cycle placed {len(auto_trades)} trade(s). Re-syncing telemetry...")
+                    sync_ctrader_telemetry_worker()
+            except Exception as e:
+                print(f"[!] Autonomous execution cycle error: {e}")
             check_and_dispatch_autonomous_alerts()
             check_and_dispatch_scheduled_briefings()
             check_and_dispatch_milestone_alerts()
@@ -662,6 +729,9 @@ ACCOUNTS_CONFIG = {
 _CACHE = {
     "account_id": "3028655",
     "active_model_key": "stellar_1step_6k",
+    "last_telemetry_sync": None,
+    "positions": [],
+    "enriched_positions": [],
     "spy_price": 764.29,
     "spy_mean_5d": 764.13,
     "spy_lower_band": 758.45,
@@ -788,7 +858,7 @@ def register_bot_commands():
         "menu_button": {
             "type": "web_app",
             "text": "⚡ Pro App",
-            "web_app": {"url": "https://staticminus.github.io/agentquant-pro/?v=6.2"}
+            "web_app": {"url": get_webapp_url()}
         }
     })
     print("[+] Telegram Chat Menu Button configured:", menu_res.get("ok", False))
@@ -841,13 +911,91 @@ def get_persistent_bottom_keyboard():
     }
 
 
+def get_partner_bottom_keyboard():
+    """Streamlined keyboard for partners (Cha Cha) — no wallet/withdraw/models."""
+    return {
+        "keyboard": [
+            [{"text": "💬 Ask AI Coach"}, {"text": "📊 Active Trades"}],
+            [{"text": "🌅 Morning Brief"}, {"text": "🌙 Night Wrap"}],
+            [{"text": "🏆 Milestones"}, {"text": "📡 Live Radar"}]
+        ],
+        "resize_keyboard": True,
+        "is_persistent": True
+    }
+
+
+def get_keyboard_for_user(user_id: str):
+    """Returns the correct bottom keyboard based on role."""
+    if str(user_id) == PRIMARY_CHAT_ID:
+        return get_persistent_bottom_keyboard()
+    return get_partner_bottom_keyboard()
+
+
+# Owner-only callback commands — partners get a polite denial
+OWNER_ONLY_CALLBACKS = {
+    "cmd_withdraw", "cmd_ask_payout", "cmd_confirm_payout",
+    "cmd_models_menu", "cmd_card_profile", "cmd_export_pdf",
+}
+
+# Owner-only text commands — partners get a polite denial
+OWNER_ONLY_TEXT_CMDS = {
+    "/setwallet", "/wallet", "/withdraw", "/models", "/accounts",
+    "/adduser", "/removeuser", "/users", "/partners",
+    "/pdf", "/statement", "withdraw", "payout", "claim",
+    "models", "accounts", "compare", "my wallet", "check wallet",
+    "view wallet", "setwallet",
+}
+
+OWNER_ONLY_DENIAL = (
+    "🔒 <b>This feature is reserved for David (Account Owner)</b>\n"
+    "────────────────────────────\n"
+    "As a viewing partner, you can check:\n"
+    "• 📊 Active Trades\n"
+    "• 💰 Balance & Risk\n"
+    "• 📡 Live Market Radar\n"
+    "• 🏆 Milestone Progress\n"
+    "• 🌅 Morning Briefing / 🌙 Night Summary\n"
+    "• 💬 Ask AI Coach any question\n\n"
+    "For wallet, withdrawal, or account model changes, please ask David."
+)
+
+
+def is_owner(user_id: str) -> bool:
+    """Returns True if user is the primary account owner (David)."""
+    return str(user_id) == PRIMARY_CHAT_ID
+
+
 def get_webapp_url() -> str:
     wallet = _CACHE.get("wallet_address", "")
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     spy = _CACHE.get("spy_price", 764.29)
-    qqq = _CACHE.get("qqq_price", 508.15)
+    qqq = _CACHE.get("qqq_price", 704.54)
     cap = _CACHE.get("capital", 6000.0)
-    params = f"?v=6.2&rate={rate}&spy={spy}&qqq={qqq}&cap={cap}"
+    eq = _CACHE.get("equity", 6000.0)
+    
+    enriched = _CACHE.get("enriched_positions", [])
+    positions = _CACHE.get("positions", [])
+    raw_list = enriched if enriched else positions
+    trades_data = []
+    for p in raw_list:
+        pos_id = p.get("position_id") or p.get("positionId")
+        sym = p.get("symbol_name") or p.get("symbolName") or ("XAUUSD" if p.get("symbolId") == 41 else "NDX100")
+        name = p.get("display_name") or ("Spot Gold" if "XAU" in sym else ("Nasdaq 100 Index" if "NDX" in sym else sym))
+        trades_data.append({
+            "id": pos_id,
+            "sym": sym,
+            "name": name,
+            "side": p.get("trade_side") or p.get("tradeSide", "BUY"),
+            "lots": p.get("lots", 0.01),
+            "entry": p.get("entry_price") or p.get("entryPrice", 0.0),
+            "curr": p.get("current_price") or p.get("entry_price", 0.0),
+            "pnl": p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0),
+            "tp": p.get("take_profit") or p.get("takeProfit"),
+            "sl": p.get("stop_loss") or p.get("stopLoss")
+        })
+    
+    encoded_trades = urllib.parse.quote(json.dumps(trades_data))
+    params = f"?v=7.1&rate={rate}&spy={spy}&qqq={qqq}&cap={cap}&eq={eq}&trades={encoded_trades}"
     if wallet and wallet.startswith("T") and len(wallet) == 34:
         params += f"&wallet={wallet}"
     return f"https://staticminus.github.io/agentquant-pro/{params}"
@@ -889,6 +1037,41 @@ def get_main_menu_markup():
             ],
         ]
     }
+
+
+def get_partner_menu_markup():
+    """Inline menu for partners — excludes wallet, withdraw, models, PDF export."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
+                {"text": "💰 Balance & Risk", "callback_data": "cmd_balance"},
+            ],
+            [
+                {"text": "📡 Live Radar", "callback_data": "cmd_signals"},
+                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
+            ],
+            [
+                {"text": "🏆 Milestones", "callback_data": "cmd_milestones"},
+                {"text": "📈 15Y PnL Chart", "callback_data": "cmd_chart_pnl"},
+            ],
+            [
+                {"text": "⏳ Payout & Goals", "callback_data": "cmd_tracker"},
+                {"text": "📜 History", "callback_data": "cmd_hist_overview"},
+            ],
+            [
+                {"text": "💬 Ask AI Coach", "callback_data": "cmd_ask_ai_prompt"},
+                {"text": "⚡ Refresh Status", "callback_data": "cmd_refresh"},
+            ],
+        ]
+    }
+
+
+def get_menu_for_user(user_id: str):
+    """Returns the correct inline menu based on role."""
+    if is_owner(user_id):
+        return get_main_menu_markup()
+    return get_partner_menu_markup()
 
 
 def get_history_markup(active_tab="overview"):
@@ -1003,13 +1186,62 @@ def get_balance_markup():
     }
 
 
-def get_trades_markup():
-    return {
-        "inline_keyboard": [
-            [{"text": "🔄 Refresh Status", "callback_data": "cmd_trades"}],
-            [{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
-        ]
-    }
+# Safety confirmation session store for manual position closure (David Exclusive)
+# Format: {position_id: {"step": int, "user_id": str, "timestamp": float}}
+_CLOSE_CONFIRMATIONS: dict = {}
+
+
+def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[int] = None, pending_step: int = 0):
+    keyboard = []
+    
+    # Check if caller is David (Primary Owner)
+    is_david = str(user_id) == str(PRIMARY_CHAT_ID)
+    
+    # Clean expired confirmations (>15 seconds)
+    now_t = time.time()
+    expired = [pid for pid, data in _CLOSE_CONFIRMATIONS.items() if now_t - data.get("timestamp", 0) > 15.0]
+    for pid in expired:
+        _CLOSE_CONFIRMATIONS.pop(pid, None)
+        
+    enriched_positions = _CACHE.get("enriched_positions", [])
+    positions = _CACHE.get("positions", [])
+    active_list = enriched_positions if enriched_positions else positions
+    
+    # If David, render multi-tap safety close buttons for each open trade
+    if is_david and active_list:
+        for p in active_list:
+            pos_id = p.get("position_id") or p.get("positionId")
+            if not pos_id:
+                continue
+            sym = p.get("symbol_name") or p.get("symbolName") or ("XAUUSD" if p.get("symbolId") == 41 else f"SYM_{pos_id}")
+            short_name = "Gold" if "XAU" in sym or "GOLD" in sym else ("Nasdaq" if "NDX" in sym else sym)
+            
+            # Check current step for this position
+            conf = _CLOSE_CONFIRMATIONS.get(pos_id)
+            step = conf.get("step", 0) if conf else 0
+            if pending_pos_id == pos_id and pending_step > 0:
+                step = pending_step
+                
+            if step == 1:
+                keyboard.append([
+                    {"text": f"⚠️ Confirm Close {short_name}? (Tap 2/3)", "callback_data": f"cmd_close_tap2_{pos_id}"},
+                    {"text": "↩️ Cancel", "callback_data": "cmd_close_cancel"}
+                ])
+            elif step == 2:
+                keyboard.append([
+                    {"text": f"🚨 FINAL TAP: EXECUTE CLOSE {short_name.upper()} (3/3)", "callback_data": f"cmd_close_exec_{pos_id}"},
+                    {"text": "↩️ Cancel", "callback_data": "cmd_close_cancel"}
+                ])
+            else:
+                keyboard.append([
+                    {"text": f"❌ Close {short_name} (Tap 1/3)", "callback_data": f"cmd_close_tap1_{pos_id}"}
+                ])
+
+    # Universal controls
+    keyboard.append([{"text": "⚡ Live Sync / Refresh", "callback_data": "cmd_trades"}])
+    keyboard.append([{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}])
+    
+    return {"inline_keyboard": keyboard}
 
 
 # =====================================================================
@@ -1164,10 +1396,26 @@ def render_signals_text():
     return "".join(lines)
 
 
-def render_trades_text():
+def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[int] = None, pending_step: int = 0):
+    now_str = datetime.now().strftime("%H:%M:%S WAT")
+    is_david = str(user_id) == str(PRIMARY_CHAT_ID)
+
+    # Live on-demand telemetry sync from cTrader
+    try:
+        if not ctrader_client.session_id:
+            ctrader_client.initialize()
+        en = ctrader_client.get_enriched_positions()
+        if en is not None:
+            _CACHE["enriched_positions"] = en
+        bal = ctrader_client.get_balance()
+        if bal:
+            _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+            _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+    except Exception:
+        pass
+
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
-    now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     if not enriched_positions and not positions:
         text = (
@@ -1191,8 +1439,24 @@ def render_trades_text():
             f"{get_breadcrumb('cmd_trades')}\n",
             "────────────────────────────\n",
             "📊 <b>Your Active Trades (Account #3028655)</b>\n",
+            f"⏱️ <i>Live Tick Synced: {now_str}</i>\n",
             "────────────────────────────\n"
         ]
+
+        if pending_pos_id and pending_step == 1:
+            lines.append(
+                "⚠️ <b>SAFETY CLOSE INITIATED (Step 2 of 3)</b>\n"
+                f"You selected position <code>#{pending_pos_id}</code> to close.\n"
+                "Tap <b>'Confirm Close'</b> below to continue, or tap Cancel.\n"
+                "────────────────────────────\n"
+            )
+        elif pending_pos_id and pending_step == 2:
+            lines.append(
+                "🚨 <b>FINAL EXECUTION WARNING (Step 3 of 3)</b>\n"
+                f"Tap the red button below to <b>IMMEDIATELY CLOSE</b> <code>#{pending_pos_id}</code> at live market price on cTrader!\n"
+                "────────────────────────────\n"
+            )
+
         total_pnl = 0.0
 
         if enriched_positions:
@@ -1210,10 +1474,10 @@ def render_trades_text():
                 dist_tp_usd = ep.get("dist_to_tp_usd", 0.0)
                 total_pnl += pnl
 
-                icon = "🟡" if "XAU" in sym or "GOLD" in sym else "📈"
+                icon = "🟡" if "XAU" in sym or "GOLD" in sym else ("⚡" if "NDX" in sym else "📈")
                 action_text = "Bought & Holding" if side == "BUY" else "Shorting"
                 result_badge = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-                note_pnl = "in profit!" if pnl >= 0 else "(Normal small market wiggle)"
+                note_pnl = "in profit!" if pnl >= 0 else "(Normal market wiggle)"
 
                 lines.append(f"{icon} <b>{dname} ({sym})</b>\n")
                 lines.append(f"• <b>Status:</b> {action_text} safely\n")
@@ -1223,7 +1487,7 @@ def render_trades_text():
                 lines.append(f"• <b>Current Market Price:</b> ${curr:,.2f}\n")
                 lines.append(f"• <b>Current Result:</b> <b>{result_badge}</b> {note_pnl}\n")
                 if tp:
-                    lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f} (Closes automatically with <b>+${dist_tp_usd:,.2f} profit</b>!)\n")
+                    lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f} (Will auto-bank <b>+${dist_tp_usd:,.2f} profit</b> when reached!)\n")
                 if sl:
                     lines.append(f"• <b>Safety Net:</b> ${sl:,.2f} (Locked on server to protect your money)\n")
                 lines.append("\n")
@@ -1260,7 +1524,15 @@ def render_trades_text():
         lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
         lines.append("────────────────────────────\n")
         lines.append("💡 <b>How it works:</b>\n")
-        lines.append("The system entered this trade automatically based on our dip strategy. It is managed 100% on the server. When the market reaches your profit goal, it will close automatically and bank your earnings. You do not need to do anything!")
+        lines.append("The system entered this trade automatically based on our dip strategy. It is managed 100% on the server. When the market reaches your profit goal, it will close automatically and bank your earnings. You do not need to do anything!\n")
+
+        if is_david and (enriched_positions or positions):
+            lines.append("────────────────────────────\n")
+            lines.append("⚡ <b>Manual Control (David Exclusive):</b>\n")
+            lines.append("• You have direct multi-tap safety close buttons below for each trade.\n")
+            lines.append("• Tap 3 times in sequence to safely close any trade at live market price without asking the AI.\n")
+            lines.append("• Tap <b>'Live Sync'</b> at any time to refresh market numbers instantly.\n")
+
         return "".join(lines)
 
 
@@ -1371,6 +1643,22 @@ def render_nightly_summary_text():
     lines.append("────────────────────────────\n")
     lines.append("💤 Have a restful night! Your capital is protected.")
     return "".join(lines)
+
+
+
+
+def get_morning_briefing_for_user(user_id: str) -> str:
+    """Returns standard trader briefing for owner David, or sweet romantic briefing for partner Cha Cha."""
+    if is_owner(user_id):
+        return render_morning_briefing_text()
+    return render_morning_briefing_chacha()
+
+
+def get_nightly_summary_for_user(user_id: str) -> str:
+    """Returns standard market summary for owner David, or sweet romantic summary for partner Cha Cha."""
+    if is_owner(user_id):
+        return render_nightly_summary_text()
+    return render_nightly_summary_chacha()
 
 
 def render_milestone_text():
@@ -1788,7 +2076,7 @@ def handle_update(update: dict):
                     "You can also tap any of the buttons below to check live trades or ask our AI Coach any questions!"
                 ),
                 "parse_mode": "HTML",
-                "reply_markup": get_persistent_bottom_keyboard()
+                "reply_markup": get_partner_bottom_keyboard()
             })
             return
 
@@ -1796,10 +2084,21 @@ def handle_update(update: dict):
             ack_callback(cq_id, "Request dismissed.")
             return
 
+        # ── Owner-Only Callback Gate ──
+        if data in OWNER_ONLY_CALLBACKS and not is_owner(user_id):
+            ack_callback(cq_id, "🔒 Owner-only feature.")
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": OWNER_ONLY_DENIAL,
+                "parse_mode": "HTML",
+                "reply_markup": get_partner_menu_markup()
+            })
+            return
+
         ack_callback(cq_id)
 
         new_text = ""
-        markup = get_main_menu_markup()
+        markup = get_menu_for_user(user_id)
 
         # Stateful Navigation Stack
         if data == "cmd_back":
@@ -1814,7 +2113,7 @@ def handle_update(update: dict):
         # Navigation Callbacks
         if data in ["cmd_overview", "cmd_menu", "cmd_refresh"]:
             new_text = render_overview_text()
-            markup = get_main_menu_markup()
+            markup = get_menu_for_user(user_id)
         elif data == "cmd_balance":
             new_text = render_balance_text()
             markup = get_balance_markup()
@@ -1822,8 +2121,93 @@ def handle_update(update: dict):
             new_text = render_signals_text()
             markup = get_radar_markup()
         elif data == "cmd_trades":
-            new_text = render_trades_text()
-            markup = get_trades_markup()
+            new_text = render_trades_text(user_id=user_id)
+            markup = get_trades_markup(user_id=user_id)
+        # David-Exclusive Multi-Tap Safety Close Handlers
+        elif data.startswith("cmd_close_tap1_"):
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            pos_id = int(data.replace("cmd_close_tap1_", ""))
+            _CLOSE_CONFIRMATIONS[pos_id] = {"step": 1, "user_id": str(user_id), "timestamp": time.time()}
+            ack_callback(cq_id, "⚠️ Tap 'Confirm Close' to proceed.")
+            new_text = render_trades_text(user_id=user_id, pending_pos_id=pos_id, pending_step=1)
+            markup = get_trades_markup(user_id=user_id, pending_pos_id=pos_id, pending_step=1)
+            update_or_send(chat_id, msg, new_text, markup)
+            return
+        elif data.startswith("cmd_close_tap2_"):
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            pos_id = int(data.replace("cmd_close_tap2_", ""))
+            conf = _CLOSE_CONFIRMATIONS.get(pos_id)
+            if not conf or time.time() - conf.get("timestamp", 0) > 15.0:
+                _CLOSE_CONFIRMATIONS.pop(pos_id, None)
+                ack_callback(cq_id, "⏱️ Confirmation expired. Tap close again.")
+                new_text = render_trades_text(user_id=user_id)
+                markup = get_trades_markup(user_id=user_id)
+                update_or_send(chat_id, msg, new_text, markup)
+                return
+            _CLOSE_CONFIRMATIONS[pos_id]["step"] = 2
+            _CLOSE_CONFIRMATIONS[pos_id]["timestamp"] = time.time()
+            ack_callback(cq_id, "🚨 FINAL TAP: Tap execute close now!")
+            new_text = render_trades_text(user_id=user_id, pending_pos_id=pos_id, pending_step=2)
+            markup = get_trades_markup(user_id=user_id, pending_pos_id=pos_id, pending_step=2)
+            update_or_send(chat_id, msg, new_text, markup)
+            return
+        elif data.startswith("cmd_close_exec_"):
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            pos_id = int(data.replace("cmd_close_exec_", ""))
+            conf = _CLOSE_CONFIRMATIONS.pop(pos_id, None)
+            if not conf or time.time() - conf.get("timestamp", 0) > 15.0:
+                ack_callback(cq_id, "⏱️ Confirmation timed out. Please retry.")
+                new_text = render_trades_text(user_id=user_id)
+                markup = get_trades_markup(user_id=user_id)
+                update_or_send(chat_id, msg, new_text, markup)
+                return
+            ack_callback(cq_id, "⚡ Closing position on cTrader...")
+            try:
+                close_res = ctrader_client.close_position(pos_id)
+                en = ctrader_client.get_enriched_positions()
+                _CACHE["enriched_positions"] = en
+                bal = ctrader_client.get_balance()
+                if bal:
+                    _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+                    _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+                    _CACHE["free_margin"] = bal.get("freeMargin", _CACHE.get("free_margin", 5700.0))
+                receipt = (
+                    "✅ <b>TRADE CLOSED SUCCESSFULLY</b>\n"
+                    "────────────────────────────\n"
+                    f"• <b>Position ID:</b> <code>#{pos_id}</code>\n"
+                    "• <b>Action:</b> Manual market close executed by David\n"
+                    f"• <b>Updated Balance:</b> <code>${_CACHE['capital']:,.2f} USD</code>\n"
+                    f"• <b>Account Equity:</b> <code>${_CACHE['equity']:,.2f} USD</code>\n"
+                    "────────────────────────────\n"
+                    "🛡️ 100% compliant with FundedNext rules. No further risk on this position."
+                )
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": receipt,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            except Exception as e:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"❌ <b>Error closing position #{pos_id}:</b> {e}",
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            return
+        elif data == "cmd_close_cancel":
+            _CLOSE_CONFIRMATIONS.clear()
+            ack_callback(cq_id, "↩️ Closure cancelled.")
+            new_text = render_trades_text(user_id=user_id)
+            markup = get_trades_markup(user_id=user_id)
+            update_or_send(chat_id, msg, new_text, markup)
+            return
         elif data == "cmd_tracker":
             new_text = render_tracker_text()
             markup = get_tracker_markup()
@@ -1831,11 +2215,11 @@ def handle_update(update: dict):
             executor.submit(async_send_milestone_card, chat_id)
             return
         elif data == "cmd_morning":
-            new_text = render_morning_briefing_text()
-            markup = get_main_menu_markup()
+            new_text = get_morning_briefing_for_user(user_id)
+            markup = get_menu_for_user(user_id)
         elif data == "cmd_nightly":
-            new_text = render_nightly_summary_text()
-            markup = get_main_menu_markup()
+            new_text = get_nightly_summary_for_user(user_id)
+            markup = get_menu_for_user(user_id)
         elif data == "cmd_p2p_rate":
             new_text = render_p2p_rate_text()
             markup = {
@@ -2072,7 +2456,7 @@ def handle_update(update: dict):
                 "────────────────────────────\n"
                 "The engine is scanning for high-probability setups."
             )
-            markup = get_main_menu_markup()
+            markup = get_menu_for_user(user_id)
 
         if new_text and chat_id:
             update_or_send(chat_id, msg, new_text, markup)
@@ -2083,7 +2467,65 @@ def handle_update(update: dict):
         m = update["message"]
         chat_id = m.get("chat", {}).get("id")
         user_id = str(m.get("from", {}).get("id", ""))
+        # 1. Telegram Mini App web_app_data Handler
+        if "web_app_data" in m:
+            raw_data = m["web_app_data"].get("data", "")
+            try:
+                action_data = json.loads(raw_data)
+                if action_data.get("action") == "close_position":
+                    pos_id = int(action_data.get("position_id", 0))
+                    sym = action_data.get("symbol", "Trade")
+                    if not is_owner(user_id):
+                        api_call("sendMessage", {"chat_id": chat_id, "text": "🔒 Only David can close positions."})
+                        return
+                    close_res = ctrader_client.close_position(pos_id)
+                    en = ctrader_client.get_enriched_positions()
+                    _CACHE["enriched_positions"] = en
+                    bal = ctrader_client.get_balance()
+                    if bal:
+                        _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+                        _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+                    receipt = (
+                        "✅ <b>TRADE CLOSED VIA PRO MINI APP</b>\n"
+                        "────────────────────────────\n"
+                        f"• <b>Position ID:</b> <code>#{pos_id}</code> ({sym})\n"
+                        "• <b>Action:</b> Multi-Tap Close executed by David\n"
+                        f"• <b>Updated Balance:</b> <code>${_CACHE['capital']:,.2f} USD</code>\n"
+                        f"• <b>Account Equity:</b> <code>${_CACHE['equity']:,.2f} USD</code>\n"
+                        "────────────────────────────\n"
+                        "🛡️ 100% safe and compliant with FundedNext."
+                    )
+                    api_call("sendMessage", {
+                        "chat_id": chat_id,
+                        "text": receipt,
+                        "parse_mode": "HTML",
+                        "reply_markup": get_trades_markup(user_id=user_id)
+                    })
+                    return
+            except Exception as e:
+                print(f"[!] Error processing web_app_data: {e}")
+
         text = m.get("text", "").strip().lower()
+
+        # 2. Deep-link handler from webapp: /start close_3069593
+        if text.startswith("/start close_"):
+            try:
+                pos_id = int(text.replace("/start close_", "").strip())
+                if not is_owner(user_id):
+                    api_call("sendMessage", {"chat_id": chat_id, "text": "🔒 Only David can close positions."})
+                    return
+                _CLOSE_CONFIRMATIONS[pos_id] = {"step": 2, "user_id": str(user_id), "timestamp": time.time()}
+                new_text = render_trades_text(user_id=user_id, pending_pos_id=pos_id, pending_step=2)
+                markup = get_trades_markup(user_id=user_id, pending_pos_id=pos_id, pending_step=2)
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": new_text,
+                    "parse_mode": "HTML",
+                    "reply_markup": markup
+                })
+                return
+            except Exception:
+                pass
 
         if not text:
             return
@@ -2132,6 +2574,25 @@ def handle_update(update: dict):
             })
             return
 
+        # ── Owner-Only Text Command Gate ──
+        if not is_owner(user_id):
+            if text.startswith("/") and any(text.startswith(cmd) for cmd in OWNER_ONLY_TEXT_CMDS if cmd.startswith("/")):
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": OWNER_ONLY_DENIAL,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_partner_menu_markup()
+                })
+                return
+            if any(cmd in text for cmd in OWNER_ONLY_TEXT_CMDS if not cmd.startswith("/")):
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": OWNER_ONLY_DENIAL,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_partner_menu_markup()
+                })
+                return
+
         # /adduser <chat_id> [name] — Add partner manually
         if raw_text.lower().startswith("/adduser"):
             if user_id != PRIMARY_CHAT_ID:
@@ -2174,7 +2635,7 @@ def handle_update(update: dict):
                         "Tap any button below to explore:"
                     ),
                     "parse_mode": "HTML",
-                    "reply_markup": get_persistent_bottom_keyboard()
+                    "reply_markup": get_partner_bottom_keyboard()
                 })
             except Exception:
                 pass
@@ -2352,7 +2813,7 @@ def handle_update(update: dict):
                 "chat_id": chat_id,
                 "text": welcome_msg,
                 "parse_mode": "HTML",
-                "reply_markup": get_persistent_bottom_keyboard()
+                "reply_markup": get_keyboard_for_user(user_id)
             })
             return
 
@@ -2431,9 +2892,9 @@ def handle_update(update: dict):
         elif any(cmd in text for cmd in ["/trades", "📊 active trades", "trades", "trade", "active trades", "active trade", "positions", "position", "open trades", "orders"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_trades_text(),
+                "text": render_trades_text(user_id=user_id),
                 "parse_mode": "HTML",
-                "reply_markup": get_trades_markup(),
+                "reply_markup": get_trades_markup(user_id=user_id),
             })
         elif any(cmd in text for cmd in ["/withdraw", "💸 withdraw", "withdraw", "payout", "claim"]):
             curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
@@ -2503,16 +2964,16 @@ def handle_update(update: dict):
         elif any(cmd in text for cmd in ["/morning", "🌅 morning brief", "morning brief", "morning briefing", "morning", "good morning", "getting ready"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_morning_briefing_text(),
+                "text": get_morning_briefing_for_user(user_id),
                 "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup(),
+                "reply_markup": get_menu_for_user(user_id),
             })
         elif any(cmd in text for cmd in ["/nightly", "🌙 night wrap", "night wrap", "nightly summary", "nightly", "market summary", "good night"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_nightly_summary_text(),
+                "text": get_nightly_summary_for_user(user_id),
                 "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup(),
+                "reply_markup": get_menu_for_user(user_id),
             })
         elif any(cmd in text for cmd in ["/logic", "logic"]):
             api_call("sendMessage", {
@@ -2526,6 +2987,30 @@ def handle_update(update: dict):
             executor.submit(async_send_ai_reply, chat_id, raw_text)
 
 
+def safe_handle_update(update: dict):
+    try:
+        handle_update(update)
+    except Exception as e:
+        import traceback
+        print(f"[!] Exception in handle_update: {e}")
+        traceback.print_exc()
+        try:
+            chat_id = None
+            if "message" in update:
+                chat_id = update["message"].get("chat", {}).get("id")
+            elif "callback_query" in update:
+                chat_id = update["callback_query"].get("message", {}).get("chat", {}).get("id")
+            if chat_id:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "⚡ <i>Terminal telemetry refreshed. Please tap again.</i>",
+                    "parse_mode": "HTML",
+                    "reply_markup": get_menu_for_user(chat_id)
+                })
+        except Exception:
+            pass
+
+
 def run_polling():
     print("=" * 65)
     print("   AGENTQUANT TERMINAL (v5.2) — SUB-20MS ULTRA-SPEED DUAL-MODE")
@@ -2535,6 +3020,14 @@ def run_polling():
     print("Features: Async Worker Pool, Multi-User Dispatch, Keep-Alive Pooling")
     print("Status: 100% Dialed In & Cooking | Multi-Partner Sync Active")
 
+    # Pre-warm cTrader telemetry synchronously so cache is ready from millisecond zero
+    print("[*] Pre-warming cTrader telemetry cache...")
+    try:
+        sync_ctrader_telemetry_worker()
+        print(f"[+] cTrader Telemetry Pre-warmed: {_CACHE.get('capital', 6000.0)} USD, {len(_CACHE.get('enriched_positions', []))} active positions.")
+    except Exception as e:
+        print(f"[!] Warning pre-warming telemetry: {e}")
+
     register_bot_commands()
 
     # Start background telemetry and market radar thread
@@ -2542,9 +3035,10 @@ def run_polling():
     bg_thread.start()
     print("[+] Background Telemetry & Radar Worker Thread started.")
 
-    # Start local Mini App HTTP server
-    launch_server_in_thread(8080)
-    print("[+] Mini App Web Server started on http://localhost:8080")
+    # Start Mini App HTTP server (supports dynamic Render PORT)
+    server_port = int(os.getenv("PORT", 8080))
+    launch_server_in_thread(server_port)
+    print(f"[+] Mini App Web Server started on http://0.0.0.0:{server_port}")
 
     last_offset = 0
     while True:
@@ -2555,7 +3049,7 @@ def run_polling():
             results = data.get("result", [])
             for u in results:
                 last_offset = max(last_offset, u["update_id"] + 1)
-                executor.submit(handle_update, u)
+                executor.submit(safe_handle_update, u)
         except Exception:
             time.sleep(0.2)
 

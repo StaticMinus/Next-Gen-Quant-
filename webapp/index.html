@@ -25,7 +25,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   
-  <link rel="stylesheet" href="style.css?v=6.3">
+  <link rel="stylesheet" href="style.css?v=7.1">
 </head>
 <body>
   <div class="apple-shell">
@@ -94,55 +94,120 @@
       </div>
     </section>
 
-    <!-- Active Trades Card (Live cTrader Vision) -->
+    <!-- Real-Time Trade Vision & Multi-Tap Safety Close -->
     <section class="apple-card active-trades-card" id="active-trades-card">
       <div class="card-inner">
-        <div class="card-header-row">
-          <span class="eyebrow">ACTIVE TRADES • CTRADER #3028655</span>
+        <div class="card-header-row" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+          <div>
+            <span class="eyebrow" style="color: #ff9f0a; font-weight: 800; letter-spacing: 0.08em; display: flex; align-items: center; gap: 6px; font-size: 11px;">
+              <span>⚡</span> REAL-TIME TRADE VISION
+            </span>
+            <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-top: 2px;">
+              cTrader #3028655 • Multi-Tap Safety Close Active
+            </span>
+          </div>
           <div class="apple-chip chip-amber" id="trades-status-chip">
             <span class="chip-dot"></span>
-            <span id="trades-count-text">1 POSITION OPEN</span>
+            <span id="trades-count-text">2 POSITIONS OPEN</span>
           </div>
         </div>
 
         <div id="trades-container">
-          <!-- Dynamic Trade Item: Spot Gold -->
-          <div class="trade-item-card" id="gold-trade-item">
-            <div class="trade-item-header">
-              <div class="trade-sym-badge">
-                <span class="trade-icon">🟡</span>
+          <!-- Active Trade 1: Spot Gold -->
+          <div class="trade-item-card" id="trade-item-3069593" style="margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 14px; padding: 14px;">
+            <div class="trade-item-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+              <div class="trade-sym-badge" style="display: flex; gap: 10px; align-items: center;">
+                <span class="trade-icon" style="font-size: 24px;">🟡</span>
                 <div>
-                  <div class="trade-sym-title">Spot Gold (XAUUSD)</div>
-                  <div class="trade-sym-sub">Trade #3069593 • 0.01 lot • Bought on Dip</div>
+                  <div class="trade-sym-title" style="font-weight: 700; font-size: 15px; color: var(--text-primary);">Spot Gold (XAUUSD)</div>
+                  <div class="trade-sym-sub" style="font-size: 12px; color: var(--text-secondary);">Position #3069593 • 0.01 lot • BUY</div>
                 </div>
               </div>
-              <div class="trade-pnl-block">
-                <span class="trade-pnl-val val-red" id="gold-trade-pnl">-$2.53 USD</span>
-                <span class="trade-pnl-sub">Normal market wiggle</span>
+              <div class="trade-pnl-block" style="text-align: right;">
+                <span class="trade-pnl-val val-red" id="gold-trade-pnl" style="font-weight: 800; font-size: 15px; display: block;">-$62.10 USD</span>
+                <span class="trade-pnl-sub" style="font-size: 11px; color: var(--text-secondary);">floating drawdown</span>
               </div>
             </div>
 
-            <div class="trade-details-grid">
+            <div class="trade-details-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: rgba(0,0,0,0.18); padding: 10px; border-radius: 10px; margin-bottom: 12px;">
               <div class="trade-grid-cell">
-                <span class="cell-lbl">Bought at</span>
-                <span class="cell-val font-mono">$4,334.99</span>
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Bought at</span>
+                <span class="cell-val font-mono" style="font-size: 13px; font-weight: 600;">$4,334.99</span>
               </div>
               <div class="trade-grid-cell">
-                <span class="cell-lbl">Current Price</span>
-                <span class="cell-val font-mono" id="gold-curr-price">$4,332.46</span>
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Current Market</span>
+                <span class="cell-val font-mono" id="gold-curr-price" style="font-size: 13px; font-weight: 600; color: #64d2ff;">$4,272.89</span>
               </div>
               <div class="trade-grid-cell">
-                <span class="cell-lbl">Profit Goal</span>
-                <span class="cell-val font-mono val-green">$4,443.38 (+$110.92)</span>
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Profit Goal (TP)</span>
+                <span class="cell-val font-mono val-green" style="font-size: 13px; font-weight: 600;">$4,443.38</span>
               </div>
               <div class="trade-grid-cell">
-                <span class="cell-lbl">Safety Stop</span>
-                <span class="cell-val font-mono val-cyan">$4,204.95 (Protected)</span>
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Safety Stop (SL)</span>
+                <span class="cell-val font-mono val-cyan" style="font-size: 13px; font-weight: 600;">$4,204.95</span>
               </div>
             </div>
 
-            <div class="trade-reassurance-note">
-              🛡️ <b>Automated System Active:</b> The system bought Gold automatically on a dip. It will exit automatically when the profit target hits. You do not need to do anything!
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px;">
+              <span style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #30d158;"></span>
+                Auto-Risk Active
+              </span>
+              <div class="multitap-close-container" id="multitap-box-3069593">
+                <button class="btn-close-trade" onclick="handleWebMultiTap(3069593, 'Spot Gold', 2)" 
+                  style="background: rgba(255, 69, 58, 0.15); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.4); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                  ❌ Close Position (Tap 1/3)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Active Trade 2: Nasdaq 100 -->
+          <div class="trade-item-card" id="trade-item-3071210" style="margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 14px; padding: 14px;">
+            <div class="trade-item-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+              <div class="trade-sym-badge" style="display: flex; gap: 10px; align-items: center;">
+                <span class="trade-icon" style="font-size: 24px;">⚡</span>
+                <div>
+                  <div class="trade-sym-title" style="font-weight: 700; font-size: 15px; color: var(--text-primary);">Nasdaq 100 Index (NDX100)</div>
+                  <div class="trade-sym-sub" style="font-size: 12px; color: var(--text-secondary);">Position #3071210 • 0.10 lot • BUY</div>
+                </div>
+              </div>
+              <div class="trade-pnl-block" style="text-align: right;">
+                <span class="trade-pnl-val val-red" id="ndx-trade-pnl" style="font-weight: 800; font-size: 15px; display: block;">-$15.21 USD</span>
+                <span class="trade-pnl-sub" style="font-size: 11px; color: var(--text-secondary);">floating drawdown</span>
+              </div>
+            </div>
+
+            <div class="trade-details-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: rgba(0,0,0,0.18); padding: 10px; border-radius: 10px; margin-bottom: 12px;">
+              <div class="trade-grid-cell">
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Bought at</span>
+                <span class="cell-val font-mono" style="font-size: 13px; font-weight: 600;">$29,118.12</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Current Market</span>
+                <span class="cell-val font-mono" id="ndx-curr-price" style="font-size: 13px; font-weight: 600; color: #64d2ff;">$28,966.02</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Profit Goal (TP)</span>
+                <span class="cell-val font-mono val-green" style="font-size: 13px; font-weight: 600;">$29,552.37</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl" style="font-size: 10px; color: var(--text-secondary); display: block; text-transform: uppercase;">Safety Stop (SL)</span>
+                <span class="cell-val font-mono val-cyan" style="font-size: 13px; font-weight: 600;">$28,242.17</span>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px;">
+              <span style="font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #30d158;"></span>
+                Auto-Risk Active
+              </span>
+              <div class="multitap-close-container" id="multitap-box-3071210">
+                <button class="btn-close-trade" onclick="handleWebMultiTap(3071210, 'Nasdaq 100 Index', 2)" 
+                  style="background: rgba(255, 69, 58, 0.15); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.4); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                  ❌ Close Position (Tap 1/3)
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -539,6 +604,6 @@
     </footer>
   </div>
 
-  <script src="app.js?v=6.3"></script>
+  <script src="app.js?v=7.1"></script>
 </body>
 </html>

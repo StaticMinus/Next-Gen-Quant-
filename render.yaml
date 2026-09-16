@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: agentquant-telegram-ai
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && pip install -e ."
+    startCommand: "python -m src.integrations.telegram_bot_service"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CTRADER_ACCOUNT_ID
+        sync: false
+      - key: CTRADER_ACCESS_TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

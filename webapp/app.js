@@ -135,8 +135,34 @@ let telemetryData = {
   aapl_price: 331.34, aapl_mean: 330.50, aapl_dip: 318.50, aapl_dist: 12.84, aapl_dist_pct: 3.90,
   nvda_price: 212.17, nvda_mean: 212.00, nvda_dip: 210.27, nvda_dist: 1.90, nvda_dist_pct: 0.90,
   msft_price: 495.20, msft_mean: 494.80, msft_dip: 486.50, msft_dist: 8.70, msft_dist_pct: 1.75,
-  meta_price: 612.40, meta_mean: 610.90, meta_dip: 598.20, meta_dist: 14.20, meta_dist_pct: 2.31,
-  active_positions: [],
+  active_positions: [
+    {
+      position_id: 3069593,
+      symbol_id: 41,
+      symbol_name: 'XAUUSD',
+      display_name: 'Spot Gold',
+      trade_side: 'BUY',
+      lots: 0.01,
+      entry_price: 4334.99,
+      current_price: 4272.89,
+      take_profit: 4443.38,
+      stop_loss: 4204.95,
+      floating_pnl: -62.10
+    },
+    {
+      position_id: 3071210,
+      symbol_id: 112,
+      symbol_name: 'NDX100',
+      display_name: 'Nasdaq 100 Index',
+      trade_side: 'BUY',
+      lots: 0.1,
+      entry_price: 29118.12,
+      current_price: 28966.02,
+      take_profit: 29552.37,
+      stop_loss: 28242.17,
+      floating_pnl: -15.21
+    }
+  ],
   payout_days: 5,
 };
 
@@ -478,21 +504,210 @@ function tickRadarMicroDrift() {
 }
 
 function updateActiveTradesUI() {
-  const gldPrice = telemetryData.gld_price || 4332.46;
-  const entryPrice = 4334.99;
-  // Spot Gold 1 oz (0.01 lot): PnL = (gldPrice - entryPrice) * 1
-  const floatingPnl = Math.round((gldPrice - entryPrice) * 100) / 100;
-
-  const currEl = document.getElementById('gold-curr-price');
-  if (currEl) currEl.textContent = `$${gldPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  const pnlEl = document.getElementById('gold-trade-pnl');
-  if (pnlEl) {
-    const prefix = floatingPnl >= 0 ? '+$' : '-$';
-    const absPnl = Math.abs(floatingPnl).toFixed(2);
-    pnlEl.textContent = `${prefix}${absPnl} USD`;
-    pnlEl.className = floatingPnl >= 0 ? 'trade-pnl-val val-green' : 'trade-pnl-val val-red';
+  const container = document.getElementById('trades-container');
+  const chipEl = document.getElementById('trades-count-text');
+  const heroChip = document.getElementById('hero-chip');
+  const activeList = telemetryData.active_positions || [];
+  
+  if (!container) return;
+  
+  if (activeList.length === 0) {
+    if (chipEl) chipEl.textContent = '0 POSITIONS • 100% CASH';
+    if (heroChip) {
+      heroChip.innerHTML = '<span class="chip-dot"></span><span>100% CASH</span>';
+      heroChip.className = 'apple-chip chip-emerald';
+    }
+    container.innerHTML = `
+      <div class="empty-trades-state" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+        <div style="font-size: 32px; margin-bottom: 8px;">🟢</div>
+        <div style="font-weight: 600; font-size: 15px; color: var(--text-primary); margin-bottom: 4px;">All Clear — 100% in Cash</div>
+        <div style="font-size: 13px; line-height: 1.4;">Automated bot is scanning for market dips. Zero open exposure right now.</div>
+      </div>
+    `;
+    return;
   }
+  
+  const totalCount = activeList.length;
+  if (chipEl) chipEl.textContent = `${totalCount} POSITION${totalCount > 1 ? 'S' : ''} OPEN`;
+  if (heroChip) {
+    heroChip.innerHTML = `<span class="chip-dot"></span><span>${totalCount} ACTIVE TRADE${totalCount > 1 ? 'S' : ''}</span>`;
+    heroChip.className = 'apple-chip chip-amber';
+  }
+  
+  let html = '';
+  activeList.forEach(pos => {
+    const sym = (pos.symbol_name || pos.symbolName || 'XAUUSD').toUpperCase();
+    const dname = pos.display_name || (sym === 'XAUUSD' ? 'Spot Gold' : (sym === 'NDX100' ? 'Nasdaq 100 Index' : sym));
+    const posId = pos.position_id || pos.positionId;
+    const side = pos.trade_side || pos.tradeSide || 'BUY';
+    const lots = pos.lots || 0.01;
+    const entry = Number(pos.entry_price || pos.entryPrice || 0).toFixed(2);
+    const curr = Number(pos.current_price || pos.entry_price || entry).toFixed(2);
+    const pnl = Number(pos.floating_pnl !== undefined ? pos.floating_pnl : (pos.profit || 0));
+    const pnlPrefix = pnl >= 0 ? '+$' : '-$';
+    const pnlClass = pnl >= 0 ? 'val-green' : 'val-red';
+    const icon = (sym.includes('XAU') || sym.includes('GOLD')) ? '🟡' : (sym.includes('NDX') ? '⚡' : '📈');
+    const tpText = pos.take_profit ? `$${Number(pos.take_profit).toFixed(2)}` : (pos.takeProfit ? `$${Number(pos.takeProfit).toFixed(2)}` : 'N/A');
+    const slText = pos.stop_loss ? `$${Number(pos.stop_loss).toFixed(2)}` : (pos.stopLoss ? `$${Number(pos.stopLoss).toFixed(2)}` : 'Protected');
+    
+    html += `
+      <div class="trade-item-card" id="trade-item-${posId}" style="margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 14px; padding: 14px;">
+        <div class="trade-item-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+          <div class="trade-sym-badge" style="display: flex; gap: 10px; align-items: center;">
+            <span class="trade-icon" style="font-size: 22px;">${icon}</span>
+            <div>
+              <div class="trade-sym-title" style="font-weight: 700; font-size: 15px; color: var(--text-primary);">${dname} (${sym})</div>
+              <div class="trade-sym-sub" style="font-size: 12px; color: var(--text-secondary);">Trade #${posId} • ${lots} lot • ${side}</div>
+            </div>
+          </div>
+          <div class="trade-pnl-block" style="text-align: right;">
+            <span class="trade-pnl-val ${pnlClass}" style="font-weight: 700; font-size: 15px; display: block;">${pnlPrefix}${Math.abs(pnl).toFixed(2)} USD</span>
+            <span class="trade-pnl-sub" style="font-size: 11px; color: var(--text-secondary);">${pnl >= 0 ? 'in profit!' : 'market wiggle'}</span>
+          </div>
+        </div>
+
+        <div class="trade-details-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 10px; margin-bottom: 12px;">
+          <div class="trade-grid-cell">
+            <span class="cell-lbl" style="font-size: 11px; color: var(--text-secondary); display: block;">Bought at</span>
+            <span class="cell-val font-mono" style="font-size: 13px; font-weight: 600;">$${entry}</span>
+          </div>
+          <div class="trade-grid-cell">
+            <span class="cell-lbl" style="font-size: 11px; color: var(--text-secondary); display: block;">Current Market</span>
+            <span class="cell-val font-mono" style="font-size: 13px; font-weight: 600; color: #64d2ff;">$${curr}</span>
+          </div>
+          <div class="trade-grid-cell">
+            <span class="cell-lbl" style="font-size: 11px; color: var(--text-secondary); display: block;">Profit Goal (TP)</span>
+            <span class="cell-val font-mono val-green" style="font-size: 13px; font-weight: 600;">${tpText}</span>
+          </div>
+          <div class="trade-grid-cell">
+            <span class="cell-lbl" style="font-size: 11px; color: var(--text-secondary); display: block;">Safety Stop (SL)</span>
+            <span class="cell-val font-mono val-cyan" style="font-size: 13px; font-weight: 600;">${slText}</span>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; pt-1;">
+          <span style="font-size: 11px; color: var(--text-secondary);">🛡️ Auto-Risk Protected</span>
+          <div class="multitap-close-container" id="multitap-box-${posId}">
+            <button class="btn-close-trade" onclick="handleWebMultiTap(${posId}, '${dname}', 2)" 
+              style="background: rgba(255, 69, 58, 0.12); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+              ❌ Close Position (Tap 1/3)
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = html;
+}
+
+let webMultiTapTimers = {};
+
+function handleWebMultiTap(posId, symName, step) {
+  const box = document.getElementById(`multitap-box-${posId}`);
+  if (!box) return;
+  
+  if (webMultiTapTimers[posId]) {
+    clearTimeout(webMultiTapTimers[posId]);
+  }
+  
+  if (step === 2) {
+    box.innerHTML = `
+      <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end;">
+        <button onclick="handleWebMultiTap(${posId}, '${symName}', 3)" 
+          style="background: #ff9f0a; color: #000; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 0 12px rgba(255, 159, 10, 0.4);">
+          ⚠️ Confirm Close? (Tap 2/3)
+        </button>
+        <button onclick="handleWebMultiTapCancel(${posId}, '${symName}')" 
+          style="background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer;">
+          ↩️ Cancel
+        </button>
+      </div>
+    `;
+    webMultiTapTimers[posId] = setTimeout(() => {
+      handleWebMultiTapCancel(posId, symName);
+    }, 12000);
+  } else if (step === 3) {
+    box.innerHTML = `
+      <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end;">
+        <button onclick="executeWebClose(${posId}, '${symName}')" 
+          style="background: #ff453a; color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 0 16px rgba(255, 69, 58, 0.6);">
+          🚨 FINAL TAP: EXECUTE CLOSE (3/3)
+        </button>
+        <button onclick="handleWebMultiTapCancel(${posId}, '${symName}')" 
+          style="background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer;">
+          ↩️ Cancel
+        </button>
+      </div>
+    `;
+    webMultiTapTimers[posId] = setTimeout(() => {
+      handleWebMultiTapCancel(posId, symName);
+    }, 12000);
+  }
+}
+
+function handleWebMultiTapCancel(posId, symName) {
+  const box = document.getElementById(`multitap-box-${posId}`);
+  if (!box) return;
+  if (webMultiTapTimers[posId]) {
+    clearTimeout(webMultiTapTimers[posId]);
+    delete webMultiTapTimers[posId];
+  }
+  box.innerHTML = `
+    <button onclick="handleWebMultiTap(${posId}, '${symName}', 2)" 
+      style="background: rgba(255, 69, 58, 0.12); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.3); border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+      ❌ Close Position (Tap 1/3)
+    </button>
+  `;
+}
+
+function executeWebClose(posId, symName) {
+  const box = document.getElementById(`multitap-box-${posId}`);
+  if (box) {
+    box.innerHTML = `<span style="font-size: 12px; color: #ff9f0a; font-weight: 600;">⚡ Closing on cTrader...</span>`;
+  }
+  
+  // 1. If running inside Telegram WebApp
+  if (window.Telegram?.WebApp && typeof window.Telegram.WebApp.sendData === 'function') {
+    try {
+      window.Telegram.WebApp.sendData(JSON.stringify({
+        action: "close_position",
+        position_id: posId,
+        symbol: symName
+      }));
+      return;
+    } catch (e) {
+      console.warn("Telegram sendData failed", e);
+    }
+  }
+
+  // 2. HTTP POST API
+  fetch('/api/close_position', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({position_id: posId, client: 'david'})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      if (box) box.innerHTML = `<span style="font-size: 12px; color: #30d158; font-weight: 700;">✅ Closed Successfully!</span>`;
+      setTimeout(() => {
+        telemetryData.active_positions = (telemetryData.active_positions || []).filter(p => (p.position_id || p.positionId || p.id) !== posId);
+        updateActiveTradesUI();
+      }, 1500);
+    } else {
+      alert(`Could not close: ${data.error || 'Server error'}`);
+      handleWebMultiTapCancel(posId, symName);
+    }
+  })
+  .catch(err => {
+    // 3. Deep link fallback
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink(`https://t.me/Nextgeneration9_bot?start=close_${posId}`);
+    } else {
+      window.location.href = `https://t.me/Nextgeneration9_bot?start=close_${posId}`;
+    }
+  });
 }
 
 function updateMatrixUI() {
@@ -744,14 +959,59 @@ function parseQueryParams() {
       const c = parseFloat(params.get('cap'));
       if (!isNaN(c) && c > 0) telemetryData.capital = c;
     }
+    if (params.has('eq')) {
+      const eq = parseFloat(params.get('eq'));
+      if (!isNaN(eq) && eq > 0) telemetryData.equity = eq;
+    }
+    if (params.has('trades')) {
+      try {
+        const rawTrades = params.get('trades');
+        let trades;
+        try {
+          trades = JSON.parse(rawTrades);
+        } catch (e1) {
+          trades = JSON.parse(decodeURIComponent(rawTrades));
+        }
+        if (Array.isArray(trades) && trades.length > 0) {
+          telemetryData.active_positions = trades.map(t => ({
+            position_id: t.id || t.position_id,
+            symbol_name: t.sym || t.symbol_name,
+            display_name: t.name || t.display_name,
+            trade_side: t.side || t.trade_side || 'BUY',
+            lots: t.lots || 0.01,
+            entry_price: t.entry || t.entry_price,
+            current_price: t.curr || t.current_price,
+            floating_pnl: t.pnl !== undefined ? t.pnl : t.floating_pnl,
+            take_profit: t.tp || t.take_profit,
+            stop_loss: t.sl || t.stop_loss
+          }));
+        }
+      } catch (err) {
+        console.warn("Could not parse trades parameter", err);
+      }
+    }
+    updateActiveTradesUI();
   } catch (e) {}
 }
 
 async function syncTelemetry() {
+  let data = null;
+  // 1. Try local/tunnel api
   try {
-    const res = await fetch('/api/telemetry');
-    if (!res.ok) return;
-    const data = await res.json();
+    const res = await fetch('/api/telemetry', { cache: 'no-store' });
+    if (res.ok) data = await res.json();
+  } catch (e) {}
+
+  // 2. Try static telemetry.json on GitHub Pages
+  if (!data) {
+    try {
+      const res = await fetch('telemetry.json?t=' + Date.now(), { cache: 'no-store' });
+      if (res.ok) data = await res.json();
+    } catch (e) {}
+  }
+
+  if (!data) return;
+  try {
     telemetryData = { ...telemetryData, ...data };
 
     ASSETS_LIST.forEach(asset => {
@@ -763,8 +1023,8 @@ async function syncTelemetry() {
 
     const balEl = document.getElementById('balance-val');
     const buffEl = document.getElementById('buffer-val');
-    if (balEl) balEl.textContent = `$${data.capital.toFixed(2)}`;
-    if (buffEl) buffEl.textContent = `$${data.buffer.toFixed(2)}`;
+    if (balEl && data.capital) balEl.textContent = `$${Number(data.capital).toFixed(2)}`;
+    if (buffEl && data.buffer) buffEl.textContent = `$${Number(data.buffer).toFixed(2)}`;
 
     updateMatrixUI();
     updateActiveTradesUI();
@@ -837,9 +1097,9 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 8. Telemetry polling (every 30s)
+  // 8. Telemetry polling (every 5s for real-time trade vision)
   syncTelemetry();
-  setInterval(syncTelemetry, 30000);
+  setInterval(syncTelemetry, 5000);
 });
 
 window.addEventListener('resize', () => {

@@ -26,6 +26,11 @@ DEFAULT_TOKEN = os.getenv("CTRADER_ACCESS_TOKEN", "eyJwbGFudCI6ImZ1bmRlZG5leHQiL
 ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "3028655")
 
 
+class RiskViolationError(RuntimeError):
+    """Raised when an order request violates FundedNext risk, concurrency (max 2), or duplicate asset rules."""
+    pass
+
+
 class CTraderMCPClient:
     def __init__(self, token: Optional[str] = None, url: Optional[str] = None):
         self.url = url or DEFAULT_URL
@@ -198,15 +203,26 @@ class CTraderMCPClient:
             }
         return None
 
-    def get_positions(self) -> List[dict]:
+    def get_positions_strict(self) -> Optional[List[dict]]:
         """
-        Returns list of active open positions.
+        Returns list of active open positions directly from broker.
+        Returns None if MCP call fails, times out, or error response occurs (Fail-Closed semantics).
         """
         raw = self.call_tool("get_positions")
+        if not raw or (isinstance(raw, dict) and raw.get("isError")):
+            return None
         data = self._parse_content_json(raw)
         if data and isinstance(data, dict) and "positions" in data:
             return data["positions"]
-        return []
+        return None
+
+    def get_positions(self) -> List[dict]:
+        """
+        Returns list of active open positions (empty list on failure for legacy compatibility).
+        For risk checks, use get_positions_strict() to avoid fail-open assumptions.
+        """
+        res = self.get_positions_strict()
+        return res if res is not None else []
 
     def get_enriched_positions(self) -> List[dict]:
         """
@@ -328,14 +344,54 @@ class CTraderMCPClient:
                            relative_tp_points: Optional[int] = None,
                            stop_loss_price: Optional[float] = None,
                            take_profit_price: Optional[float] = None,
-                           comment: str = "AgentQuant Scalper") -> Optional[dict]:
+                           comment: str = "AgentQuant Scalper",
+                           bypass_concurrency_check: bool = False) -> Optional[dict]:
         """
-        Places a market order.
+        Places a market order with strict broker-level 2-trade concurrency ceiling
+        and duplicate asset protection.
         volume = lots * lotSize * 100
         For indices (SPX500, NDX100): lotSize = 1 -> volume = lots * 100
         For metals (XAUUSD): lotSize = 100 -> volume = lots * 10000
         For forex: lotSize = 100000 -> volume = lots * 10000000
         """
+        # ── HARD BROKER-LEVEL CONCURRENCY & DUPLICATE CHOKE POINT ──
+        if not bypass_concurrency_check:
+            live_positions = self.get_positions_strict()
+            if live_positions is None:
+                raise RiskViolationError(
+                    "CRITICAL: Cannot verify broker positions (telemetry offline/unreachable). "
+                    "Order rejected to prevent over-concurrency."
+                )
+
+            MAX_ALLOWED_CONCURRENT = 2
+            if len(live_positions) >= MAX_ALLOWED_CONCURRENT:
+                raise RiskViolationError(
+                    f"CONCURRENCY VIOLATION: Cannot open {symbol}. Account already has "
+                    f"{len(live_positions)}/{MAX_ALLOWED_CONCURRENT} active positions."
+                )
+
+            s_map = self.get_symbol_map()
+            target_sym_id = s_map.get(symbol.upper())
+            for p in live_positions:
+                p_sym_id = p.get("symbolId")
+                p_sym_name = str(p.get("symbolName", "")).upper() if p.get("symbolName") else None
+                if (target_sym_id and p_sym_id == target_sym_id) or (p_sym_name and p_sym_name == symbol.upper()):
+                    raise RiskViolationError(
+                        f"DUPLICATE ASSET VIOLATION: Symbol {symbol} is already held in active position #{p.get('positionId')}."
+                    )
+
+        # ── ASSET PRICE SANITY CHECK (PREVENTS ETF vs CFD CONFUSION) ──
+        sym_upper = symbol.upper()
+        if "XAU" in sym_upper or "GOLD" in sym_upper:
+            if stop_loss_price is not None and stop_loss_price < 1000.0:
+                raise RiskViolationError(
+                    f"INVALID PRICE FOR {symbol}: SL ${stop_loss_price} appears to be ETF price, not Spot Gold price (> $1000)."
+                )
+            if take_profit_price is not None and take_profit_price < 1000.0:
+                raise RiskViolationError(
+                    f"INVALID PRICE FOR {symbol}: TP ${take_profit_price} appears to be ETF price, not Spot Gold price (> $1000)."
+                )
+
         s_map = self.get_symbol_map()
         sym_id = s_map.get(symbol.upper())
         if not sym_id:
@@ -384,11 +440,23 @@ class CTraderMCPClient:
 
     def close_position(self, position_id: int, volume: Optional[int] = None) -> Optional[dict]:
         """
-        Closes an open position. If volume is None, closes completely.
+        Closes an open position. If volume is None, closes completely by querying current position volume.
         """
-        args = {"positionId": position_id}
-        if volume:
-            args["volume"] = volume
+        if volume is None:
+            # cTrader remote MCP requires volume. Look up current position volume.
+            positions = self.get_positions()
+            for p in positions:
+                if p.get("positionId") == position_id:
+                    volume = p.get("volume")
+                    break
+            if volume is None:
+                raw_det = self.call_tool("get_position_details", {"positionId": position_id})
+                data_det = self._parse_content_json(raw_det)
+                if data_det and isinstance(data_det, dict):
+                    pos_obj = data_det.get("position", data_det)
+                    volume = pos_obj.get("volume")
+
+        args = {"positionId": position_id, "volume": volume if volume is not None else 100}
         raw = self.call_tool("close_position", args)
         return self._parse_content_json(raw)
 

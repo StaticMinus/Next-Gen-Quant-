@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  telegram-ai-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "src.integrations.telegram_bot_service"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./cache:/app/cache
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1

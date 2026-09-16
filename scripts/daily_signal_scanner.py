@@ -34,7 +34,9 @@ from src.data.ingest import fetch_ohlcv_data
 from src.strategies.scalper import ScalperStrategy
 from src.backtest.runner import _get_close
 from src.integrations.risk_guardian import guardian
-from src.integrations.ctrader_mcp_client import CTraderMCPClient
+from src.integrations.ctrader_mcp_client import CTraderMCPClient, RiskViolationError
+
+MAX_CONCURRENT_POSITIONS = 2
 
 
 def scan_live_signals():
@@ -160,21 +162,26 @@ def scan_live_signals():
 
         if latest_sig == 1:
             if not existing_pos:
-                status = "🚨 NEW BUY SIGNAL (ENTRY REQUIRED)"
-                action = f"BUY {lots} lots {csym} at Market. Target: ${live_exec_p * (1 + target_pct):.2f} | Stop: ${live_exec_p * (1 - stop_pct):.2f} (-3%)"
-                signals_found.append((ticker, csym, "NEW BUY", live_exec_p, live_exec_p * (1 + target_pct), live_exec_p * (1 - stop_pct)))
+                current_total = len(open_positions) + sum(1 for ex in executions_planned if ex["action"] == "BUY")
+                if current_total >= MAX_CONCURRENT_POSITIONS:
+                    status = "⚠️ CAPACITY REACHED (MAX 2 TRADES)"
+                    action = f"Dip buy setup on {csym}, but portfolio is at max capacity ({MAX_CONCURRENT_POSITIONS} positions). Standing by."
+                else:
+                    status = "🚨 NEW BUY SIGNAL (ENTRY REQUIRED)"
+                    action = f"BUY {lots} lots {csym} at Market. Target: ${live_exec_p * (1 + target_pct):.2f} | Stop: ${live_exec_p * (1 - stop_pct):.2f} (-3%)"
+                    signals_found.append((ticker, csym, "NEW BUY", live_exec_p, live_exec_p * (1 + target_pct), live_exec_p * (1 - stop_pct)))
 
-                executions_planned.append({
-                    "action": "BUY",
-                    "symbol": csym,
-                    "ticker": ticker,
-                    "lots": lots,
-                    "price": live_exec_p,
-                    "tp": live_exec_p * (1 + target_pct),
-                    "sl": live_exec_p * (1 - stop_pct),
-                    "sl_points": sl_points,
-                    "tp_points": tp_points
-                })
+                    executions_planned.append({
+                        "action": "BUY",
+                        "symbol": csym,
+                        "ticker": ticker,
+                        "lots": lots,
+                        "price": live_exec_p,
+                        "tp": live_exec_p * (1 + target_pct),
+                        "sl": live_exec_p * (1 - stop_pct),
+                        "sl_points": sl_points,
+                        "tp_points": tp_points
+                    })
             else:
                 status = "HOLDING LONG POSITION"
                 action = f"Hold active position #{existing_pos[0].get('positionId')}. Target: ${live_exec_p * (1 + target_pct):.2f}."
@@ -280,6 +287,8 @@ def scan_live_signals():
                             "⚡ <i>Sub-50ms fill speed via cTrader Remote MCP</i>"
                         )
                         execution_messages.append(ticket_msg)
+                    except RiskViolationError as rve:
+                        print(f"  🛡️ [RISK GUARDIAN BLOCK] Order submission rejected: {rve}")
                     except Exception as e:
                         print(f"  [!] Order submission failed: {e}")
                 elif ex["action"] == "CLOSE":

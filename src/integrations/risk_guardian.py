@@ -10,6 +10,7 @@ AgentQuant Autonomous Risk Guardian & Emergency Kill Switch
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 STATE_FILE = Path("cache/risk_guardian_state.json")
 
@@ -21,6 +22,7 @@ DEFAULT_STATE = {
     "trailing_max_drawdown": 2000.0,
     "warning_threshold": 750.0,
     "daily_loss_cap": 1000.0,
+    "max_concurrent_positions": 2,
     "total_capital": 50000.0,
 }
 
@@ -99,11 +101,14 @@ class RiskGuardian:
             return STRATEGY_MODES[mode]
         return STRATEGY_MODES["balanced"]
 
-    def evaluate_risk(self, equity: float, balance: float) -> dict:
+    def evaluate_risk(self, equity: float, balance: float, open_positions_count: Optional[int] = None) -> dict:
         dd_dollars = max(0.0, balance - equity)
         buffer_left = self.state["trailing_max_drawdown"] - dd_dollars
         is_warning = dd_dollars >= self.state["warning_threshold"]
         is_breach = dd_dollars >= self.state["trailing_max_drawdown"]
+        
+        max_pos = self.state.get("max_concurrent_positions", 2)
+        concurrency_breach = open_positions_count is not None and open_positions_count > max_pos
 
         if is_breach and not self.state["trading_halted"]:
             self.trigger_kill_switch(reason="Drawdown Barrier Approached")
@@ -114,6 +119,9 @@ class RiskGuardian:
             "buffer_left": max(0.0, buffer_left),
             "is_warning": is_warning,
             "is_breach": is_breach,
+            "concurrency_breach": concurrency_breach,
+            "open_positions_count": open_positions_count,
+            "max_concurrent_positions": max_pos,
             "is_halted": self.state["trading_halted"],
             "active_mode": self.state["active_mode"],
         }

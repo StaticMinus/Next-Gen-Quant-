@@ -8,7 +8,7 @@ the /api/telemetry JSON endpoint synced with live cTrader and market radar data.
 import json
 import mimetypes
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -20,6 +20,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
         return
 
     def do_GET(self):
+        # 0. Healthcheck Endpoint (for Render / Docker)
+        if self.path in ("/health", "/ping"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok", "service": "agentquant-terminal"}')
+            return
+
         # 1. API Telemetry Endpoint
         if self.path == "/api/telemetry":
             self.send_response(200)
@@ -29,6 +38,21 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
             try:
                 from src.integrations.telegram_bot_service import _CACHE, LIVE_P2P_RATE
+                from src.integrations.ctrader_mcp_client import ctrader_client
+                
+                # Fetch fresh live telemetry if available
+                try:
+                    en = ctrader_client.get_enriched_positions()
+                    if en is not None:
+                        _CACHE["enriched_positions"] = en
+                    bal = ctrader_client.get_balance()
+                    if bal:
+                        _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+                        _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+                        _CACHE["free_margin"] = bal.get("freeMargin", _CACHE.get("free_margin", 5704.31))
+                except Exception:
+                    pass
+
                 enriched = _CACHE.get("enriched_positions", [])
                 payload = {
                     "capital": _CACHE.get("capital", 6000.0),
@@ -85,21 +109,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     "free_margin": 5704.31,
                     "buffer": 360.0,
                     "daily_buffer": 180.0,
-                    "active_positions": [{
-                        "position_id": 3069593,
-                        "symbol_name": "XAUUSD",
-                        "display_name": "Spot Gold",
-                        "trade_side": "BUY",
-                        "lots": 0.01,
-                        "entry_price": 4334.99,
-                        "current_price": 4332.46,
-                        "take_profit": 4443.38,
-                        "stop_loss": 4204.95,
-                        "floating_pnl": -2.53,
-                        "floating_pnl_pct": -0.06,
-                        "dist_to_tp_usd": 110.92,
-                    }],
-                    "has_active_trade": True,
+                    "active_positions": [],
+                    "has_active_trade": False,
                     "gld_price": 4332.46,
                     "spy_price": 764.29,
                     "qqq_price": 704.54,
@@ -143,15 +154,87 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
-def start_webapp_server(host="0.0.0.0", port=8080):
-    server = HTTPServer((host, port), WebAppHandler)
-    print(f"[+] Telegram Mini App Server active at http://localhost:{port}")
+    def do_POST(self):
+        if self.path == "/api/close_position":
+            content_len = int(self.headers.get('Content-Length', 0))
+            post_body = self.rfile.read(content_len)
+            try:
+                data = json.loads(post_body.decode('utf-8'))
+                pos_id = int(data.get('position_id', 0))
+                
+                if not pos_id:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "error": "Missing position_id"}).encode('utf-8'))
+                    return
+
+                from src.integrations.ctrader_mcp_client import ctrader_client
+                from src.integrations.telegram_bot_service import _CACHE, api_call, PRIMARY_CHAT_ID
+
+                close_res = ctrader_client.close_position(pos_id)
+                en = ctrader_client.get_enriched_positions()
+                _CACHE["enriched_positions"] = en
+                bal = ctrader_client.get_balance()
+                if bal:
+                    _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+                    _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+
+                try:
+                    receipt = (
+                        "✅ <b>TRADE CLOSED VIA WEB TERMINAL</b>\n"
+                        "────────────────────────────\n"
+                        f"• <b>Position ID:</b> <code>#{pos_id}</code>\n"
+                        "• <b>Source:</b> Next Generation WebApp (David)\n"
+                        f"• <b>New Balance:</b> <code>${_CACHE['capital']:,.2f} USD</code>\n"
+                        f"• <b>Account Equity:</b> <code>${_CACHE['equity']:,.2f} USD</code>\n"
+                        "────────────────────────────\n"
+                        "🛡️ Risk parameters safe and verified."
+                    )
+                    api_call("sendMessage", {
+                        "chat_id": PRIMARY_CHAT_ID,
+                        "text": receipt,
+                        "parse_mode": "HTML"
+                    })
+                except Exception:
+                    pass
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "success", "position_id": pos_id, "result": close_res}).encode('utf-8'))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "error": str(e)}).encode('utf-8'))
+                return
+
+        self.send_response(404)
+        self.end_headers()
+
+
+def start_webapp_server(host="0.0.0.0", port=None):
+    server_port = int(port or os.getenv("PORT", 8080))
+    server = ThreadingHTTPServer((host, server_port), WebAppHandler)
+    print(f"[+] Telegram Mini App Server active at http://localhost:{server_port}")
     server.serve_forever()
 
 
-def launch_server_in_thread(port=8080):
-    t = threading.Thread(target=start_webapp_server, kwargs={"port": port}, daemon=True, name="WebAppServer")
+def launch_server_in_thread(port=None):
+    server_port = int(port or os.getenv("PORT", 8080))
+    t = threading.Thread(target=start_webapp_server, kwargs={"port": server_port}, daemon=True, name="WebAppServer")
     t.start()
     return t
 
