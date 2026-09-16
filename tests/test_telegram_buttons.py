@@ -13,12 +13,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.integrations.telegram_bot_service import (
+    add_authorized_user,
     get_balance_markup,
+    get_broadcast_chat_ids,
     get_history_markup,
     get_main_menu_markup,
     get_persistent_bottom_keyboard,
     get_radar_markup,
     get_tracker_markup,
+    is_authorized_user,
+    load_authorized_users,
+    remove_authorized_user,
     render_balance_text,
     render_history_7d_text,
     render_history_14d_text,
@@ -142,6 +147,31 @@ class TestTelegramTerminalButtons(unittest.TestCase):
 
         b9 = generate_milestone_progress_card(6000.0, 600.0, 109.72, 1518.40)
         self.assertTrue(len(b9.getvalue()) > 5000, "Milestone progress card too small")
+
+    def test_partner_authorization_suite(self):
+        """Verify multi-user partner authorization, storage, and retrieval."""
+        # Initial state should include primary user David (8428715579)
+        users = load_authorized_users()
+        self.assertIn("8428715579", users)
+        self.assertTrue(is_authorized_user("8428715579"))
+
+        # Add partner Cha Cha
+        test_chacha_id = "9988776655"
+        self.assertFalse(is_authorized_user(test_chacha_id))
+        self.assertTrue(add_authorized_user(test_chacha_id, name="Cha Cha", role="partner"))
+        self.assertTrue(is_authorized_user(test_chacha_id))
+
+        # Check broadcast list includes Cha Cha
+        broadcast_list = get_broadcast_chat_ids()
+        self.assertIn(test_chacha_id, broadcast_list)
+        self.assertIn("8428715579", broadcast_list)
+
+        # Cleanup / remove partner
+        self.assertTrue(remove_authorized_user(test_chacha_id))
+        self.assertFalse(is_authorized_user(test_chacha_id))
+        # Primary user cannot be removed
+        self.assertFalse(remove_authorized_user("8428715579"))
+        self.assertTrue(is_authorized_user("8428715579"))
 
 
 if __name__ == "__main__":

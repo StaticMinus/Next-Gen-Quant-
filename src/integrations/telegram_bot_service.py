@@ -14,6 +14,7 @@ AgentQuant Next-Gen Mobile Command Terminal (v5.1)
 - Strict Master User Authentication (ID: 8428715579)
 """
 
+import json
 import os
 import random
 import re
@@ -54,10 +55,75 @@ if hasattr(sys.stdout, "reconfigure"):
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
+PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
+ALLOWED_CHAT_ID = PRIMARY_CHAT_ID  # Legacy alias for backward compatibility
+AUTHORIZED_USERS_FILE = Path("cache/authorized_users.json")
 API_BASE = f"https://api.telegram.org/bot{TOKEN}"
 LIVE_P2P_RATE = 1518.40  # Dynamic Binance P2P USDT/NGN Benchmark
 WALLET_FILE = Path("cache/user_wallet.txt")
+
+
+def load_authorized_users() -> dict:
+    """Loads authorized users dictionary: {chat_id: {'name': str, 'role': str}}."""
+    users = {PRIMARY_CHAT_ID: {"name": "David (Primary)", "role": "owner"}}
+    env_extra = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+    if env_extra:
+        for uid in env_extra.split(","):
+            uid = uid.strip()
+            if uid and uid not in users:
+                users[uid] = {"name": "Partner", "role": "partner"}
+    if AUTHORIZED_USERS_FILE.exists():
+        try:
+            data = json.loads(AUTHORIZED_USERS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                users.update(data)
+        except Exception:
+            pass
+    return users
+
+
+def save_authorized_users(users: dict):
+    """Saves authorized users to disk cache."""
+    try:
+        AUTHORIZED_USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        AUTHORIZED_USERS_FILE.write_text(json.dumps(users, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"[!] Error saving authorized users: {e}")
+
+
+def add_authorized_user(chat_id: str, name: str = "Cha Cha", role: str = "partner") -> bool:
+    """Adds a new authorized partner."""
+    cid_str = str(chat_id).strip()
+    if not cid_str:
+        return False
+    users = load_authorized_users()
+    users[cid_str] = {"name": name.strip(), "role": role}
+    save_authorized_users(users)
+    return True
+
+
+def remove_authorized_user(chat_id: str) -> bool:
+    """Removes an authorized partner (cannot remove primary owner)."""
+    cid_str = str(chat_id).strip()
+    if cid_str == PRIMARY_CHAT_ID:
+        return False
+    users = load_authorized_users()
+    if cid_str in users:
+        del users[cid_str]
+        save_authorized_users(users)
+        return True
+    return False
+
+
+def is_authorized_user(user_id: str, chat_id: str = None) -> bool:
+    """Checks if a Telegram user_id or chat_id is authorized."""
+    users = load_authorized_users()
+    return str(user_id) in users or (chat_id is not None and str(chat_id) in users)
+
+
+def get_broadcast_chat_ids() -> list:
+    """Returns all authorized chat IDs that should receive daily briefings & trade alerts."""
+    return list(load_authorized_users().keys())
 
 
 def load_user_wallet() -> str:
@@ -387,13 +453,14 @@ def check_and_dispatch_autonomous_alerts():
                         [{"text": "📡 Live Market Radar", "callback_data": "cmd_signals"}, {"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
                     ]
                 }
-                res = api_call("sendMessage", {
-                    "chat_id": ALLOWED_CHAT_ID,
-                    "text": msg,
-                    "parse_mode": "HTML",
-                    "reply_markup": markup
-                })
-                print(f"[+] Dispatched autonomous alert for {s['ticker']} ({s['strategy']}) to Telegram: ok={res.get('ok', False)}")
+                for cid in get_broadcast_chat_ids():
+                    api_call("sendMessage", {
+                        "chat_id": cid,
+                        "text": msg,
+                        "parse_mode": "HTML",
+                        "reply_markup": markup
+                    })
+                print(f"[+] Dispatched autonomous alert for {s['ticker']} ({s['strategy']}) to {len(get_broadcast_chat_ids())} chat(s)")
     except Exception as e:
         print(f"[!] Autonomous alerting engine exception: {e}")
 
@@ -408,7 +475,7 @@ _DISPATCHED_ROUTINES = {
 def check_and_dispatch_scheduled_briefings():
     """
     Checks current WAT time and dispatches Morning Briefing (8:30–9:15 WAT)
-    and Nightly Wrap-Up (21:30–22:15 WAT) once per calendar day.
+    and Nightly Wrap-Up (21:30–22:15 WAT) once per calendar day to all partners.
     """
     try:
         now = datetime.now()
@@ -420,32 +487,34 @@ def check_and_dispatch_scheduled_briefings():
         if hour == 8 and minute >= 30 and _DISPATCHED_ROUTINES["morning_date"] != today_str:
             _DISPATCHED_ROUTINES["morning_date"] = today_str
             text = render_morning_briefing_text()
-            api_call("sendMessage", {
-                "chat_id": ALLOWED_CHAT_ID,
-                "text": text,
-                "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup()
-            })
-            print(f"[+] Dispatched scheduled Morning Briefing for {today_str}")
+            for cid in get_broadcast_chat_ids():
+                api_call("sendMessage", {
+                    "chat_id": cid,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_main_menu_markup()
+                })
+            print(f"[+] Dispatched scheduled Morning Briefing for {today_str} to {len(get_broadcast_chat_ids())} chat(s)")
 
         # Nightly Wrap-Up: 21:30 to 22:15 WAT (after 21:00 regular US market close)
         if hour == 21 and minute >= 30 and _DISPATCHED_ROUTINES["nightly_date"] != today_str:
             _DISPATCHED_ROUTINES["nightly_date"] = today_str
             text = render_nightly_summary_text()
-            api_call("sendMessage", {
-                "chat_id": ALLOWED_CHAT_ID,
-                "text": text,
-                "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup()
-            })
-            print(f"[+] Dispatched scheduled Nightly Summary for {today_str}")
+            for cid in get_broadcast_chat_ids():
+                api_call("sendMessage", {
+                    "chat_id": cid,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_main_menu_markup()
+                })
+            print(f"[+] Dispatched scheduled Nightly Summary for {today_str} to {len(get_broadcast_chat_ids())} chat(s)")
     except Exception as e:
         print(f"[!] Scheduled briefings dispatch error: {e}")
 
 
 def check_and_dispatch_milestone_alerts():
     """
-    Monitors account equity and sends celebration card when passing 25%, 50%, 75%, 100% of $600 target.
+    Monitors account equity and sends celebration card to all partners when passing 25%, 50%, 75%, 100% of $600 target.
     """
     try:
         eq = _CACHE.get("equity", 6000.0)
@@ -461,13 +530,14 @@ def check_and_dispatch_milestone_alerts():
         for m_id, m_target, m_msg in milestones:
             if profit >= m_target and m_id not in _DISPATCHED_ROUTINES["milestones"]:
                 _DISPATCHED_ROUTINES["milestones"].add(m_id)
-                api_call("sendMessage", {
-                    "chat_id": ALLOWED_CHAT_ID,
-                    "text": m_msg,
-                    "parse_mode": "HTML"
-                })
-                async_send_milestone_card(ALLOWED_CHAT_ID)
-                print(f"[+] Dispatched celebration card for Milestone {m_id}%")
+                for cid in get_broadcast_chat_ids():
+                    api_call("sendMessage", {
+                        "chat_id": cid,
+                        "text": m_msg,
+                        "parse_mode": "HTML"
+                    })
+                    async_send_milestone_card(cid)
+                print(f"[+] Dispatched celebration card for Milestone {m_id}% to {len(get_broadcast_chat_ids())} chat(s)")
     except Exception as e:
         print(f"[!] Milestone alert check error: {e}")
 
@@ -707,7 +777,9 @@ def register_bot_commands():
         {"command": "nightly", "description": "🌙 Nightly Market Summary of Trades"},
         {"command": "milestone", "description": "🏆 Challenge Milestone Progress Card"},
         {"command": "wallet", "description": "💳 View linked Payout Wallet"},
-        {"command": "setwallet", "description": "🔗 Link your Binance TRC20 Wallet"}
+        {"command": "setwallet", "description": "🔗 Link your Binance TRC20 Wallet"},
+        {"command": "users", "description": "👥 View authorized partners (Cha Cha)"},
+        {"command": "adduser", "description": "➕ Authorize partner ID (e.g. /adduser <id>)"}
     ]
     res = api_call("setMyCommands", {"commands": commands})
     print("[+] Bot commands registered with Telegram:", res.get("ok", False))
@@ -1676,8 +1748,52 @@ def handle_update(update: dict):
         chat_id = msg.get("chat", {}).get("id")
         user_id = str(cq.get("from", {}).get("id", ""))
 
-        if ALLOWED_CHAT_ID and user_id != ALLOWED_CHAT_ID and str(chat_id) != ALLOWED_CHAT_ID:
+        if not is_authorized_user(user_id, str(chat_id)):
             ack_callback(cq_id, "🔒 Unauthorized.")
+            return
+
+        # Handle Partner Approval by Primary (David)
+        if data.startswith("cmd_approve_"):
+            if user_id != PRIMARY_CHAT_ID:
+                ack_callback(cq_id, "🔒 Only David can approve partners.")
+                return
+            parts = data.split("_", 3)
+            target_uid = parts[2]
+            target_name = parts[3] if len(parts) > 3 else "Cha Cha"
+            add_authorized_user(target_uid, name=target_name, role="partner")
+            ack_callback(cq_id, f"✅ {target_name} Approved!")
+            api_call("sendMessage", {
+                "chat_id": PRIMARY_CHAT_ID,
+                "text": (
+                    f"✅ <b>Partner Authorized: {target_name}</b>\n"
+                    "────────────────────────────\n"
+                    f"• Telegram ID: <code>{target_uid}</code>\n"
+                    f"• Status: 🟢 <b>Active Partner</b>\n\n"
+                    f"<b>{target_name}</b> will now receive all morning briefings, nightly trade summaries, "
+                    "milestone celebration cards, and dip opportunity alerts simultaneously with you!"
+                ),
+                "parse_mode": "HTML"
+            })
+            api_call("sendMessage", {
+                "chat_id": target_uid,
+                "text": (
+                    f"🎉 <b>Welcome {target_name}! You are now authorized on AgentQuant.</b>\n"
+                    "────────────────────────────\n"
+                    "You are now connected to David's live trading portfolio.\n\n"
+                    "• <b>What you will receive automatically:</b>\n"
+                    "  🌅 8:30 AM WAT — Morning Market Briefings\n"
+                    "  🌙 9:30 PM WAT — Nightly Trade Summaries\n"
+                    "  🏆 Milestone Celebration Cards ($150, $300, $450, $600)\n"
+                    "  🚨 Real-time Dip Opportunity Alerts\n\n"
+                    "You can also tap any of the buttons below to check live trades or ask our AI Coach any questions!"
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_persistent_bottom_keyboard()
+            })
+            return
+
+        if data == "cmd_ignore":
+            ack_callback(cq_id, "Request dismissed.")
             return
 
         ack_callback(cq_id)
@@ -1972,10 +2088,145 @@ def handle_update(update: dict):
         if not text:
             return
 
-        if ALLOWED_CHAT_ID and user_id != ALLOWED_CHAT_ID and str(chat_id) != ALLOWED_CHAT_ID:
+        raw_text = m.get("text", "").strip()
+
+        if not is_authorized_user(user_id, str(chat_id)):
+            sender_name = m.get("from", {}).get("first_name", "Cha Cha")
+            username = m.get("from", {}).get("username", "")
+            user_tag = f"@{username}" if username else sender_name
+
+            # 1. Inform the partner (Cha Cha)
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": "🔒 <b>Access Denied:</b> This terminal is locked to the primary authorized trader.",
+                "text": (
+                    f"👋 <b>Hello {sender_name}! Welcome to AgentQuant Terminal.</b>\n"
+                    "────────────────────────────\n"
+                    "🔒 <b>Partner Authorization:</b>\n"
+                    "This automated trading terminal is connected to David's live FundedNext account.\n\n"
+                    f"• <b>Your Telegram User ID:</b> <code>{user_id}</code>\n\n"
+                    "An instant authorization request has been sent to David. "
+                    "As soon as David approves, you will immediately receive all trade updates, "
+                    "morning market briefings, and milestone celebration cards!"
+                ),
+                "parse_mode": "HTML"
+            })
+
+            # 2. Notify David with a 1-tap Approve button
+            approve_markup = {
+                "inline_keyboard": [
+                    [{"text": f"✅ Approve {sender_name}", "callback_data": f"cmd_approve_{user_id}_{sender_name[:12]}"}],
+                    [{"text": "❌ Ignore", "callback_data": "cmd_ignore"}]
+                ]
+            }
+            api_call("sendMessage", {
+                "chat_id": PRIMARY_CHAT_ID,
+                "text": (
+                    f"🔔 <b>New Partner Access Request</b>\n"
+                    "────────────────────────────\n"
+                    f"• <b>Name:</b> {sender_name} ({user_tag})\n"
+                    f"• <b>Telegram User ID:</b> <code>{user_id}</code>\n\n"
+                    f"Would you like to authorize <b>{sender_name}</b> (Cha Cha) so she can view updates, morning briefings, and milestone cards?"
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": approve_markup
+            })
+            return
+
+        # /adduser <chat_id> [name] — Add partner manually
+        if raw_text.lower().startswith("/adduser"):
+            if user_id != PRIMARY_CHAT_ID:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "🔒 Only David can add partners.",
+                    "parse_mode": "HTML"
+                })
+                return
+            parts = raw_text.split(maxsplit=2)
+            if len(parts) < 2 or not parts[1].strip():
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "⚠️ <b>Usage:</b> <code>/adduser &lt;telegram_id&gt; [name]</code>\n\nExample: <code>/adduser 123456789 Cha Cha</code>",
+                    "parse_mode": "HTML"
+                })
+                return
+            new_uid = parts[1].strip()
+            new_name = parts[2].strip() if len(parts) > 2 else "Cha Cha"
+            add_authorized_user(new_uid, name=new_name, role="partner")
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    f"✅ <b>Partner Added Successfully!</b>\n"
+                    "────────────────────────────\n"
+                    f"• <b>Name:</b> {new_name}\n"
+                    f"• <b>Telegram ID:</b> <code>{new_uid}</code>\n\n"
+                    f"<b>{new_name}</b> is now authorized and will receive all automated briefings and trade alerts."
+                ),
+                "parse_mode": "HTML"
+            })
+            try:
+                api_call("sendMessage", {
+                    "chat_id": new_uid,
+                    "text": (
+                        f"🎉 <b>Welcome {new_name}! You have been added to AgentQuant.</b>\n"
+                        "────────────────────────────\n"
+                        "David has authorized your account. You will now receive all morning market briefings, "
+                        "nightly trade summaries, milestone celebration cards, and dip buy alerts!\n\n"
+                        "Tap any button below to explore:"
+                    ),
+                    "parse_mode": "HTML",
+                    "reply_markup": get_persistent_bottom_keyboard()
+                })
+            except Exception:
+                pass
+            return
+
+        # /removeuser <chat_id> — Remove partner
+        if raw_text.lower().startswith("/removeuser"):
+            if user_id != PRIMARY_CHAT_ID:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "🔒 Only David can remove partners.",
+                    "parse_mode": "HTML"
+                })
+                return
+            parts = raw_text.split(maxsplit=1)
+            if len(parts) < 2:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "⚠️ <b>Usage:</b> <code>/removeuser &lt;telegram_id&gt;</code>",
+                    "parse_mode": "HTML"
+                })
+                return
+            rem_uid = parts[1].strip()
+            if remove_authorized_user(rem_uid):
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"✅ Partner ID <code>{rem_uid}</code> removed from authorized list.",
+                    "parse_mode": "HTML"
+                })
+            else:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"❌ Could not remove ID <code>{rem_uid}</code> (not found or primary owner).",
+                    "parse_mode": "HTML"
+                })
+            return
+
+        # /users or /partners — List all authorized users
+        if any(cmd in text for cmd in ["/users", "/partners", "show users", "list partners"]):
+            users = load_authorized_users()
+            u_lines = []
+            for uid, info in users.items():
+                u_lines.append(f"• <b>{info.get('name', 'Partner')}</b> (ID: <code>{uid}</code>) — {info.get('role', 'partner').title()}")
+            u_text = "\n".join(u_lines)
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "👥 <b>Authorized Terminal Partners</b>\n"
+                    "────────────────────────────\n"
+                    f"{u_text}\n\n"
+                    "💡 <i>All authorized partners receive morning briefings, nightly summaries, and celebration cards.</i>"
+                ),
                 "parse_mode": "HTML"
             })
             return
@@ -2279,9 +2530,10 @@ def run_polling():
     print("=" * 65)
     print("   AGENTQUANT TERMINAL (v5.2) — SUB-20MS ULTRA-SPEED DUAL-MODE")
     print("=" * 65)
-    print(f"Target Chat ID: {ALLOWED_CHAT_ID}")
-    print("Features: Async Worker Pool, Keep-Alive Pooling, Instant Dispatch")
-    print("Status: 100% Dialed In & Cooking | Sub-20ms latency active")
+    print(f"Primary Chat ID: {PRIMARY_CHAT_ID}")
+    print(f"Authorized Partners: {list(load_authorized_users().keys())}")
+    print("Features: Async Worker Pool, Multi-User Dispatch, Keep-Alive Pooling")
+    print("Status: 100% Dialed In & Cooking | Multi-Partner Sync Active")
 
     register_bot_commands()
 
