@@ -199,7 +199,7 @@ def async_send_ai_reply(chat_id, user_text: str):
     try:
         # Show "typing..." status in Telegram while inference is running
         api_call("sendChatAction", {"chat_id": chat_id, "action": "typing"})
-        reply = ask_ai_coach(chat_id, user_text)
+        reply = ask_ai_coach(chat_id, user_text, account_telemetry=_CACHE)
 
         # Send message with persistent bottom keyboard so user can easily keep navigating
         res = api_call("sendMessage", {

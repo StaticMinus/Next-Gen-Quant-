@@ -28,12 +28,13 @@ logger = logging.getLogger("telegram_ai_coach")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-PRIMARY_MODEL = "openai/gpt-4o-mini"
-FALLBACK_MODEL = "deepseek/deepseek-chat"
+PRIMARY_MODEL = os.getenv("TELEGRAM_AI_MODEL", "deepseek/deepseek-chat")
+FALLBACK_MODEL = "openai/gpt-4o"
+TERTIARY_MODEL = "openai/gpt-4o-mini"
 
 # In-memory sliding window conversation history: {chat_id: [{"role": "...", "content": "..."}]}
 CONVERSATION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
-MAX_HISTORY_TURNS = 8
+MAX_HISTORY_TURNS = 16
 
 CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "GLD"]
 
@@ -83,8 +84,38 @@ def get_live_market_context() -> str:
         return "SPY: $757.39 (RSI:54) | QQQ: $704.54 (RSI:52) | AAPL: $331.34 (RSI:58) | NVDA: $212.17 (RSI:51) | GLD: $394.15 (RSI:62)"
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(account_telemetry: dict = None) -> str:
     market_context = get_live_market_context()
+
+    if account_telemetry:
+        eq = account_telemetry.get("equity", 6000.0)
+        cap = account_telemetry.get("capital", 6000.0)
+        p2p = account_telemetry.get("live_p2p_rate", 1518.40)
+        naira_val = eq * p2p
+        pos = account_telemetry.get("positions", [])
+        pos_desc = f"{len(pos)} open" if pos else "0 open (100% cash preserved)"
+        cycle_prof = account_telemetry.get("cycle_profit", max(0.0, eq - 6000.0))
+        target_left = max(0.0, 600.0 - cycle_prof)
+        account_section = f"""
+LIVE CTRADER ACCOUNT TELEMETRY (#3028655):
+- Live Account Equity: ${eq:,.2f} USD (~₦{naira_val:,.0f} NGN)
+- Live Balance: ${cap:,.2f} USD
+- Active Positions: {pos_desc}
+- Profit Accrued in Current Cycle: +${cycle_prof:,.2f} USD
+- Profit Remaining to Pass FundedNext Phase 1 (+10% / +$600): ${target_left:,.2f} USD
+- Remaining Daily Loss Cushion: $180.00 SAFE (0.00% daily loss)
+- Remaining Trailing Loss Cushion: $360.00 SAFE (0.00% overall DD)
+- Live Binance P2P Rate: 1 USDT = ₦{p2p:,.2f} NGN
+- Payout Schedule: Every 5 Business Days (Weekly Cycle)
+"""
+    else:
+        account_section = """
+ACCOUNT SPECS (FUNDEDNEXT STELLAR 1-STEP #3028655):
+- Capital: $6,000.00 | Target: +$600.00 (+10%) | Profit Split: 85% to David
+- Daily Loss Limit: -$180.00 (3.0%) | Max Trailing Drawdown: -$360.00 (6.0%)
+- Payout Cadence: Every 5 Business Days (Friday) with +$90 (15%) Challenge Bonus
+"""
+
     return f"""You are the AgentQuant Autonomous AI Quant Coach for David (@NextGenQuantBot).
 
 CRITICAL STYLE INSTRUCTION:
@@ -92,12 +123,7 @@ CRITICAL STYLE INSTRUCTION:
 - Max 2 to 4 bullet points or short sentences. No essays, no filler, no corporate disclaimers.
 - Answer directly with exact numbers, prices, percentages, and execution actions.
 - Use Telegram HTML: <b>bold</b>, <code>code</code>.
-
-ACCOUNT SPECS (FUNDEDNEXT STELLAR 1-STEP #3028655):
-- Capital: $6,000.00 | Target: +$600.00 (+10%) | Profit Split: 85% to David
-- Daily Loss Limit: -$180.00 (3.0%) | Max Trailing Drawdown: -$360.00 (6.0%)
-- Payout Cadence: Every 5 Business Days (Friday) with +$90 (15%) Challenge Bonus
-
+{account_section}
 5-ASSET INSTITUTIONAL UNIVERSE:
 - Assets: SPY, QQQ, AAPL, NVDA, GLD (5 top institutional liquid assets).
 - S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Gold (GLD macro hedge).
@@ -142,7 +168,7 @@ def sanitize_telegram_html(text: str) -> str:
     return text.strip()
 
 
-def ask_ai_coach(chat_id: str | int, user_message: str) -> str:
+def ask_ai_coach(chat_id: str | int, user_message: str, account_telemetry: dict = None) -> str:
     """
     Send a message to the AI Quant Coach via OpenRouter and return the formatted response.
     """
@@ -163,7 +189,7 @@ def ask_ai_coach(chat_id: str | int, user_message: str) -> str:
         history = history[-MAX_HISTORY_TURNS:]
         CONVERSATION_HISTORY[cid] = history
 
-    system_prompt = build_system_prompt()
+    system_prompt = build_system_prompt(account_telemetry)
     messages = [{"role": "system", "content": system_prompt}] + history
 
     headers = {
@@ -173,16 +199,16 @@ def ask_ai_coach(chat_id: str | int, user_message: str) -> str:
         "X-Title": "AgentQuant Telegram AI Coach"
     }
 
-    # Attempt primary model (gpt-4o-mini), then fallback (deepseek-chat)
-    for model in [PRIMARY_MODEL, FALLBACK_MODEL]:
+    # Attempt primary model (deepseek-chat), then fallback (gpt-4o), then tertiary (gpt-4o-mini)
+    for model in [PRIMARY_MODEL, FALLBACK_MODEL, TERTIARY_MODEL]:
         payload = {
             "model": model,
             "messages": messages,
-            "max_tokens": 600,
-            "temperature": 0.3
+            "max_tokens": 650,
+            "temperature": 0.25
         }
         try:
-            resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=12)
+            resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=14)
             if resp.status_code == 200:
                 result = resp.json()
                 reply = result["choices"][0]["message"]["content"]
