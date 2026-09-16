@@ -16,6 +16,7 @@ AgentQuant Next-Gen Mobile Command Terminal (v5.1)
 
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -29,6 +30,7 @@ from dotenv import load_dotenv
 
 from src.integrations.ctrader_mcp_client import CTraderMCPClient
 from src.integrations.risk_guardian import guardian
+from src.integrations.telegram_ai_coach import ask_ai_coach
 from src.integrations.webapp_server import launch_server_in_thread
 from src.visualization.telegram_charts import (
     generate_cycle_statement_pdf,
@@ -182,6 +184,40 @@ def async_send_pdf(chat_id):
         send_document_buffer(chat_id, buf, "AgentQuant_Cycle_Statement.pdf", caption)
     except Exception as e:
         print(f"[!] Error in async_send_pdf: {e}")
+
+def async_send_ai_reply(chat_id, user_text: str):
+    """
+    Non-blocking async worker to handle conversational AI Coach queries.
+    Sends typing chat action, calls OpenRouter via telegram_ai_coach, and replies with Telegram HTML.
+    """
+    try:
+        # Show "typing..." status in Telegram while inference is running
+        api_call("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+        reply = ask_ai_coach(chat_id, user_text)
+
+        # Send message with persistent bottom keyboard so user can easily keep navigating
+        res = api_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": reply,
+            "parse_mode": "HTML",
+            "reply_markup": get_persistent_bottom_keyboard()
+        })
+        # If Telegram rejects HTML parsing, fallback to plain text without tags
+        if not res.get("ok"):
+            plain_reply = re.sub(r'<[^>]+>', '', reply)
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": plain_reply,
+                "reply_markup": get_persistent_bottom_keyboard()
+            })
+    except Exception as e:
+        print(f"[!] Error in async_send_ai_reply: {e}")
+        api_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": f"🤖 <b>AI Coach Error:</b> {e}",
+            "parse_mode": "HTML",
+            "reply_markup": get_persistent_bottom_keyboard()
+        })
 
 def sync_ctrader_telemetry_worker():
     """Executed in background worker thread only — NEVER on UI thread."""
@@ -464,6 +500,8 @@ def register_bot_commands():
     """Registers standard Telegram / commands menu for 1-tap thumb navigation and chat menu button."""
     commands = [
         {"command": "app", "description": "📱 Open AgentQuant Pro Mini App"},
+        {"command": "ai", "description": "💬 Ask AI Quant Coach any question"},
+        {"command": "ask", "description": "💬 Ask AI Quant Coach any question"},
         {"command": "overview", "description": "👤 Master Profile & Capital Snapshot"},
         {"command": "balance", "description": "💰 Balance & Risk Sentinel"},
         {"command": "radar", "description": "📡 Live Market Dip Scanner"},
@@ -531,7 +569,7 @@ def get_persistent_bottom_keyboard():
     """Permanent keyboard docked at bottom of Telegram chat — no scrolling needed."""
     return {
         "keyboard": [
-            [{"text": "📱 Pro Mini App"}, {"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}],
+            [{"text": "💬 Ask AI Coach"}, {"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}],
             [{"text": "📡 Live Radar"}, {"text": "📊 Active Trades"}, {"text": "💸 Withdraw Crypto"}],
             [{"text": "⏳ Payout & Goals"}, {"text": "🏦 Binance P2P"}, {"text": "📈 15Y PnL Chart"}]
         ],
@@ -583,6 +621,7 @@ def get_main_menu_markup():
                 {"text": "🔍 Trade Logic", "callback_data": "cmd_trade_logic"},
             ],
             [
+                {"text": "💬 Ask AI Coach", "callback_data": "cmd_ask_ai_prompt"},
                 {"text": "⚡ Refresh Status", "callback_data": "cmd_refresh"},
             ],
         ]
@@ -1233,6 +1272,29 @@ def update_or_send(chat_id, msg: dict, new_text: str, markup: dict):
 # UPDATE HANDLER (SUB-50MS NON-BLOCKING)
 # =====================================================================
 
+def is_conversational_query(text: str) -> bool:
+    """
+    Detects if the user is asking a natural language question or seeking explanation,
+    preventing naive keyword interception by menu buttons.
+    """
+    t = text.strip().lower()
+    if t.startswith("/"):
+        return False
+    if "?" in t:
+        return True
+    starters = (
+        "what", "why", "how", "when", "where", "who", "which",
+        "explain", "tell me", "can you", "could you", "do we", "does",
+        "is it", "is there", "are we", "will", "should", "please", "help me"
+    )
+    if any(t.startswith(s) for s in starters):
+        return True
+    words = t.split()
+    if len(words) >= 4 and not any(btn in t for btn in ["pro mini app", "balance & risk", "active trades", "withdraw crypto", "payout & goals", "binance p2p", "pnl chart"]):
+        return True
+    return False
+
+
 def handle_update(update: dict):
     if "callback_query" in update:
         cq = update["callback_query"]
@@ -1288,6 +1350,24 @@ def handle_update(update: dict):
             }
         elif data == "cmd_trade_logic":
             new_text = render_trade_logic_text()
+            markup = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Back", "callback_data": "cmd_back"}, {"text": "🏠 Overview", "callback_data": "cmd_overview"}]
+                ]
+            }
+        elif data == "cmd_ask_ai_prompt":
+            new_text = (
+                "🤖 <b>AGENTQUANT AI QUANT COACH</b>\n"
+                "────────────────────────────\n"
+                "I am your 24/7 Quantitative Trading & Risk Intelligence Coach.\n\n"
+                "I have full real-time knowledge of:\n"
+                "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #3028655\n"
+                "• <b>Dual-Asset Scalper:</b> SPY & QQQ 1.25σ Volatility Dip Buyer\n"
+                "• <b>10-Year Audited Edge:</b> 72.4% Win Rate across 377 Trades\n"
+                "• <b>Position Sizing:</b> 0.10 lots solo / 0.05 lots simultaneous split\n"
+                "• <b>Risk Sentinel:</b> 98.8% safety cushion below $180 daily drawdown\n\n"
+                "💬 <i>Send me any question directly in chat and I'll analyze it instantly!</i>"
+            )
             markup = {
                 "inline_keyboard": [
                     [{"text": "🔙 Back", "callback_data": "cmd_back"}, {"text": "🏠 Overview", "callback_data": "cmd_overview"}]
@@ -1561,6 +1641,42 @@ def handle_update(update: dict):
             })
             return
 
+        # AI Coach Query Routing
+        if text.startswith("/ai ") or text.startswith("/ask "):
+            question = raw_text.split(maxsplit=1)[1].strip()
+            if question:
+                executor.submit(async_send_ai_reply, chat_id, question)
+                return
+
+        if any(cmd == text for cmd in ["/ai", "/ask", "💬 ask ai coach", "ask ai coach", "ask ai", "ai coach", "coach"]):
+            welcome_msg = (
+                "🤖 <b>AGENTQUANT AI QUANT COACH</b>\n"
+                "────────────────────────────\n"
+                "I am your 24/7 Quantitative Trading & Risk Intelligence Coach.\n\n"
+                "I have full real-time knowledge of:\n"
+                "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #3028655\n"
+                "• <b>Dual-Asset Scalper:</b> SPY & QQQ 1.25σ Volatility Dip Buyer\n"
+                "• <b>10-Year Audited Edge:</b> 72.4% Win Rate across 377 Trades\n"
+                "• <b>Position Sizing:</b> 0.10 lots solo / 0.05 lots simultaneous split\n"
+                "• <b>Risk Sentinel:</b> 98.8% safety cushion below $180 daily drawdown\n\n"
+                "💬 <b>Just reply directly with any question!</b> For example:\n"
+                "• <i>'What is our dip distance right now?'</i>\n"
+                "• <i>'How does our simultaneous dip split protect us?'</i>\n"
+                "• <i>'Explain the 1.25σ dip trigger'</i>\n"
+                "• <i>'When do we take our next trade?'</i>"
+            )
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": welcome_msg,
+                "parse_mode": "HTML",
+                "reply_markup": get_persistent_bottom_keyboard()
+            })
+            return
+
+        if is_conversational_query(raw_text):
+            executor.submit(async_send_ai_reply, chat_id, raw_text)
+            return
+
         # Bottom Menu & Slash Command Routing
         if any(cmd in text for cmd in ["/app", "/webapp", "📱 pro mini app", "pro mini app", "app"]):
             api_call("sendMessage", {
@@ -1706,23 +1822,8 @@ def handle_update(update: dict):
                 "reply_markup": get_main_menu_markup(),
             })
         else:
-            api_call("sendMessage", {
-                "chat_id": chat_id,
-                "text": (
-                    "⚡ <b>AgentQuant Next-Gen Terminal (v5.2)</b>\n\n"
-                    "• 👤 <b>Overview</b> — Master Profile & Capital Snapshot\n"
-                    "• 💰 <b>Balance</b> — Capital & Risk Guardian Sentinel\n"
-                    "• 📡 <b>Live Radar</b> — SPY / QQQ Dip Buy Scanner\n"
-                    "• 📊 <b>Active Trades</b> — Current Positions & Targets\n"
-                    "• 💸 <b>Withdraw</b> — Direct Crypto Payout to Binance\n"
-                    "• ⏳ <b>Goals</b> — Bi-Weekly Payout Countdown\n"
-                    "• 🏦 <b>Binance P2P</b> — Live Naira Currency Converter\n"
-                    "• 📈 <b>15Y Chart</b> — High-Res Equity & Drawdown Curve\n"
-                    "• 📑 <b>Export PDF</b> — 1-Page Official Cycle Statement"
-                ),
-                "parse_mode": "HTML",
-                "reply_markup": get_persistent_bottom_keyboard(),
-            })
+            # Free-form conversation: any unrecognized question or text is dispatched to AI Quant Coach!
+            executor.submit(async_send_ai_reply, chat_id, raw_text)
 
 
 def run_polling():
