@@ -215,6 +215,8 @@ class CTraderMCPClient:
     def place_market_order(self, symbol: str, side: str = "BUY", volume_lots: float = 0.01,
                            relative_sl_points: Optional[int] = None,
                            relative_tp_points: Optional[int] = None,
+                           stop_loss_price: Optional[float] = None,
+                           take_profit_price: Optional[float] = None,
                            comment: str = "AgentQuant Scalper") -> Optional[dict]:
         """
         Places a market order.
@@ -237,8 +239,8 @@ class CTraderMCPClient:
             # Metal lotSize = 100
             raw_vol = int(round(volume_lots * 100 * 100))
         else:
-            # Forex lotSize = 100000
-            raw_vol = int(round(volume_lots * 100000 * 100))
+            # Forex/Stocks lotSize = 100000 or 100
+            raw_vol = int(round(volume_lots * 100))
 
         args = {
             "symbolId": sym_id,
@@ -248,13 +250,26 @@ class CTraderMCPClient:
             "label": "AgentQuant",
             "comment": comment[:256]
         }
-        if relative_sl_points:
+        if relative_sl_points and not stop_loss_price:
             args["relativeStopLoss"] = int(relative_sl_points)
-        if relative_tp_points:
+        if relative_tp_points and not take_profit_price:
             args["relativeTakeProfit"] = int(relative_tp_points)
 
         raw = self.call_tool("create_order", args)
-        return self._parse_content_json(raw)
+        result = self._parse_content_json(raw)
+
+        # If order filled and display SL/TP provided, amend position with exact chart prices
+        if result and isinstance(result, dict) and (stop_loss_price or take_profit_price):
+            pos_id = result.get("positionId") or (result.get("position", {}).get("positionId") if isinstance(result.get("position"), dict) else None)
+            if pos_id:
+                amend_args = {"positionId": pos_id}
+                if stop_loss_price:
+                    amend_args["stopLoss"] = round(float(stop_loss_price), 2)
+                if take_profit_price:
+                    amend_args["takeProfit"] = round(float(take_profit_price), 2)
+                self.call_tool("amend_position", amend_args)
+
+        return result
 
     def close_position(self, position_id: int, volume: Optional[int] = None) -> Optional[dict]:
         """

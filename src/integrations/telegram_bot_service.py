@@ -324,8 +324,8 @@ def check_and_dispatch_autonomous_alerts():
         for s in signals:
             key = f"{s['ticker']}_{s['strategy']}"
             last_sent = _ALERTED_SIGNALS.get(key, 0.0)
-            # Cooldown: 4 hours (14,400s) to prevent duplicate spamming while keeping alerts fresh
-            if now - last_sent > 14400:
+            # Cooldown: 1 hour (3,600s) to keep alerts fresh without excessive spam
+            if now - last_sent > 3600:
                 _ALERTED_SIGNALS[key] = now
                 msg = (
                     "🚨 <b>AUTONOMOUS QUANT RADAR SIGNAL</b>\n"
@@ -346,13 +346,13 @@ def check_and_dispatch_autonomous_alerts():
                         [{"text": "📊 Active Trades", "callback_data": "cmd_trades"}, {"text": "📡 Live Radar", "callback_data": "cmd_signals"}]
                     ]
                 }
-                api_call("sendMessage", {
+                res = api_call("sendMessage", {
                     "chat_id": ALLOWED_CHAT_ID,
                     "text": msg,
                     "parse_mode": "HTML",
                     "reply_markup": markup
                 })
-                print(f"[+] Dispatched autonomous alert for {s['ticker']} ({s['strategy']}) to Telegram")
+                print(f"[+] Dispatched autonomous alert for {s['ticker']} ({s['strategy']}) to Telegram: ok={res.get('ok', False)}")
     except Exception as e:
         print(f"[!] Autonomous alerting engine exception: {e}")
 

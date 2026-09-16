@@ -150,6 +150,9 @@ def fetch_ohlcv_data(
                 )
 
             if df.empty:
+                logger.info("yf.download returned empty for %s, falling back to yf.Ticker.history", t)
+                df = yf.Ticker(t).history(period="2y")
+            if df.empty:
                 logger.warning("No data found for %s. Skipping.", t)
                 continue
 

@@ -78,9 +78,13 @@ def scan_live_signals():
         return
 
     assets = [
+        {"ticker": "GLD", "ctrader_symbol": "XAUUSD", "name": "Spot Gold", "target_lots": 0.01},
         {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10},
         {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.05},
-        {"ticker": "IWM", "ctrader_symbol": "US30", "name": "Russell / Dow Index", "target_lots": 0.05},
+        {"ticker": "AAPL", "ctrader_symbol": "AAPL", "name": "Apple Inc.", "target_lots": 1.0},
+        {"ticker": "NVDA", "ctrader_symbol": "NVDA", "name": "Nvidia Corp.", "target_lots": 1.0},
+        {"ticker": "MSFT", "ctrader_symbol": "MSFT", "name": "Microsoft Corp.", "target_lots": 1.0},
+        {"ticker": "META", "ctrader_symbol": "META", "name": "Meta Platforms", "target_lots": 1.0},
     ]
 
     scalper = ScalperStrategy()
@@ -129,46 +133,65 @@ def scan_live_signals():
         latest_sig = int(sig.iloc[-1])
         prev_sig = int(sig.iloc[-2]) if len(sig) > 1 else 0
 
+        # Check existing positions for duplicate protection & state synchronization
+        target_sym_id = symbol_map.get(csym.upper()) if symbol_map else None
+        existing_pos = [
+            p for p in open_positions 
+            if (target_sym_id is not None and p.get("symbolId") == target_sym_id) or p.get("symbolName", "").upper() == csym.upper()
+        ]
+
+        # Fetch live spot price from cTrader if connected
+        spot_info = ctrader.get_spot_price(csym) if ctrader else None
+        if spot_info and spot_info.get("ask"):
+            live_exec_p = spot_info["ask"]
+        elif spot_info and spot_info.get("bid"):
+            live_exec_p = spot_info["bid"]
+        else:
+            live_exec_p = c
+
+        stop_pct = params.get("stop_loss_pct", 0.03)
+        target_pct = max(0.015, (m - c) / c)
+
+        sl_points = int(round(live_exec_p * stop_pct * 100))
+        tp_points = int(round(live_exec_p * target_pct * 100))
+
         status = "FLAT (100% CASH)"
         action = "None — Waiting for dip setup."
 
-        # Check existing positions for duplicate protection
-        existing_pos = [p for p in open_positions if p.get("symbolName", "").upper() == csym.upper()]
-
         if latest_sig == 1:
-            if prev_sig == 0:
-                status = "🚨 NEW BUY SIGNAL TODAY"
-                action = f"BUY {lots} lots {csym} at Market. Target: ${m:.2f} | Stop: ${c * 0.97:.2f} (-3%)"
-                signals_found.append((ticker, csym, "NEW BUY", c, m, c * 0.97))
+            if not existing_pos:
+                status = "🚨 NEW BUY SIGNAL (ENTRY REQUIRED)"
+                action = f"BUY {lots} lots {csym} at Market. Target: ${live_exec_p * (1 + target_pct):.2f} | Stop: ${live_exec_p * (1 - stop_pct):.2f} (-3%)"
+                signals_found.append((ticker, csym, "NEW BUY", live_exec_p, live_exec_p * (1 + target_pct), live_exec_p * (1 - stop_pct)))
 
-                if existing_pos:
-                    print(f"  [i] Position already open in {csym}. Idempotency lock prevents duplicate order.")
-                else:
-                    executions_planned.append({
-                        "action": "BUY",
-                        "symbol": csym,
-                        "ticker": ticker,
-                        "lots": lots,
-                        "price": c,
-                        "tp": m,
-                        "sl": c * 0.97,
-                        "sl_points": int(round(c * 0.03 * 100)), # points distance
-                        "tp_points": int(round(max(0, m - c) * 100))
-                    })
+                executions_planned.append({
+                    "action": "BUY",
+                    "symbol": csym,
+                    "ticker": ticker,
+                    "lots": lots,
+                    "price": live_exec_p,
+                    "tp": live_exec_p * (1 + target_pct),
+                    "sl": live_exec_p * (1 - stop_pct),
+                    "sl_points": sl_points,
+                    "tp_points": tp_points
+                })
             else:
                 status = "HOLDING LONG POSITION"
-                action = f"Hold position. Waiting for take-profit target at Mean (${m:.2f})."
-                signals_found.append((ticker, csym, "HOLD LONG", c, m, c * 0.97))
-        elif prev_sig == 1 and latest_sig == 0:
-            status = "✅ TAKE PROFIT REACHED"
-            action = f"EXIT LONG. Reached mean target (${m:.2f}). Lock in profits!"
+                action = f"Hold active position #{existing_pos[0].get('positionId')}. Target: ${live_exec_p * (1 + target_pct):.2f}."
+                signals_found.append((ticker, csym, "HOLD LONG", live_exec_p, live_exec_p * (1 + target_pct), live_exec_p * (1 - stop_pct)))
+        elif latest_sig == 0:
             if existing_pos:
+                status = "✅ TAKE PROFIT REACHED"
+                action = f"EXIT LONG. Reached mean target. Closing position #{existing_pos[0].get('positionId')}!"
                 executions_planned.append({
                     "action": "CLOSE",
                     "symbol": csym,
                     "ticker": ticker,
                     "position_id": existing_pos[0].get("positionId")
                 })
+            else:
+                status = "FLAT (100% CASH)"
+                action = "None — Waiting for dip setup."
 
         print(f"\n--- {ticker} ({item['name']}) | cTrader Symbol: {csym} ---")
         print(f"  Latest Price:     ${c:.2f} (Date: {latest_dt.strftime('%Y-%m-%d')})")
@@ -229,15 +252,18 @@ def scan_live_signals():
                             symbol=ex["symbol"],
                             side="BUY",
                             volume_lots=ex["lots"],
-                            relative_sl_points=ex["sl_points"],
-                            relative_tp_points=ex["tp_points"],
+                            stop_loss_price=ex["sl"],
+                            take_profit_price=ex["tp"],
                             comment="AgentQuant Scalper Live"
                         )
                         print(f"  [+] Execution Result: {res}")
+                        order_id = "FILLED"
+                        if isinstance(res, dict):
+                            order_id = res.get("orderId") or res.get("order", {}).get("orderId", "FILLED")
                         ticket_msg = (
                             "🚨 <b>AGENTQUANT // LIVE ORDER EXECUTED</b>\n"
                             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"🎫 <b>Ticket:</b> <code>cTrader #{res.get('orderId', 'FILLED')}</code>\n"
+                            f"🎫 <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
                             "🏢 <b>Account:</b> FundedNext cTrader <code>#3028655</code>\n"
                             f"📈 <b>Action:</b> 🟢 <b>BUY MARKET</b>\n"
                             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
