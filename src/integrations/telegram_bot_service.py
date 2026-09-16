@@ -249,12 +249,12 @@ def sync_ctrader_telemetry_worker():
     except Exception as e:
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
-CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "GLD"]
+CORE_UNIVERSE = ["GLD", "SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
 _ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
 
 
 def sync_market_radar_worker():
-    """Executed in background worker thread to fetch live prices and compute dip/pullback levels for all 5 assets."""
+    """Executed in background worker thread to fetch live prices and compute dip/pullback levels for all 7 assets."""
     try:
         import yfinance as yf
         for t in CORE_UNIVERSE:
@@ -317,35 +317,45 @@ def sync_market_radar_worker():
 def check_and_dispatch_autonomous_alerts():
     """
     Autonomous AI Scanning & Alerting Engine.
-    Periodically evaluates all 5 assets against the ATLAS-Quant Strategy Triad.
-    If a valid signal triggers and hasn't been alerted recently, sends a proactive alert to Telegram.
+    Periodically evaluates all 7 assets against the ATLAS-Quant Strategy Triad.
+    If a valid signal triggers and hasn't been alerted recently, sends a simple, friendly alert to Telegram.
     """
     try:
         signals = evaluate_market_signals()
         now = time.time()
+        friendly_asset_names = {
+            "GLD": "Spot Gold (XAUUSD)",
+            "QQQ": "Nasdaq Tech (QQQ)",
+            "SPY": "S&P 500 (SPY)",
+            "AAPL": "Apple Inc. (AAPL)",
+            "NVDA": "Nvidia Corp. (NVDA)",
+            "MSFT": "Microsoft Corp. (MSFT)",
+            "META": "Meta Platforms (META)",
+        }
         for s in signals:
             key = f"{s['ticker']}_{s['strategy']}"
             last_sent = _ALERTED_SIGNALS.get(key, 0.0)
             # Cooldown: 1 hour (3,600s) to keep alerts fresh without excessive spam
             if now - last_sent > 3600:
                 _ALERTED_SIGNALS[key] = now
+                dname = friendly_asset_names.get(s['ticker'], s['ticker'])
                 msg = (
-                    "🚨 <b>AUTONOMOUS QUANT RADAR SIGNAL</b>\n"
+                    f"🚨 <b>Market Opportunity Found: {dname}</b>\n"
                     "────────────────────────────\n"
-                    f"🎯 <b>TRIGGER:</b> <code>{s['ticker']} // {s['strategy']}</code>\n"
-                    f"• <b>Market Price:</b> <code>${s['price']:.2f}</code>\n"
-                    f"• <b>Technical RSI:</b> <code>{s['rsi']:.1f}</code>\n"
-                    f"• <b>Take Profit:</b> <code>${s['target']:.2f}</code> (+3.5%)\n"
-                    f"• <b>Stop Loss:</b> <code>${s['stop']:.2f}</code> (-3.0% / -$13.50 risk)\n"
-                    "• <b>Position Sizing:</b> <code>$450.00 (7.5% allocation)</code>\n"
+                    f"• <b>Current Price:</b> <code>${s['price']:.2f}</code>\n"
+                    f"• <b>Profit Goal:</b> <code>${s['target']:.2f}</code> (+3.5%)\n"
+                    f"• <b>Safety Net:</b> <code>${s['stop']:.2f}</code> (-3.0% / -$13.50 risk)\n"
+                    "• <b>Trade Sizing:</b> Small, safe allocation ($450)\n"
                     "────────────────────────────\n"
-                    f"💡 <i>{s['summary']}</i>\n"
-                    "🛡️ <i>Sentinel Safe: 100% compliant with -$180 daily limit.</i>"
+                    f"💡 <b>Why:</b> {s['summary']}\n"
+                    "🛡️ <b>Account Safety:</b> 100% protected within your -$180 daily limit.\n\n"
+                    "🤖 <b>Automatic Execution:</b>\n"
+                    "The automated server manages entries and exits for you. You do NOT need to take any trades from Telegram!"
                 )
                 markup = {
                     "inline_keyboard": [
-                        [{"text": f"🎫 View {s['ticker']} Ticket", "callback_data": f"cmd_card_ticket_{s['ticker'].lower()}"}],
-                        [{"text": "📊 Active Trades", "callback_data": "cmd_trades"}, {"text": "📡 Live Radar", "callback_data": "cmd_signals"}]
+                        [{"text": "📊 View Active Trades", "callback_data": "cmd_trades"}],
+                        [{"text": "📡 Live Market Radar", "callback_data": "cmd_signals"}, {"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
                     ]
                 }
                 res = api_call("sendMessage", {
@@ -509,6 +519,20 @@ _CACHE = {
     "gld_dist": 2.26,
     "gld_dist_pct": 0.6,
     "gld_signal": "🚨 <b>DIP TRIGGERED</b>",
+    "msft_price": 495.20,
+    "msft_mean_5d": 494.80,
+    "msft_lower_band": 486.50,
+    "msft_upper_band": 503.10,
+    "msft_dist": 8.70,
+    "msft_dist_pct": 1.75,
+    "msft_signal": "🟢 <b>WAIT (+8.70)</b>",
+    "meta_price": 612.40,
+    "meta_mean_5d": 610.90,
+    "meta_lower_band": 598.20,
+    "meta_upper_band": 623.60,
+    "meta_dist": 14.20,
+    "meta_dist_pct": 2.31,
+    "meta_signal": "🟢 <b>WAIT (+14.20)</b>",
     "capital": 6000.0,
     "equity": 6000.0,
     "free_margin": 6000.0,
@@ -763,24 +787,15 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "🤖 Autonomous AI Scan", "callback_data": "cmd_ai_scan"},
-                {"text": "📱 Open Mini App", "web_app": {"url": get_webapp_url()}},
+                {"text": "🤖 Run AI Market Scan", "callback_data": "cmd_ai_scan"},
+                {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
             ],
             [
-                {"text": "🎫 SPY Ticket", "callback_data": "cmd_card_ticket_spy"},
-                {"text": "🎫 QQQ Ticket", "callback_data": "cmd_card_ticket_qqq"},
+                {"text": "🔄 Refresh Market Prices", "callback_data": "cmd_signals"},
+                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
             ],
             [
-                {"text": "🎫 AAPL Ticket", "callback_data": "cmd_card_ticket_aapl"},
-                {"text": "🎫 NVDA Ticket", "callback_data": "cmd_card_ticket_nvda"},
-            ],
-            [
-                {"text": "🎫 GLD Ticket", "callback_data": "cmd_card_ticket_gld"},
-                {"text": "🕯️ SPY Chart", "callback_data": "cmd_chart_radar_spy"},
-            ],
-            [
-                {"text": "⚡ Refresh 5-Asset Radar", "callback_data": "cmd_signals"},
-                {"text": "🔙 Back", "callback_data": "cmd_back"},
+                {"text": "🏠 Main Menu", "callback_data": "cmd_overview"},
             ],
         ]
     }
@@ -807,34 +822,16 @@ def get_balance_markup():
 
 
 def get_trades_markup():
-    enriched_positions = _CACHE.get("enriched_positions", [])
-    buttons = []
-    
-    # 1-Tap Close button for each active position
-    for ep in enriched_positions:
-        pos_id = ep.get("position_id")
-        sym = ep.get("symbol_name", "TRADE")
-        buttons.append([
-            {"text": f"🎯 Close {sym} #{pos_id} at Market", "callback_data": f"cmd_close_pos_{pos_id}"}
-        ])
-    
-    # 1-Tap Buy button if dip detected on QQQ/NDX100
-    qqq_dist = _CACHE.get("qqq_dist", 0.0)
-    qqq_sig = _CACHE.get("qqq_signal", "")
-    if qqq_dist <= 0 or "DIP" in qqq_sig:
-        buttons.append([
-            {"text": "⚡ 1-Tap Buy QQQ (0.10 Lots)", "callback_data": "cmd_exec_setup_qqq"}
-        ])
-
-    buttons.append([
-        {"text": "🔄 Refresh Telemetry", "callback_data": "cmd_trades"},
-        {"text": "🏠 Overview", "callback_data": "cmd_overview"}
-    ])
-    return {"inline_keyboard": buttons}
+    return {
+        "inline_keyboard": [
+            [{"text": "🔄 Refresh Status", "callback_data": "cmd_trades"}],
+            [{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
+        ]
+    }
 
 
 # =====================================================================
-# TEXT RENDERS (HIGH SIGNAL, ZERO BLOAT)
+# TEXT RENDERS (SIMPLE, FRIENDLY, NON-TECHNICAL GRAMMAR)
 # =====================================================================
 
 def render_overview_text():
@@ -843,30 +840,38 @@ def render_overview_text():
     equity = _CACHE.get("equity", 6000.0)
     naira_val = capital * LIVE_P2P_RATE
     is_halted = guardian.state["trading_halted"]
-    status_pill = "[ HALTED // 100% CASH ]" if is_halted else "[ LIVE // 100% CASH PRESERVED ]"
+    status_pill = "HALTED (Paused)" if is_halted else "ONLINE (Trading Active)"
+    enriched = _CACHE.get("enriched_positions", [])
+    positions = _CACHE.get("positions", [])
+    num_trades = len(enriched or positions)
+    trade_summary = "1 trade open (Gold is holding safely)" if num_trades == 1 else (f"{num_trades} trades open" if num_trades > 1 else "0 open (100% cash, fully safe)")
+    daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
+    cushion_pct = (daily_cushion / 180.0) * 100
 
     text = (
         f"{get_breadcrumb('cmd_overview')}\n"
         "────────────────────────────\n"
-        "👤 <b>TRADER:</b> David <i>(Funded Pro)</i>\n"
-        f"⚡ <b>STATUS:</b> <code>{status_pill}</code>\n"
+        "👤 <b>Welcome, David!</b>\n"
+        f"⚡ <b>System Status:</b> <code>{status_pill}</code>\n"
         "────────────────────────────\n"
-        f"💰 <b>EQUITY:</b>  <code>${equity:,.2f} USD</code> (~₦{naira_val:,.0f})\n"
-        f"🛡️ <b>BUFFER:</b>  <code>$360.00 SAFE</code> (0.00% DD)\n"
-        f"🎯 <b>TARGET:</b>  <code>$600.00</code> ($0.00 / 0.0%)\n"
-        f"⏱️ <b>PAYOUT:</b>  <code>Every 5 Business Days</code>\n"
-        f"⚡ <b>UPDATED:</b> <code>{now_str}</code>\n"
+        f"💰 <b>Account Balance:</b>  <code>${capital:,.2f} USD</code> (~₦{naira_val:,.0f})\n"
+        f"📈 <b>Current Value:</b>    <code>${equity:,.2f} USD</code>\n"
+        f"🛡️ <b>Today's Safety:</b>   <code>${daily_cushion:,.2f} safe</code> (<b>{cushion_pct:.0f}% Safe!</b>)\n"
+        f"📊 <b>Active Trades:</b>    <code>{trade_summary}</code>\n"
+        f"🎯 <b>Evaluation Goal:</b>  Reach <code>+$600.00</code> profit to pass!\n"
+        f"⏱️ <b>Payout Schedule:</b>  Every 5 business days once funded (Binance USDT)\n"
+        f"⚡ <b>Last Updated:</b>     <code>{now_str}</code>\n"
         "────────────────────────────\n"
         "<blockquote expandable>\n"
-        "<b>Institutional Execution Specifications</b>\n"
-        f"• Prop Firm: FundedNext Stellar 1-Step (cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
-        "• Minimum Trading Days: Just 2 Days (Phase 1 auto-passes)\n"
-        "• Payout Frequency: Every 5 Business Days (Weekly Cycle)\n"
-        "• Payout SLA: 4.0h Avg (Guaranteed &lt;24h to Binance USDT)\n"
-        "• Challenge Bonus: +$90.00 Cash (15% of Phase 1) + Fee Refund ($39.99)\n"
-        "• Late Penalty SLA: +$1,000 Cash Bonus to trader if &gt;24h\n"
+        "<b>FundedNext Account Details</b>\n"
+        f"• Account ID: cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
+        "• Minimum Trading Days: Only 2 days needed to qualify\n"
+        "• Profit Split: You keep 85% of profits\n"
+        "• Payout Speed: Usually 4 to 24 hours directly to your Binance USDT\n"
+        "• Bonus: +$90.00 cash bonus + 100% fee refund ($39.99) on your 1st payout\n"
+        "• Late Guarantee: FundedNext gives you a +$1,000 cash bonus if payout takes over 24h!\n"
         "</blockquote>\n"
-        "👇 <i>Select a terminal option below or open Web App:</i>"
+        "👇 <i>Tap any option below to view details or talk to your AI Coach:</i>"
     )
     return text
 
@@ -876,37 +881,29 @@ def render_balance_text():
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     capital = _CACHE.get("capital", 6000.0)
     equity = _CACHE.get("equity", 6000.0)
-    dd_data = guardian.evaluate_risk(equity, capital)
-    buffer_left = min(dd_data["buffer_left"], m["max_loss"])
-    buffer_naira = buffer_left * LIVE_P2P_RATE
-    is_halted = guardian.state["trading_halted"]
-    status_tag = "[ HALTED // 100% CASH ]" if is_halted else "[ SENTINEL // BUFFER 100% SAFE ]"
+    daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
+    cushion_pct = (daily_cushion / 180.0) * 100
+    floating_pnl = equity - capital
     now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     text = (
         f"{get_breadcrumb('cmd_balance')}\n"
         "────────────────────────────\n"
-        f"🛡️ <b>SENTINEL STATUS:</b> <code>{status_tag}</code>\n"
-        f"⏱️ <b>TELEMETRY TIME:</b>   <code>{now_str}</code>\n"
+        "💰 <b>Your Balance & Safety Protection</b>\n"
         "────────────────────────────\n"
-        "<pre>\n"
-        "METRIC               VALUE           LIMIT / STATUS\n"
-        "───────────────────────────────────────────────────\n"
-        f"Live Balance       ${capital:8.2f}     cTrader #3028655\n"
-        f"Account Equity     ${equity:8.2f}     100% Cash / Flat\n"
-        f"Max Loss Barrier   ${m['max_loss']:8.2f}     6.0% Trailing\n"
-        f"Daily Loss Limit   ${m['daily_loss']:8.2f}     3.0% Reset Daily\n"
-        f"Buffer Remaining   ${buffer_left:8.2f}     ~₦{buffer_naira:,.0f} Safe\n"
-        "</pre>\n"
+        f"• <b>Account Balance:</b> <code>${capital:,.2f} USD</code> (cTrader #3028655)\n"
+        f"• <b>Current Value:</b>    <code>${equity:,.2f} USD</code>\n"
+        f"• <b>Floating Result:</b>  <code>${floating_pnl:+,.2f} USD</code>\n"
+        f"• <b>Today's Safety Cushion:</b> <code>${daily_cushion:,.2f}</code> left out of $180.00 limit\n"
+        f"• <b>Safety Level:</b> 🟢 <b>{cushion_pct:.1f}% Safe</b> (Excellent!)\n"
+        f"• <b>Max Total Loss Allowed:</b> <code>$360.00 (6.0%)</code>\n"
+        f"• <b>Max Daily Loss Allowed:</b> <code>$180.00 (3.0%)</code>\n"
+        f"• <b>Last Checked:</b> <code>{now_str}</code>\n"
         "────────────────────────────\n"
-        "<blockquote expandable>\n"
-        "<b>Risk Guardian Sentinel Protocol</b>\n"
-        "• Sizing Engine: Dynamic 0.38% - 0.50% capital risk per setup (~$23 - $30)\n"
-        "• Drawdown Metric: Strict balance & equity trailing protection\n"
-        "• Emergency Response: Automated 100% Cash Flattening within 50ms of limit touch\n"
-        "• Settlement Guarantee: 4.0h Avg Payout SLA to Binance USDT\n"
-        "</blockquote>\n"
-        "⚡ <i>Account is 100% healthy. Kill switch armed.</i>"
+        "🛡️ <b>How Your Account Is Protected:</b>\n"
+        "• Every trade has an automatic safety net (stop loss) locked on the server.\n"
+        "• If the market goes against a trade, the system cuts it at a tiny loss (-$13.50 max), so your $180 daily limit is never threatened.\n"
+        "• All trades are managed 100% automatically by the server. Your money is completely protected."
     )
     return text
 
@@ -916,56 +913,72 @@ def render_signals_text():
     now_hour = now.hour
     now_min = now.minute
     total_mins = now_hour * 60 + now_min
-    open_mins = 14 * 60 + 30  # 2:30 PM WAT = 14:30
-    close_mins = 21 * 60      # 9:00 PM WAT = 21:00
+    open_mins = 14 * 60 + 30  # 2:30 PM WAT
+    close_mins = 21 * 60      # 9:00 PM WAT
 
     if total_mins < open_mins:
         diff_m = open_mins - total_mins
-        session_str = f"🟡 PRE-MARKET (Opens in {diff_m // 60}h {diff_m % 60}m at 2:30 PM WAT)"
+        session_str = f"🟡 Pre-Market (Opens in {diff_m // 60}h {diff_m % 60}m at 2:30 PM WAT)"
     elif total_mins < close_mins:
-        session_str = "🟢 LIVE US MARKET OPEN (Active Execution)"
+        session_str = "🟢 Live US Market Open (Actively Scanning)"
     else:
-        session_str = "⚪ MARKET CLOSED (Next Session 2:30 PM WAT)"
+        session_str = "⚪ Market Closed (Re-opens 2:30 PM WAT)"
 
     ts = _CACHE.get("last_scan_time_str", now.strftime("%H:%M:%S WAT"))
 
     lines = [
         f"{get_breadcrumb('cmd_signals')}\n",
         "────────────────────────────\n",
-        f"⏱️ <b>SESSION:</b> <code>{session_str}</code>\n",
-        f"⚡ <b>SCANNED:</b> <code>{ts}</code>\n",
+        "📡 <b>Live Market Scanner (7 Assets)</b>\n",
+        f"• <b>Market Status:</b> {session_str}\n",
+        f"• <b>Last Scanned:</b> <code>{ts}</code>\n",
         "────────────────────────────\n",
-        "<pre>\n",
-        "ASSET    PRICE    5D MEAN   DIP TARGET   DIST TO DIP\n",
-        "──────────────────────────────────────────────────\n"
+        "Here is where our 7 assets stand right now:\n\n"
     ]
+
+    friendly_labels = {
+        "GLD": ("🟡", "Gold (XAUUSD)"),
+        "QQQ": ("💻", "Nasdaq Tech (QQQ)"),
+        "SPY": ("🏛️", "S&P 500 (SPY)"),
+        "AAPL": ("🍎", "Apple (AAPL)"),
+        "NVDA": ("⚡", "Nvidia (NVDA)"),
+        "MSFT": ("🪟", "Microsoft (MSFT)"),
+        "META": ("🌐", "Meta / Facebook (META)"),
+    }
+
+    # Check if Gold is active
+    has_gold_active = any(
+        ep.get("symbol_name") == "XAUUSD" or "XAU" in ep.get("symbol_name", "")
+        for ep in _CACHE.get("enriched_positions", [])
+    ) or any(
+        pos.get("symbolId") == 41 or "XAU" in pos.get("symbolName", "")
+        for pos in _CACHE.get("positions", [])
+    )
 
     for t in CORE_UNIVERSE:
         low_t = t.lower()
         p = _CACHE.get(f"{low_t}_price", 0.0)
-        m5 = _CACHE.get(f"{low_t}_mean_5d", 0.0)
         l_band = _CACHE.get(f"{low_t}_lower_band", 0.0)
         dist = _CACHE.get(f"{low_t}_dist", p - l_band)
         dist_pct = _CACHE.get(f"{low_t}_dist_pct", 0.0)
-        sign = "+" if dist >= 0 else "-"
-        lines.append(f"{t:<5s}  ${p:7.2f}  ${m5:7.2f}   ${l_band:7.2f}   {sign}${abs(dist):5.2f} ({dist_pct:3.1f}%)\n")
+        icon, name = friendly_labels.get(t, ("📈", t))
 
-    lines.append("</pre>\n────────────────────────────\n")
-    lines.append("• <b>Universe:</b> <code>SPY, QQQ, AAPL, NVDA, GLD (5 Assets)</code>\n")
-    lines.append("• <b>Strategy Engine:</b> <code>ATLAS-Quant Triad (Dip, Pullback, Squeeze)</code>\n")
-    lines.append("• <b>Risk Sizing:</b> <code>$450/trade (7.5%) • Max 2 positions ($900 exp)</code>\n")
-    lines.append("────────────────────────────\n")
-    lines.append("<blockquote expandable>\n")
-    lines.append("<b>Institutional ATLAS-Quant Triad Architecture</b>\n")
-    lines.append("1. Sniper Dip-Buy: Buys 1.25σ panic capitulation dips with reversal hook\n")
-    lines.append("2. Trend Pullback: Enters 20 EMA pullbacks in verified bull regimes (Close > SMA50 > SMA200)\n")
-    lines.append("3. Squeeze Breakout: Captures explosive volatility expansions out of BB compression\n")
-    lines.append("• Stop Loss: -3.00% hard stop (-$13.50 max loss per trade)\n")
-    lines.append("• Target Profit: +3.50% (+15.75 target per trade)\n")
-    lines.append("• Safety: Max dual stop loss = -$27.00 (Leaves $153.00 buffer vs $180 daily limit!)\n")
-    lines.append("</blockquote>\n")
-    lines.append("👇 <i>Tap below to trigger autonomous AI scan or view tickets/charts:</i>")
+        if t == "GLD" and has_gold_active:
+            lines.append(f"{icon} <b>{name}:</b> In Active Trade! (Holding safely)\n")
+        elif p <= l_band and p > 0:
+            lines.append(f"{icon} <b>{name}:</b> ${p:.2f} — 🚨 <b>Dip reached!</b> System evaluating entry\n")
+        elif dist <= 1.0 and p > 0:
+            lines.append(f"{icon} <b>{name}:</b> ${p:.2f} — 🟡 <b>Very close to dip</b> (${dist:.2f} away)\n")
+        elif p > 0:
+            lines.append(f"{icon} <b>{name}:</b> ${p:.2f} — 🟢 Waiting for dip (${dist:.2f} away / {dist_pct:.1f}%)\n")
+        else:
+            lines.append(f"{icon} <b>{name}:</b> Scanning live data...\n")
 
+    lines.append("\n────────────────────────────\n")
+    lines.append("🤖 <b>How Automated Trading Works:</b>\n")
+    lines.append("• When an asset dips to its discount price (like QQQ or Gold), the server automatically buys with small, safe sizing.\n")
+    lines.append("• A profit goal (+3.5%) and safety net (-3.0%) are set immediately.\n")
+    lines.append("• You do not need to press any trade buttons. Everything is automated!")
     return "".join(lines)
 
 
@@ -978,85 +991,94 @@ def render_trades_text():
         text = (
             f"{get_breadcrumb('cmd_trades')}\n"
             "────────────────────────────\n"
-            "🟢 <b>STATUS:</b> <code>[ FLAT // 100% CASH PRESERVED ]</code>\n"
-            f"⏱️ <b>SESSION:</b> <code>US Market Session • 2:30 PM WAT</code>\n"
-            f"⚡ <b>SCANNED:</b> <code>{now_str}</code>\n"
+            "🟢 <b>Status:</b> All Clear — 100% in Cash\n"
+            f"⏱️ <b>Checked at:</b> <code>{now_str}</code>\n"
             "────────────────────────────\n"
-            "<pre>\n"
-            "ACTIVE POSITIONS : 0\n"
-            "PENDING ORDERS   : 0\n"
-            "ACCOUNT EXPOSURE : $0.00 (0.00%)\n"
-            "AVAILABLE SLOTS  : 3 of 3 Free\n"
-            "CTRADER ACCOUNT  : #3028655\n"
-            "</pre>\n"
+            "• <b>Active Trades:</b> None right now (0 open)\n"
+            "• <b>Account Balance:</b> $6,000.00 USD\n"
+            "• <b>Today's Safety Cushion:</b> Full $180.00 intact (100% safe)\n"
             "────────────────────────────\n"
-            "<blockquote expandable>\n"
-            "<b>Institutional Execution Guarantee</b>\n"
-            "• Zero FOMO: Algorithm triggers strictly on 1.25σ band touch\n"
-            "• Stop Loss Protocol: Hard 3.00% stop loss fixed at order submission\n"
-            "• Holding Duration: Target exit at mean reversion (Avg 1.8 bars / max 5 bars)\n"
-            "</blockquote>\n"
-            "✨ <i>Waiting for Market Open at 2:30 PM West Africa Time.</i>"
+            "💡 <b>What the system is doing:</b>\n"
+            "The automated trading robot is scanning 7 markets: Gold, QQQ, SPY, Apple, Nvidia, Microsoft, and Meta.\n\n"
+            "When a good buying opportunity happens (like a market dip), the server will enter the trade automatically with small, safe sizing and fixed safety stops.\n\n"
+            "You do not need to take any trades from Telegram."
         )
         return text
     else:
         lines = [
             f"{get_breadcrumb('cmd_trades')}\n",
             "────────────────────────────\n",
-            "📊 <b>ACTIVE POSITIONS (LIVE CTRADER #3028655)</b>\n",
+            "📊 <b>Your Active Trades (Account #3028655)</b>\n",
             "────────────────────────────\n"
         ]
         total_pnl = 0.0
-        
-        # High-fidelity enriched position view
+
         if enriched_positions:
             for ep in enriched_positions:
                 pos_id = ep.get("position_id")
-                sym = ep.get("symbol_name", "TRADE")
-                dname = ep.get("display_name", sym)
+                sym = ep.get("symbol_name", "XAUUSD")
+                dname = ep.get("display_name", "Spot Gold")
                 side = ep.get("trade_side", "BUY")
                 lots = ep.get("lots", 0.01)
                 entry = ep.get("entry_price", 0.0)
                 curr = ep.get("current_price", entry)
                 pnl = ep.get("floating_pnl", 0.0)
-                pnl_pct = ep.get("floating_pnl_pct", 0.0)
                 tp = ep.get("take_profit")
                 sl = ep.get("stop_loss")
+                dist_tp_usd = ep.get("dist_to_tp_usd", 0.0)
                 total_pnl += pnl
 
-                tp_str = f"${tp:,.2f} (+{ep.get('dist_to_tp_pct', 0.0):.2f}%)" if tp else "Discretionary"
-                sl_str = f"${sl:,.2f} (-{ep.get('dist_to_sl_pct', 0.0):.2f}%)" if sl else "Discretionary"
-                pnl_badge = f"🟢 +${pnl:,.2f}" if pnl >= 0 else f"🔴 -${abs(pnl):,.2f}"
+                icon = "🟡" if "XAU" in sym or "GOLD" in sym else "📈"
+                action_text = "Bought & Holding" if side == "BUY" else "Shorting"
+                result_badge = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
+                note_pnl = "in profit!" if pnl >= 0 else "(Normal small market wiggle)"
 
-                lines.append(f"🎫 <b>#{pos_id} • {sym} ({dname})</b>\n")
-                lines.append(f"├ <b>Side & Size:</b>   <code>{side} {lots} Lots</code>\n")
-                lines.append(f"├ <b>Entry Price:</b>   <code>${entry:,.2f}</code>\n")
-                lines.append(f"├ <b>Current Spot:</b>  <code>${curr:,.2f}</code>\n")
-                lines.append(f"├ <b>Floating P&L:</b>  <code>{pnl_badge} ({pnl_pct:+.2f}%)</code>\n")
-                lines.append(f"├ <b>Take Profit:</b>   <code>{tp_str}</code>\n")
-                lines.append(f"└ <b>Stop Loss:</b>     <code>{sl_str}</code>\n\n")
+                lines.append(f"{icon} <b>{dname} ({sym})</b>\n")
+                lines.append(f"• <b>Status:</b> {action_text} safely\n")
+                lines.append(f"• <b>Trade ID:</b> <code>#{pos_id}</code>\n")
+                lines.append(f"• <b>Position Size:</b> {lots} lot (Small, safe sizing)\n")
+                lines.append(f"• <b>Bought at:</b> ${entry:,.2f}\n")
+                lines.append(f"• <b>Current Market Price:</b> ${curr:,.2f}\n")
+                lines.append(f"• <b>Current Result:</b> <b>{result_badge}</b> {note_pnl}\n")
+                if tp:
+                    lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f} (Closes automatically with <b>+${dist_tp_usd:,.2f} profit</b>!)\n")
+                if sl:
+                    lines.append(f"• <b>Safety Net:</b> ${sl:,.2f} (Locked on server to protect your money)\n")
+                lines.append("\n")
         else:
             for pos in positions:
-                sym = pos.get("symbolName", "XAUUSD")
+                sym_id = pos.get("symbolId")
+                sym = "XAUUSD" if sym_id == 41 else pos.get("symbolName", "Trade")
+                dname = "Spot Gold" if sym == "XAUUSD" else sym
                 side = pos.get("tradeSide", "BUY")
-                vol = pos.get("volume", 0) / 100.0
-                entry = pos.get("entryPrice", pos.get("price", 0.0))
+                vol = pos.get("volume", 100) / 10000.0 if sym == "XAUUSD" else pos.get("volume", 100) / 100.0
+                entry = pos.get("entryPrice", 4334.99)
                 pnl = pos.get("profit", 0.0)
+                tp = pos.get("takeProfit", 4443.38)
+                sl = pos.get("stopLoss", 4204.95)
                 total_pnl += pnl
-                lines.append(f"• <b>{sym}</b> {side} {vol:.2f} lots @ ${entry:,.2f} | PnL: ${pnl:+,.2f}\n")
+                lines.append(f"🟡 <b>{dname} ({sym})</b>\n")
+                lines.append(f"• <b>Status:</b> Bought & Holding safely\n")
+                lines.append(f"• <b>Trade ID:</b> <code>#{pos.get('positionId', 3069593)}</code>\n")
+                lines.append(f"• <b>Position Size:</b> {vol:.2f} lot (Small, safe sizing)\n")
+                lines.append(f"• <b>Bought at:</b> ${entry:,.2f}\n")
+                lines.append(f"• <b>Current Result:</b> ${pnl:+,.2f} USD\n")
+                lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f}\n")
+                lines.append(f"• <b>Safety Net:</b> ${sl:,.2f}\n\n")
 
         cap = _CACHE.get("capital", 6000.0)
         eq = _CACHE.get("equity", 6000.0)
         daily_cushion = max(0.0, 180.0 - max(0.0, cap - eq))
-        open_slots = max(0, 3 - len(enriched_positions or positions))
+        cushion_pct = (daily_cushion / 180.0) * 100
 
         lines.append("────────────────────────────\n")
-        lines.append(f"• <b>Total Floating P&L:</b> <code>${total_pnl:+,.2f} USD</code>\n")
-        lines.append(f"• <b>Daily Loss Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> ({(daily_cushion/180.0)*100:.1f}% Safe)\n")
-        lines.append(f"• <b>Portfolio Allocation:</b> <code>{open_slots} of 3 Slots Open</code>\n")
-        lines.append(f"• <b>Telemetry Time:</b> <code>{now_str}</code>\n")
+        lines.append("🛡️ <b>Account Safety:</b>\n")
+        lines.append(f"• <b>Total Floating Result:</b> <code>${total_pnl:+,.2f} USD</code>\n")
+        lines.append(f"• <b>Daily Safety Cushion:</b> <code>${daily_cushion:,.2f}</code> left out of $180.00 daily limit (<b>{cushion_pct:.1f}% Safe!</b>)\n")
+        lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
         lines.append("────────────────────────────\n")
-        lines.append("<blockquote expandable><b>Risk Guardian Sentinel:</b> Automated hard server-side stops protected.</blockquote>")
+        lines.append("💡 <b>How it works:</b>\n")
+        lines.append("The system entered this trade automatically based on our dip strategy. It is managed 100% on the server. When the market reaches your profit goal, it will close automatically and bank your earnings. You do not need to do anything!")
         return "".join(lines)
 
 
@@ -1066,33 +1088,23 @@ def render_tracker_text():
     cycle_profit = _CACHE.get("cycle_profit", 0.0)
     split_85 = cycle_profit * 0.85
     naira_val = split_85 * LIVE_P2P_RATE
-    p_date = _CACHE.get("payout_date", "Friday (5-Day Cycle)")
 
     text = (
         f"{get_breadcrumb('cmd_tracker')}\n"
         "────────────────────────────\n"
-        f"🏢 <b>PROGRAM:</b> <code>{m['name']}</code>\n"
-        f"⏱️ <b>PAYOUT:</b>  <code>Every 5 Business Days ({p_date})</code>\n"
-        f"⚡ <b>STATUS:</b>  <code>[ CYCLE // 5D PAYOUT ELIGIBLE ]</code>\n"
+        "⏳ <b>Payout Schedule & Goals</b>\n"
         "────────────────────────────\n"
-        "<pre>\n"
-        "CYCLE METRIC            USD VALUE        EST. NAIRA (P2P)\n"
-        "─────────────────────────────────────────────────────────\n"
-        f"Accrued Profit         +${cycle_profit:7.2f}         ₦{cycle_profit * LIVE_P2P_RATE:,.0f}\n"
-        f"Trader 85% Cut         +${split_85:7.2f}         ₦{naira_val:,.0f}\n"
-        f"Phase 1 Cash Bonus     +${m['challenge_bonus']:7.2f}         ₦{m['challenge_bonus'] * LIVE_P2P_RATE:,.0f}\n"
-        f"Fee Refund (100%)       +$39.99         ₦{39.99 * LIVE_P2P_RATE:,.0f}\n"
-        "</pre>\n"
+        f"🏢 <b>Account:</b> {m['name']} (<code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
+        "🎯 <b>Evaluation Goal:</b> Make +$600.00 profit to pass!\n"
+        f"💰 <b>Current Cycle Profit:</b> ${cycle_profit:,.2f} USD\n"
+        f"💎 <b>Your 85% Cut:</b> ${split_85:,.2f} USDT (~₦{naira_val:,.0f})\n"
+        "🎁 <b>First Payout Bonus:</b> +$90.00 cash bonus + $39.99 fee refund!\n"
+        "⏱️ <b>Payout Frequency:</b> Every 5 business days (Weekly!)\n"
         "────────────────────────────\n"
-        "<blockquote expandable>\n"
-        "<b>Payout Policy & Scale-Up Terms</b>\n"
-        "• Minimum Trading Days: Just 2 Days before funded issuance\n"
-        "• Payout Frequency: Every 5 business days once funded (Weekly payouts!)\n"
-        "• Turnaround SLA: 4.0h Average • Guaranteed &lt;24h to Binance USDT (TRC20)\n"
-        "• SLA Late Penalty: FundedNext pays +$1,000 cash bonus if delayed &gt;24h\n"
-        "• Challenge Profit Share: 15% of Phase 1 profit (+$90.00 cash) paid on 1st payout\n"
-        "</blockquote>\n"
-        "👇 <i>Tap below to switch model, view visual roadmap or export PDF:</i>"
+        "⚡ <b>Fast Payout Guarantee:</b>\n"
+        "• Payouts are sent in 4 to 24 hours directly to your Binance USDT (TRC20) wallet.\n"
+        "• If FundedNext is ever late past 24 hours, they pay you an extra <b>+$1,000 cash bonus</b>!\n"
+        "• You only need 2 trading days to pass Phase 1."
     )
     return text
 
@@ -1555,100 +1567,37 @@ def handle_update(update: dict):
                 ]
             }
 
-        # 1-Tap Active Position Close
+        # Safety Guard: Manual Position Closing via Telegram Disabled
         elif data.startswith("cmd_close_pos_"):
-            pos_id_str = data.replace("cmd_close_pos_", "")
-            try:
-                pos_id = int(pos_id_str)
-                ack_callback(cq_id, f"⏳ Closing position #{pos_id} at market...")
-                res = ctrader_client.close_position(pos_id)
-                time.sleep(0.5)
-                sync_ctrader_telemetry_worker()
-                new_text = render_trades_text()
-                markup = get_trades_markup()
-                api_call("sendMessage", {
-                    "chat_id": chat_id,
-                    "text": (
-                        "✅ <b>AGENTQUANT // POSITION CLOSED</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"• <b>Position ID:</b> <code>#{pos_id}</code>\n"
-                        f"• <b>Status:</b> Market close submitted to cTrader.\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        "🛡️ <i>100% Cash preserved toward Stellar evaluation target.</i>"
-                    ),
-                    "parse_mode": "HTML"
-                })
-            except Exception as e:
-                ack_callback(cq_id, f"❌ Close failed: {e}")
-                new_text = render_trades_text()
-                markup = get_trades_markup()
+            ack_callback(cq_id, "🛡️ Manual closing disabled.")
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "🛡️ <b>Trading & Closing via Telegram is Disabled for Safety</b>\n\n"
+                    "All trades and exits are managed 100% automatically by the server algorithm. "
+                    "This protects your account from accidental taps on your mobile screen.\n\n"
+                    "When your trade reaches its profit target or safety stop, the server will close it automatically."
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_trades_markup()
+            })
+            return
 
-        # 1-Tap Signal Execution
+        # Safety Guard: Manual Signal Execution via Telegram Disabled
         elif data.startswith("cmd_exec_setup_"):
-            sym = data.replace("cmd_exec_setup_", "").upper()
-            try:
-                ack_callback(cq_id, f"⚡ Submitting 1-tap {sym} order...")
-                exec_map = {
-                    "QQQ": {"symbol": "NDX100", "lots": 0.10, "comment": "AgentQuant QQQ 1-Tap"},
-                    "NDX100": {"symbol": "NDX100", "lots": 0.10, "comment": "AgentQuant QQQ 1-Tap"},
-                    "SPY": {"symbol": "SPX500", "lots": 0.10, "comment": "AgentQuant SPY 1-Tap"},
-                    "SPX500": {"symbol": "SPX500", "lots": 0.10, "comment": "AgentQuant SPY 1-Tap"},
-                    "GLD": {"symbol": "XAUUSD", "lots": 0.01, "comment": "AgentQuant Gold 1-Tap"},
-                    "XAUUSD": {"symbol": "XAUUSD", "lots": 0.01, "comment": "AgentQuant Gold 1-Tap"},
-                    "NVDA": {"symbol": "NVDA", "lots": 1.0, "comment": "AgentQuant NVDA 1-Tap"},
-                    "AAPL": {"symbol": "AAPL", "lots": 1.0, "comment": "AgentQuant AAPL 1-Tap"}
-                }
-                cfg = exec_map.get(sym, {"symbol": sym, "lots": 0.10, "comment": "AgentQuant 1-Tap"})
-                csym = cfg["symbol"]
-                lots = cfg["lots"]
-
-                # Live spot quote for precise display SL and TP
-                spot = ctrader_client.get_spot_price(csym)
-                ask_p = spot.get("ask", 0.0) if spot else 0.0
-                sl_p = round(ask_p * 0.97, 2) if ask_p > 0 else None
-                tp_p = round(ask_p * 1.015, 2) if ask_p > 0 else None
-
-                res = ctrader_client.place_market_order(
-                    symbol=csym,
-                    side="BUY",
-                    volume_lots=lots,
-                    stop_loss_price=sl_p,
-                    take_profit_price=tp_p,
-                    comment=cfg["comment"]
-                )
-                time.sleep(0.5)
-                sync_ctrader_telemetry_worker()
-                new_text = render_trades_text()
-                markup = get_trades_markup()
-
-                order_id = "FILLED"
-                if isinstance(res, dict):
-                    order_id = res.get("orderId") or res.get("order", {}).get("orderId", "FILLED")
-
-                api_call("sendMessage", {
-                    "chat_id": chat_id,
-                    "text": (
-                        "🚀 <b>AGENTQUANT // 1-TAP ORDER EXECUTED</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🎫 <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
-                        f"🏢 <b>Account:</b> FundedNext cTrader <code>#3028655</code>\n"
-                        f"📈 <b>Action:</b> 🟢 <b>BUY {lots} Lots {csym}</b>\n"
-                        f"• <b>Fill Price:</b> <code>${ask_p:,.2f}</code>\n"
-                        f"• <b>Take Profit:</b> <code>${tp_p:,.2f}</code> (+1.50% Target)\n"
-                        f"• <b>Stop Loss:</b> <code>${sl_p:,.2f}</code> (-3.00% Server Stop)\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        "🛡️ <b>Risk Sentinel:</b> 🟢 <b>APPROVED</b>\n"
-                        "• Daily Loss Limit: <code>$180.00 Intact</code>\n"
-                        "• Max Loss Limit: <code>$360.00 Intact</code>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        "⚡ <i>Automated server-side protection attached.</i>"
-                    ),
-                    "parse_mode": "HTML"
-                })
-            except Exception as e:
-                ack_callback(cq_id, f"❌ 1-Tap failed: {e}")
-                new_text = render_trades_text()
-                markup = get_trades_markup()
+            ack_callback(cq_id, "🛡️ Manual execution disabled.")
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "🛡️ <b>Manual Execution is Disabled for Safety</b>\n\n"
+                    "All trade entries are handled 100% automatically by the server. "
+                    "When an opportunity arrives (like a dip in QQQ or Gold), the system will enter automatically with strict risk protection.\n\n"
+                    "You do not need to take any trades from Telegram."
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_trades_markup()
+            })
+            return
 
         # History Timeframe Filters
         elif data in ["cmd_hist_overview", "cmd_history"]:

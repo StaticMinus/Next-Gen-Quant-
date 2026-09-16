@@ -594,3 +594,100 @@ body {
 .bottom-bar { display: flex; align-items: center; justify-content: center; padding: 8px 0 0 0; }
 .footer-meta { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text-tertiary); }
 .pulse-dot-green { width: 5px; height: 5px; border-radius: 50%; background-color: var(--accent-green); }
+
+/* 9. ACTIVE TRADES WIDGET */
+.active-trades-card {
+  border-color: rgba(255, 159, 10, 0.28);
+  background: var(--bg-card);
+}
+.trade-item-card {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-inner);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trade-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.trade-sym-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.trade-icon {
+  font-size: 20px;
+}
+.trade-sym-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.trade-sym-sub {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.trade-pnl-block {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.trade-pnl-val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+}
+.trade-pnl-sub {
+  font-size: 9.5px;
+  color: var(--text-tertiary);
+}
+.val-red {
+  color: var(--accent-red) !important;
+}
+.trade-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.trade-grid-cell {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cell-lbl {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+.cell-val {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.trade-reassurance-note {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: rgba(48, 209, 88, 0.05);
+  border: 1px solid rgba(48, 209, 88, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.seven-matrix-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+

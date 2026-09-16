@@ -119,53 +119,56 @@ async function fetchLiveBinanceRate() {
 // =========================================================================
 
 let currentTab = 'radar';
-let activeRadarAsset = 'SPY'; // 'SPY' or 'QQQ'
+let activeRadarAsset = 'GLD'; // 'GLD', 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'
+let radarAnimId = null;
+let radarPulsePhase = 0;
 const navHistory = ['radar'];
 
+const ASSETS_LIST = ['GLD', 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'];
+
 let telemetryData = {
-  capital: 6000.0, equity: 6000.0, buffer: 360.0,
-  strategy_name: 'Dual-Asset Scalper (SPY + QQQ)',
-  win_rate: '72.4%', trades_per_mo: '3.14 / mo', profit_10y: '+$6,438.11',
+  capital: 6000.0, equity: 5997.47, buffer: 360.0, daily_buffer: 180.0,
+  strategy_name: '7-Asset Quantitative Opportunity Engine',
+  gld_price: 4332.46, gld_mean: 4340.00, gld_dip: 4330.00, gld_dist: 2.26, gld_dist_pct: 0.05,
+  qqq_price: 704.54, qqq_mean: 707.20, qqq_dip: 704.68, qqq_dist: 0.00, qqq_dist_pct: 0.00,
   spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84, spy_dist_pct: 0.76,
-  qqq_price: 714.88, qqq_mean: 715.44, qqq_dip: 710.30, qqq_dist: 4.58, qqq_dist_pct: 0.64,
+  aapl_price: 331.34, aapl_mean: 330.50, aapl_dip: 318.50, aapl_dist: 12.84, aapl_dist_pct: 3.90,
+  nvda_price: 212.17, nvda_mean: 212.00, nvda_dip: 210.27, nvda_dist: 1.90, nvda_dist_pct: 0.90,
+  msft_price: 495.20, msft_mean: 494.80, msft_dip: 486.50, msft_dist: 8.70, msft_dist_pct: 1.75,
+  meta_price: 612.40, meta_mean: 610.90, meta_dip: 598.20, meta_dist: 14.20, meta_dist_pct: 2.31,
+  active_positions: [],
   payout_days: 5,
 };
 
 const MAX_RADAR_POINTS = 32;
-let spyHistory = [];
-let qqqHistory = [];
-let radarAnimId = null;
-let radarPulsePhase = 0;
+const assetHistories = {
+  GLD: [], QQQ: [], SPY: [], AAPL: [], NVDA: [], MSFT: [], META: []
+};
 
-function pushSpyTick(price) {
-  spyHistory.push(price);
-  if (spyHistory.length > MAX_RADAR_POINTS) spyHistory.shift();
+function pushAssetTick(asset, price) {
+  if (!assetHistories[asset]) assetHistories[asset] = [];
+  assetHistories[asset].push(price);
+  if (assetHistories[asset].length > MAX_RADAR_POINTS) assetHistories[asset].shift();
 }
 
-function pushQqqTick(price) {
-  qqqHistory.push(price);
-  if (qqqHistory.length > MAX_RADAR_POINTS) qqqHistory.shift();
-}
-
-// Seed initial historical trajectory for both SPY and QQQ
+// Seed initial historical trajectory for all 7 assets
 (function seedRadar() {
-  const synthSpy = [-10.09, -8.70, -7.49, -5.19, -6.79, -4.30, -2.99, -1.80, -0.89, -2.50, -4.19, -2.80, -1.49, 0.91, -0.40, -1.19, -1.79, 0];
-  synthSpy.forEach(d => pushSpyTick(telemetryData.spy_price + d));
-
-  const synthQqq = [-8.50, -7.10, -6.20, -4.90, -5.40, -3.20, -2.10, -3.50, -1.80, -0.90, 0.80, -0.40, -1.20, -2.20, -0.80, 0];
-  synthQqq.forEach(d => pushQqqTick(telemetryData.qqq_price + d));
+  const synthOffsets = [-1.5, -1.2, -0.9, -0.6, -0.8, -0.4, -0.2, 0.3, -0.1, -0.3, 0];
+  ASSETS_LIST.forEach(t => {
+    const p = telemetryData[`${t.toLowerCase()}_price`] || 500;
+    synthOffsets.forEach(off => pushAssetTick(t, p + (off * (p * 0.003))));
+  });
 })();
 
 function switchRadarAsset(asset) {
-  if (activeRadarAsset === asset) return;
+  if (!ASSETS_LIST.includes(asset)) return;
   activeRadarAsset = asset;
   triggerHaptic('selection');
 
-  document.getElementById('pill-spy')?.classList.toggle('active', asset === 'SPY');
-  document.getElementById('pill-qqq')?.classList.toggle('active', asset === 'QQQ');
-
-  document.getElementById('card-spec-spy')?.classList.toggle('highlight', asset === 'SPY');
-  document.getElementById('card-spec-qqq')?.classList.toggle('highlight', asset === 'QQQ');
+  ASSETS_LIST.forEach(t => {
+    document.getElementById(`pill-${t.toLowerCase()}`)?.classList.toggle('active', t === asset);
+    document.getElementById(`card-spec-${t.toLowerCase()}`)?.classList.toggle('highlight', t === asset);
+  });
 
   renderRadarChart();
 }
@@ -325,31 +328,32 @@ function renderRadarChart(pulsePhase = 0) {
 
   const colors = getChartColors();
 
-  // Pick dataset based on active asset
-  const isSpy = activeRadarAsset === 'SPY';
-  const history = isSpy ? spyHistory : qqqHistory;
-  const curPrice = isSpy ? telemetryData.spy_price : telemetryData.qqq_price;
-  const dipPrice = isSpy ? (telemetryData.spy_dip || 758.45) : (telemetryData.qqq_dip || 710.30);
-  const meanPrice = isSpy ? (telemetryData.spy_mean || 764.13) : (telemetryData.qqq_mean || 715.44);
+  // Dynamic 7-Asset Selection
+  const assetKey = activeRadarAsset.toLowerCase();
+  const history = assetHistories[activeRadarAsset] || [];
+  const curPrice = telemetryData[`${assetKey}_price`] || 500;
+  const dipPrice = telemetryData[`${assetKey}_dip`] || (curPrice * 0.985);
+  const meanPrice = telemetryData[`${assetKey}_mean`] || (curPrice * 1.015);
+  const targetPrice = activeRadarAsset === 'GLD' ? 4443.38 : meanPrice;
 
-  const pricePoints = history.length >= 3 ? [...history] : [curPrice - 3, curPrice - 1, curPrice];
+  const pricePoints = history.length >= 3 ? [...history] : [curPrice * 0.997, curPrice * 0.999, curPrice];
 
-  const minP = Math.min(...pricePoints, dipPrice) - 1.5;
-  const maxP = Math.max(...pricePoints, meanPrice) + 1.5;
+  const minP = Math.min(...pricePoints, dipPrice) * 0.998;
+  const maxP = Math.max(...pricePoints, targetPrice) * 1.002;
   const range = Math.max(0.01, maxP - minP);
 
   const getX = (i) => (i / (pricePoints.length - 1)) * (w - 24) + 12;
   const getY = (p) => h - 22 - ((p - minP) / range) * (h - 42);
 
-  // Mean Target Guideline
-  const yMean = getY(meanPrice);
+  // Mean / Target Guideline
+  const yTarget = getY(targetPrice);
   ctx.save();
   ctx.strokeStyle = colors.meanLine;
   ctx.lineWidth = 0.8;
   ctx.setLineDash([3, 3]);
   ctx.beginPath();
-  ctx.moveTo(12, yMean);
-  ctx.lineTo(w - 12, yMean);
+  ctx.moveTo(12, yTarget);
+  ctx.lineTo(w - 12, yTarget);
   ctx.stroke();
   ctx.restore();
 
@@ -423,8 +427,16 @@ function renderRadarChart(pulsePhase = 0) {
   // Dynamic Badges
   const badgeTarget = document.getElementById('badge-target');
   const badgeEntry = document.getElementById('badge-entry');
-  if (badgeTarget) badgeTarget.textContent = `${activeRadarAsset} 5d Target: $${meanPrice.toFixed(2)}`;
-  if (badgeEntry) badgeEntry.textContent = `${activeRadarAsset} Dip Trigger: $${dipPrice.toFixed(2)}`;
+  if (badgeTarget) {
+    badgeTarget.textContent = activeRadarAsset === 'GLD'
+      ? `GLD Profit Goal: $4,443.38`
+      : `${activeRadarAsset} Target: $${meanPrice.toFixed(2)}`;
+  }
+  if (badgeEntry) {
+    badgeEntry.textContent = activeRadarAsset === 'GLD'
+      ? `GLD Bought at: $4,334.99`
+      : `${activeRadarAsset} Dip Trigger: $${dipPrice.toFixed(2)}`;
+  }
 }
 
 // Continuous Radar Animation Loop (Pulsing Ripple Beacon)
@@ -440,48 +452,85 @@ function startRadarLoop() {
   radarAnimId = requestAnimationFrame(loop);
 }
 
-// Real-Time Radar Micro-Drift for BOTH SPY and QQQ
+// Real-Time Radar Micro-Drift for all 7 assets
 function tickRadarMicroDrift() {
-  // 1. SPY micro-jitter
-  const lastSpy = spyHistory.length > 0 ? spyHistory[spyHistory.length - 1] : telemetryData.spy_price;
-  const meanSpy = telemetryData.spy_mean || 764.13;
-  const driftSpy = (meanSpy - lastSpy) * 0.025 + (Math.random() - 0.49) * 0.10;
-  const newSpy = Math.round((lastSpy + driftSpy) * 100) / 100;
-  pushSpyTick(newSpy);
-  telemetryData.spy_price = newSpy;
-  telemetryData.spy_dist = Math.max(0, newSpy - (telemetryData.spy_dip || 758.45));
-  telemetryData.spy_dist_pct = (telemetryData.spy_dist / newSpy) * 100;
+  ASSETS_LIST.forEach(asset => {
+    const key = asset.toLowerCase();
+    const history = assetHistories[asset];
+    const lastPrice = history && history.length > 0 ? history[history.length - 1] : (telemetryData[`${key}_price`] || 100);
+    const meanPrice = telemetryData[`${key}_mean`] || lastPrice;
+    const dipPrice = telemetryData[`${key}_dip`] || (meanPrice * 0.985);
 
-  // 2. QQQ micro-jitter
-  const lastQqq = qqqHistory.length > 0 ? qqqHistory[qqqHistory.length - 1] : telemetryData.qqq_price;
-  const meanQqq = telemetryData.qqq_mean || 715.44;
-  const driftQqq = (meanQqq - lastQqq) * 0.025 + (Math.random() - 0.49) * 0.12;
-  const newQqq = Math.round((lastQqq + driftQqq) * 100) / 100;
-  pushQqqTick(newQqq);
-  telemetryData.qqq_price = newQqq;
-  telemetryData.qqq_dist = Math.max(0, newQqq - (telemetryData.qqq_dip || 710.30));
-  telemetryData.qqq_dist_pct = (telemetryData.qqq_dist / newQqq) * 100;
+    // Natural subtle price jitter with soft mean-reversion
+    const jitterScale = lastPrice > 1000 ? 0.25 : (lastPrice > 300 ? 0.12 : 0.08);
+    const drift = (meanPrice - lastPrice) * 0.02 + (Math.random() - 0.49) * jitterScale;
+    const newPrice = Math.round((lastPrice + drift) * 100) / 100;
 
-  // Update Matrix Readout Cards
+    pushAssetTick(asset, newPrice);
+    telemetryData[`${key}_price`] = newPrice;
+    telemetryData[`${key}_dist`] = Math.max(0, newPrice - dipPrice);
+    telemetryData[`${key}_dist_pct`] = (telemetryData[`${key}_dist`] / newPrice) * 100;
+  });
+
+  // Update Matrix Readout Cards and Active Trades Card
   updateMatrixUI();
+  updateActiveTradesUI();
+}
+
+function updateActiveTradesUI() {
+  const gldPrice = telemetryData.gld_price || 4332.46;
+  const entryPrice = 4334.99;
+  // Spot Gold 1 oz (0.01 lot): PnL = (gldPrice - entryPrice) * 1
+  const floatingPnl = Math.round((gldPrice - entryPrice) * 100) / 100;
+
+  const currEl = document.getElementById('gold-curr-price');
+  if (currEl) currEl.textContent = `$${gldPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const pnlEl = document.getElementById('gold-trade-pnl');
+  if (pnlEl) {
+    const prefix = floatingPnl >= 0 ? '+$' : '-$';
+    const absPnl = Math.abs(floatingPnl).toFixed(2);
+    pnlEl.textContent = `${prefix}${absPnl} USD`;
+    pnlEl.className = floatingPnl >= 0 ? 'trade-pnl-val val-green' : 'trade-pnl-val val-red';
+  }
 }
 
 function updateMatrixUI() {
-  const spyEl = document.getElementById('spy-price');
-  const spyDistEl = document.getElementById('spy-dip-dist');
-  const spyTargetEl = document.getElementById('spy-dip-target');
+  ASSETS_LIST.forEach(asset => {
+    const key = asset.toLowerCase();
+    const priceEl = document.getElementById(`${key}-price`);
+    const distEl = document.getElementById(`${key}-dip-dist`);
+    const targetEl = document.getElementById(`${key}-dip-target`);
+    const badgeEl = document.getElementById(`${key}-status-badge`);
 
-  const qqqEl = document.getElementById('qqq-price');
-  const qqqDistEl = document.getElementById('qqq-dip-dist');
-  const qqqTargetEl = document.getElementById('qqq-dip-target');
+    const curPrice = telemetryData[`${key}_price`] || 0;
+    const dipPrice = telemetryData[`${key}_dip`] || 0;
+    const dist = telemetryData[`${key}_dist`] || 0;
+    const distPct = telemetryData[`${key}_dist_pct`] || 0;
 
-  if (spyEl) spyEl.textContent = `$${telemetryData.spy_price.toFixed(2)}`;
-  if (spyDistEl) spyDistEl.textContent = `+$${telemetryData.spy_dist.toFixed(2)} (+${telemetryData.spy_dist_pct.toFixed(2)}%)`;
-  if (spyTargetEl) spyTargetEl.textContent = `$${(telemetryData.spy_dip || 758.45).toFixed(2)}`;
+    if (priceEl) priceEl.textContent = `$${curPrice.toFixed(2)}`;
 
-  if (qqqEl) qqqEl.textContent = `$${telemetryData.qqq_price.toFixed(2)}`;
-  if (qqqDistEl) qqqDistEl.textContent = `+$${telemetryData.qqq_dist.toFixed(2)} (+${telemetryData.qqq_dist_pct.toFixed(2)}%)`;
-  if (qqqTargetEl) qqqTargetEl.textContent = `$${(telemetryData.qqq_dip || 710.30).toFixed(2)}`;
+    if (asset === 'GLD') {
+      if (distEl) distEl.textContent = 'In Trade (Holding)';
+      if (badgeEl) {
+        badgeEl.textContent = 'HOLDING';
+        badgeEl.className = 'status-badge badge-active';
+      }
+    } else {
+      if (distEl) {
+        distEl.textContent = `+$${dist.toFixed(2)} (+${distPct.toFixed(2)}%)`;
+      }
+      if (badgeEl) {
+        if (distPct <= 0.05) {
+          badgeEl.textContent = 'AT DIP';
+          badgeEl.className = 'status-badge badge-active';
+        } else {
+          badgeEl.textContent = 'WAITING';
+          badgeEl.className = 'status-badge badge-waiting';
+        }
+      }
+    }
+  });
 }
 
 // =========================================================================
@@ -705,8 +754,12 @@ async function syncTelemetry() {
     const data = await res.json();
     telemetryData = { ...telemetryData, ...data };
 
-    if (data.spy_price) pushSpyTick(data.spy_price);
-    if (data.qqq_price) pushQqqTick(data.qqq_price);
+    ASSETS_LIST.forEach(asset => {
+      const key = asset.toLowerCase();
+      if (data[`${key}_price`]) {
+        pushAssetTick(asset, data[`${key}_price`]);
+      }
+    });
 
     const balEl = document.getElementById('balance-val');
     const buffEl = document.getElementById('buffer-val');
@@ -714,6 +767,7 @@ async function syncTelemetry() {
     if (buffEl) buffEl.textContent = `$${data.buffer.toFixed(2)}`;
 
     updateMatrixUI();
+    updateActiveTradesUI();
 
     if (data.live_p2p_rate && !isNaN(data.live_p2p_rate)) {
       LIVE_P2P_RATE = parseFloat(data.live_p2p_rate);

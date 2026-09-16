@@ -72,23 +72,24 @@ class TestLiveVision(unittest.TestCase):
         self.assertIn("7-ASSET INSTITUTIONAL UNIVERSE", prompt)
 
     def test_render_trades_text_enriched(self):
-        """Verify render_trades_text formats the high-signal enriched position card."""
+        """Verify render_trades_text formats the clear, friendly position card for Gold."""
         _CACHE["enriched_positions"] = self.mock_enriched_positions
         _CACHE["capital"] = 6000.0
         _CACHE["equity"] = 5993.51
 
         output = render_trades_text()
 
-        self.assertIn("#3069593 • XAUUSD (Spot Gold)", output)
-        self.assertIn("BUY 0.01 Lots", output)
+        self.assertIn("Spot Gold (XAUUSD)", output)
+        self.assertIn("#3069593", output)
+        self.assertIn("0.01 lot", output)
         self.assertIn("$4,334.99", output)
         self.assertIn("$4,328.50", output)
         self.assertIn("$4,443.38", output)
         self.assertIn("$4,204.95", output)
-        self.assertIn("Total Floating P&L:", output)
+        self.assertIn("Total Floating Result:", output)
 
-    def test_get_trades_markup_interactive_buttons(self):
-        """Verify get_trades_markup includes 1-tap close and 1-tap QQQ buy buttons when dip active."""
+    def test_get_trades_markup_safety_no_execution_buttons(self):
+        """Verify get_trades_markup strictly removes all trade execution buttons for user safety."""
         _CACHE["enriched_positions"] = self.mock_enriched_positions
         _CACHE["qqq_dist"] = -0.14
         _CACHE["qqq_signal"] = "🚨 <b>DIP TRIGGERED</b>"
@@ -98,11 +99,10 @@ class TestLiveVision(unittest.TestCase):
 
         callbacks = [btn["callback_data"] for row in markup["inline_keyboard"] for btn in row]
 
-        # Verify close position callback
-        self.assertIn("cmd_close_pos_3069593", callbacks)
-        # Verify 1-tap QQQ buy callback
-        self.assertIn("cmd_exec_setup_qqq", callbacks)
-        # Verify navigation callbacks
+        # Verify NO close position callback or trade entry callback exists
+        self.assertNotIn("cmd_close_pos_3069593", callbacks)
+        self.assertNotIn("cmd_exec_setup_qqq", callbacks)
+        # Verify only safe navigation callbacks exist
         self.assertIn("cmd_trades", callbacks)
         self.assertIn("cmd_overview", callbacks)
 

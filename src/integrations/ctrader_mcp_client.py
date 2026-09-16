@@ -392,6 +392,8 @@ class CTraderMCPClient:
         raw = self.call_tool("close_position", args)
         return self._parse_content_json(raw)
 
+ctrader_client = CTraderMCPClient()
+
 
 if __name__ == "__main__":
     client = CTraderMCPClient()

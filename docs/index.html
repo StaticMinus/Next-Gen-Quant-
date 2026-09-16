@@ -94,6 +94,61 @@
       </div>
     </section>
 
+    <!-- Active Trades Card (Live cTrader Vision) -->
+    <section class="apple-card active-trades-card" id="active-trades-card">
+      <div class="card-inner">
+        <div class="card-header-row">
+          <span class="eyebrow">ACTIVE TRADES • CTRADER #3028655</span>
+          <div class="apple-chip chip-amber" id="trades-status-chip">
+            <span class="chip-dot"></span>
+            <span id="trades-count-text">1 POSITION OPEN</span>
+          </div>
+        </div>
+
+        <div id="trades-container">
+          <!-- Dynamic Trade Item: Spot Gold -->
+          <div class="trade-item-card" id="gold-trade-item">
+            <div class="trade-item-header">
+              <div class="trade-sym-badge">
+                <span class="trade-icon">🟡</span>
+                <div>
+                  <div class="trade-sym-title">Spot Gold (XAUUSD)</div>
+                  <div class="trade-sym-sub">Trade #3069593 • 0.01 lot • Bought on Dip</div>
+                </div>
+              </div>
+              <div class="trade-pnl-block">
+                <span class="trade-pnl-val val-red" id="gold-trade-pnl">-$2.53 USD</span>
+                <span class="trade-pnl-sub">Normal market wiggle</span>
+              </div>
+            </div>
+
+            <div class="trade-details-grid">
+              <div class="trade-grid-cell">
+                <span class="cell-lbl">Bought at</span>
+                <span class="cell-val font-mono">$4,334.99</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl">Current Price</span>
+                <span class="cell-val font-mono" id="gold-curr-price">$4,332.46</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl">Profit Goal</span>
+                <span class="cell-val font-mono val-green">$4,443.38 (+$110.92)</span>
+              </div>
+              <div class="trade-grid-cell">
+                <span class="cell-lbl">Safety Stop</span>
+                <span class="cell-val font-mono val-cyan">$4,204.95 (Protected)</span>
+              </div>
+            </div>
+
+            <div class="trade-reassurance-note">
+              🛡️ <b>Automated System Active:</b> The system bought Gold automatically on a dip. It will exit automatically when the profit target hits. You do not need to do anything!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Apple Segmented Control Navigation -->
     <nav class="segmented-control" id="tab-nav">
       <div class="segment-indicator" id="segment-slider"></div>
@@ -135,7 +190,7 @@
           <div class="card-inner">
             <div class="panel-header-row">
               <div>
-                <div class="panel-title">Dual-Asset Scalper Radar (SPY + QQQ)</div>
+                <div class="panel-title">7-Asset Quantitative Dip Radar</div>
                 <div class="panel-subtitle" id="session-countdown">Pre-Market • Opens in 3h 10m (2:30 PM WAT)</div>
               </div>
               <button class="icon-action-btn" id="btn-refresh-radar" title="Refresh Live Prices">
@@ -147,9 +202,14 @@
             </div>
 
             <!-- Asset Switcher Pills for Radar -->
-            <div class="radar-asset-pills">
-              <button class="radar-pill active" id="pill-spy" onclick="switchRadarAsset('SPY')">SPY • S&P 500</button>
-              <button class="radar-pill" id="pill-qqq" onclick="switchRadarAsset('QQQ')">QQQ • Nasdaq 100</button>
+            <div class="radar-asset-pills" style="flex-wrap: wrap;">
+              <button class="radar-pill active" id="pill-gld" onclick="switchRadarAsset('GLD')">🟡 Gold</button>
+              <button class="radar-pill" id="pill-qqq" onclick="switchRadarAsset('QQQ')">💻 QQQ</button>
+              <button class="radar-pill" id="pill-spy" onclick="switchRadarAsset('SPY')">🏛️ SPY</button>
+              <button class="radar-pill" id="pill-aapl" onclick="switchRadarAsset('AAPL')">🍎 AAPL</button>
+              <button class="radar-pill" id="pill-nvda" onclick="switchRadarAsset('NVDA')">⚡ NVDA</button>
+              <button class="radar-pill" id="pill-msft" onclick="switchRadarAsset('MSFT')">🪟 MSFT</button>
+              <button class="radar-pill" id="pill-meta" onclick="switchRadarAsset('META')">🌐 META</button>
             </div>
 
             <!-- Apple Stocks Minimalist Interactive Chart -->
@@ -157,42 +217,122 @@
               <div class="chart-live-badge"><span class="live-dot"></span> LIVE</div>
               <canvas id="radarChart" width="380" height="190"></canvas>
               <div class="chart-badges">
-                <span class="badge-tag tag-target" id="badge-target">5d Target: $764.13</span>
-                <span class="badge-tag tag-entry" id="badge-entry">Dip Trigger: $758.45</span>
+                <span class="badge-tag tag-target" id="badge-target">GLD Target: $4,443.38</span>
+                <span class="badge-tag tag-entry" id="badge-entry">Dip Trigger: $4,330.00</span>
               </div>
             </div>
 
-            <!-- Dual-Asset Market Matrix: SPY & QQQ Individual Dip Distances -->
-            <div class="dual-matrix-container">
-              <!-- SPY Card -->
-              <div class="asset-spec-card highlight" id="card-spec-spy">
+            <!-- 7-Asset Market Matrix -->
+            <div class="seven-matrix-container">
+              <!-- GLD Card -->
+              <div class="asset-spec-card highlight" id="card-spec-gld" onclick="switchRadarAsset('GLD')">
                 <div class="card-top-line">
-                  <span class="asset-tag">SPY (S&P 500)</span>
-                  <span class="asset-price font-mono" id="spy-price">$764.29</span>
+                  <span class="asset-tag">🟡 Gold (XAUUSD)</span>
+                  <span class="asset-price font-mono" id="gld-price">$4,332.46</span>
                 </div>
                 <div class="card-mid-line">
-                  <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="spy-dip-dist">+$5.84 (+0.76%)</span>
+                  <span class="lbl-small">Status</span>
+                  <span class="val-dist font-mono val-green" id="gld-dip-dist">In Trade</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b id="spy-dip-target">$758.45</b></span>
-                  <span class="status-badge badge-waiting" id="spy-status-badge">WAITING DIP</span>
+                  <span class="lbl-dim">Target: <b>$4,443.38</b></span>
+                  <span class="status-badge badge-active" id="gld-status-badge">HOLDING</span>
                 </div>
               </div>
 
               <!-- QQQ Card -->
-              <div class="asset-spec-card" id="card-spec-qqq">
+              <div class="asset-spec-card" id="card-spec-qqq" onclick="switchRadarAsset('QQQ')">
                 <div class="card-top-line">
-                  <span class="asset-tag">QQQ (Nasdaq 100)</span>
-                  <span class="asset-price font-mono" id="qqq-price">$714.88</span>
+                  <span class="asset-tag">💻 QQQ (Nasdaq 100)</span>
+                  <span class="asset-price font-mono" id="qqq-price">$704.54</span>
                 </div>
                 <div class="card-mid-line">
                   <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="qqq-dip-dist">+$4.58 (+0.64%)</span>
+                  <span class="val-dist font-mono val-green" id="qqq-dip-dist">+$0.00</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b id="qqq-dip-target">$710.30</b></span>
-                  <span class="status-badge badge-waiting" id="qqq-status-badge">WAITING DIP</span>
+                  <span class="lbl-dim">Trigger: <b>$704.68</b></span>
+                  <span class="status-badge badge-waiting" id="qqq-status-badge">AT DIP</span>
+                </div>
+              </div>
+
+              <!-- SPY Card -->
+              <div class="asset-spec-card" id="card-spec-spy" onclick="switchRadarAsset('SPY')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🏛️ SPY (S&P 500)</span>
+                  <span class="asset-price font-mono" id="spy-price">$764.29</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="spy-dip-dist">+$5.84</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$758.45</b></span>
+                  <span class="status-badge badge-waiting" id="spy-status-badge">WAITING</span>
+                </div>
+              </div>
+
+              <!-- AAPL Card -->
+              <div class="asset-spec-card" id="card-spec-aapl" onclick="switchRadarAsset('AAPL')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🍎 Apple (AAPL)</span>
+                  <span class="asset-price font-mono" id="aapl-price">$331.34</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="aapl-dip-dist">+$12.84</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$318.50</b></span>
+                  <span class="status-badge badge-waiting" id="aapl-status-badge">WAITING</span>
+                </div>
+              </div>
+
+              <!-- NVDA Card -->
+              <div class="asset-spec-card" id="card-spec-nvda" onclick="switchRadarAsset('NVDA')">
+                <div class="card-top-line">
+                  <span class="asset-tag">⚡ Nvidia (NVDA)</span>
+                  <span class="asset-price font-mono" id="nvda-price">$212.17</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="nvda-dip-dist">+$1.90</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$210.27</b></span>
+                  <span class="status-badge badge-waiting" id="nvda-status-badge">WAITING</span>
+                </div>
+              </div>
+
+              <!-- MSFT Card -->
+              <div class="asset-spec-card" id="card-spec-msft" onclick="switchRadarAsset('MSFT')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🪟 Microsoft (MSFT)</span>
+                  <span class="asset-price font-mono" id="msft-price">$495.20</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="msft-dip-dist">+$8.70</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$486.50</b></span>
+                  <span class="status-badge badge-waiting" id="msft-status-badge">WAITING</span>
+                </div>
+              </div>
+
+              <!-- META Card -->
+              <div class="asset-spec-card" id="card-spec-meta" onclick="switchRadarAsset('META')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🌐 Meta (META)</span>
+                  <span class="asset-price font-mono" id="meta-price">$612.40</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="meta-dip-dist">+$14.20</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$598.20</b></span>
+                  <span class="status-badge badge-waiting" id="meta-status-badge">WAITING</span>
                 </div>
               </div>
             </div>
@@ -200,15 +340,15 @@
             <!-- Expandable Information Accordion -->
             <div class="apple-accordion" id="radar-accordion">
               <div class="accordion-trigger" onclick="toggleAccordion('radar-accordion')">
-                <span>Dual-Asset Strategy & Performance</span>
+                <span>How Automated Trading & Safety Works</span>
                 <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
               </div>
               <div class="accordion-body">
-                <p>• <b>Dual-Asset Strategy</b>: Scans both SPY (S&P 500) and QQQ (Nasdaq 100) for 1.25σ oversold dips.</p>
-                <p>• <b>10-Year Audited Edge</b>: 377 trades, 72.4% win rate, +$6,438 net profit, ~3.14 trades/month (action every 6–8 trading days).</p>
-                <p>• <b>Simultaneous Dip Rule</b>: Splits 0.05 lot on SPY and 0.05 lot on QQQ to strictly protect FundedNext's $180 daily limit.</p>
+                <p>• <b>7-Asset Opportunity Scanner</b>: The robot watches Gold, QQQ, SPY, Apple, Nvidia, Microsoft, and Meta 24/7 for safe dip opportunities.</p>
+                <p>• <b>100% Automated Execution</b>: When an opportunity arrives, the server enters automatically. You never need to click any trade buttons.</p>
+                <p>• <b>Capital Protection</b>: Each trade has a strict safety stop and target goal set immediately on the server. Your $180 daily cushion is completely safe.</p>
               </div>
             </div>
           </div>
