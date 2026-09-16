@@ -648,6 +648,85 @@ def generate_cycle_statement_pdf() -> io.BytesIO:
     return buf
 
 
+def generate_milestone_progress_card(capital=6000.0, target=600.0, profit=109.72, rate=1518.40) -> io.BytesIO:
+    """Generates visual high-contrast dark theme milestone progress card."""
+    fig, ax = plt.subplots(figsize=(8.2, 4.8), dpi=120)
+    fig.patch.set_facecolor("#0a0e14")
+    ax.set_facecolor("#0a0e14")
+    ax.axis("off")
+
+    pct = min(100.0, max(0.0, (profit / target) * 100.0))
+    to_go = max(0.0, target - profit)
+    naira_val = profit * rate
+    total_payout_usd = (target * 0.85) + 90.0  # 85% split + $90 bonus
+    total_payout_ngn = total_payout_usd * rate
+
+    # Main Card Container
+    card = patches.FancyBboxPatch(
+        (0.03, 0.05), 0.94, 0.90,
+        boxstyle="round,pad=0.02,rounding_size=0.04",
+        facecolor="#121820", edgecolor="#263342", linewidth=1.5
+    )
+    ax.add_patch(card)
+
+    # Header
+    ax.text(0.08, 0.85, "FUNDEDNEXT $6,000 CHALLENGE  |  MILESTONE TRACKER", color="#38bdf8", fontsize=11, fontweight="bold")
+    ax.text(0.08, 0.79, f"Target: +$600.00 (+10.0%)  *  1-Phase Evaluation  *  5-Day Payout Cycle", color="#8b949e", fontsize=8.5)
+
+    # Progress Metric
+    ax.text(0.08, 0.68, f"+${profit:,.2f} USD", color="#00ff88", fontsize=20, fontweight="bold")
+    ax.text(0.48, 0.685, f"({pct:.1f}% Completed)", color="#38bdf8", fontsize=12, fontweight="bold")
+    ax.text(0.08, 0.61, f"~N{naira_val:,.0f} NGN accrued  *  ${to_go:,.2f} remaining to reach Funded Status", color="#cbd5e1", fontsize=8.5)
+
+    # Progress Bar Background
+    bar_bg = patches.FancyBboxPatch(
+        (0.08, 0.50), 0.84, 0.07,
+        boxstyle="round,pad=0.01,rounding_size=0.02",
+        facecolor="#1e293b", edgecolor="#334155", linewidth=1.0
+    )
+    ax.add_patch(bar_bg)
+
+    # Progress Bar Fill
+    fill_w = max(0.02, 0.84 * (pct / 100.0))
+    bar_fill = patches.FancyBboxPatch(
+        (0.08, 0.50), fill_w, 0.07,
+        boxstyle="round,pad=0.01,rounding_size=0.02",
+        facecolor="#00ff88", edgecolor="none"
+    )
+    ax.add_patch(bar_fill)
+
+    # Milestone Checkpoints Box
+    ms_box = patches.FancyBboxPatch(
+        (0.08, 0.27), 0.84, 0.18,
+        boxstyle="round,pad=0.01,rounding_size=0.02",
+        facecolor="#16202c", edgecolor="#223040", linewidth=1.0
+    )
+    ax.add_patch(ms_box)
+
+    ax.text(0.11, 0.38, "STAGE 1: $150 (25%)", color="#00ff88" if pct >= 25 else "#f59e0b", fontsize=8.5, fontweight="bold")
+    ax.text(0.11, 0.31, "[Active Target]" if pct < 25 else "[Cleared]", color="#8b949e", fontsize=7.5)
+
+    ax.text(0.35, 0.38, "STAGE 2: $300 (50%)", color="#00ff88" if pct >= 50 else "#8b949e", fontsize=8.5, fontweight="bold")
+    ax.text(0.35, 0.31, "Halfway Point", color="#8b949e", fontsize=7.5)
+
+    ax.text(0.59, 0.38, "STAGE 3: $450 (75%)", color="#00ff88" if pct >= 75 else "#8b949e", fontsize=8.5, fontweight="bold")
+    ax.text(0.59, 0.31, "Final Sprint", color="#8b949e", fontsize=7.5)
+
+    ax.text(0.81, 0.38, "STAGE 4: $600", color="#00ff88" if pct >= 100 else "#38bdf8", fontsize=8.5, fontweight="bold")
+    ax.text(0.81, 0.31, "FUNDED! (85%)", color="#8b949e", fontsize=7.5)
+
+    # Footer Payout Info
+    ax.text(0.08, 0.16, "1st Funded Payout Projection (85% Profit + $90 Phase 1 Bonus):", color="#e2e8f0", fontsize=8.5, fontweight="bold")
+    ax.text(0.08, 0.10, f"Total: ${total_payout_usd:,.2f} USDT (~N{total_payout_ngn:,.0f} NGN) directly to your Binance TRC20 Wallet", color="#00ff88", fontsize=8.5)
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
 if __name__ == "__main__":
     b1 = generate_equity_chart()
     print("Equity Chart:", len(b1.getvalue()), "bytes")

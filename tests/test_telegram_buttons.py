@@ -25,6 +25,9 @@ from src.integrations.telegram_bot_service import (
     render_history_30d_text,
     render_history_all_text,
     render_history_overview_text,
+    render_milestone_text,
+    render_morning_briefing_text,
+    render_nightly_summary_text,
     render_overview_text,
     render_p2p_rate_text,
     render_payout_success_text,
@@ -38,6 +41,7 @@ from src.integrations.telegram_bot_service import (
 from src.visualization.telegram_charts import (
     generate_cycle_statement_pdf,
     generate_equity_chart,
+    generate_milestone_progress_card,
     generate_p2p_converter_card,
     generate_payout_roadmap_card,
     generate_profile_summary_card,
@@ -67,6 +71,9 @@ class TestTelegramTerminalButtons(unittest.TestCase):
             ("Withdraw", render_withdraw_text()),
             ("Withdraw Confirm", render_withdraw_confirm_text(1062.50)),
             ("Payout Success", render_payout_success_text(1062.50)),
+            ("Morning Briefing", render_morning_briefing_text()),
+            ("Nightly Summary", render_nightly_summary_text()),
+            ("Milestone Tracker", render_milestone_text()),
         ]
         for name, text in renderers:
             self.assertTrue(len(text) > 20, f"Renderer '{name}' output was unexpectedly short.")
@@ -132,6 +139,9 @@ class TestTelegramTerminalButtons(unittest.TestCase):
 
         b8 = generate_cycle_statement_pdf()
         self.assertTrue(len(b8.getvalue()) > 1000, "PDF statement too small")
+
+        b9 = generate_milestone_progress_card(6000.0, 600.0, 109.72, 1518.40)
+        self.assertTrue(len(b9.getvalue()) > 5000, "Milestone progress card too small")
 
 
 if __name__ == "__main__":

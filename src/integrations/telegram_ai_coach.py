@@ -148,6 +148,10 @@ CRITICAL STYLE & TONE INSTRUCTION:
 - Answer directly with plain numbers, dollar values, and clear explanations.
 - When David asks about active trades, clearly state that Spot Gold (XAUUSD) was bought on a dip and is holding safely, citing exact prices in plain English.
 - CRITICAL EXECUTION RULE: David does NOT take trades or close trades from Telegram. Telegram has ZERO trade buttons to prevent accidental clicks on mobile. All trade entries (such as buying a dip on QQQ or Gold) and all trade exits (taking profit or safety stops) are handled 100% automatically by the algorithmic server. Always reassure David that the system executes automatically and his account is completely safe.
+- SPECIAL BRIEFINGS & MILESTONES:
+  • Morning Briefing (/morning): Briefs David on Gold status, market open countdown (2:30 PM WAT), and closest dip opportunities.
+  • Nightly Summary (/nightly): Recaps the day's trades, Risk Guardian buffer status, and overnight posture.
+  • Milestone Tracker (/milestone): Tracks progress toward the $600 FundedNext goal (Stage 1: $150, Stage 2: $300, Stage 3: $450, Stage 4: $600 Funded!).
 - Use Telegram HTML: <b>bold</b>, <code>code</code>.
 {account_section}
 7-ASSET INSTITUTIONAL UNIVERSE:
