@@ -93,18 +93,42 @@ def build_system_prompt(account_telemetry: dict = None) -> str:
         p2p = account_telemetry.get("live_p2p_rate", 1518.40)
         naira_val = eq * p2p
         pos = account_telemetry.get("positions", [])
-        pos_desc = f"{len(pos)} open" if pos else "0 open (100% cash preserved)"
+        enriched_pos = account_telemetry.get("enriched_positions", [])
+        
+        pos_lines = []
+        if enriched_pos:
+            for ep in enriched_pos:
+                tp_str = f"${ep['take_profit']:,.2f} (+{ep.get('dist_to_tp_pct', 0.0):.2f}% to target)" if ep.get("take_profit") else "Discretionary"
+                sl_str = f"${ep['stop_loss']:,.2f} (-{ep.get('dist_to_sl_pct', 0.0):.2f}% cushion left)" if ep.get("stop_loss") else "Discretionary"
+                pos_lines.append(
+                    f"  • {ep['symbol_name']} ({ep['display_name']}) {ep['trade_side']} #{ep['position_id']} ({ep['lots']} lots):\n"
+                    f"    - Entry: ${ep['entry_price']:,.2f} | Current Spot: ${ep['current_price']:,.2f} | Floating PnL: ${ep['floating_pnl']:+,.2f} ({ep['floating_pnl_pct']:+,.2f}%)\n"
+                    f"    - Take Profit: {tp_str}\n"
+                    f"    - Stop Loss: {sl_str}"
+                )
+            pos_desc = f"{len(enriched_pos)} active positions (Slot 1 of 3 occupied):\n" + "\n".join(pos_lines)
+        elif pos:
+            pos_desc = f"{len(pos)} open"
+        else:
+            pos_desc = "0 open (100% cash preserved in bank)"
+
         cycle_prof = account_telemetry.get("cycle_profit", max(0.0, eq - 6000.0))
         target_left = max(0.0, 600.0 - cycle_prof)
+        daily_loss_used = max(0.0, cap - eq)
+        daily_cushion = max(0.0, 180.0 - daily_loss_used)
+        max_dd_cushion = max(0.0, 360.0 - max(0.0, 6000.0 - eq))
+
         account_section = f"""
 LIVE CTRADER ACCOUNT TELEMETRY (#3028655):
 - Live Account Equity: ${eq:,.2f} USD (~₦{naira_val:,.0f} NGN)
-- Live Balance: ${cap:,.2f} USD
-- Active Positions: {pos_desc}
-- Profit Accrued in Current Cycle: +${cycle_prof:,.2f} USD
-- Profit Remaining to Pass FundedNext Phase 1 (+10% / +$600): ${target_left:,.2f} USD
-- Remaining Daily Loss Cushion: $180.00 SAFE (0.00% daily loss)
-- Remaining Trailing Loss Cushion: $360.00 SAFE (0.00% overall DD)
+- Live Balance: ${cap:,.2f} USD | Free Margin: ${account_telemetry.get('free_margin', 5700.0):,.2f} USD
+- Active Positions Telemetry:
+{pos_desc}
+- Accrued Cycle Profit: +${cycle_prof:,.2f} USD
+- Remaining to Pass Phase 1 (+10% / +$600): ${target_left:,.2f} USD
+- Remaining Daily Loss Cushion: ${daily_cushion:,.2f} of $180.00 Limit ({(daily_cushion/180.0)*100:.1f}% SAFE)
+- Remaining Trailing Loss Cushion: ${max_dd_cushion:,.2f} of $360.00 Limit ({(max_dd_cushion/360.0)*100:.1f}% SAFE)
+- Available Position Slots: {max(0, 3 - len(enriched_pos or pos))} of 3 Open
 - Live Binance P2P Rate: 1 USDT = ₦{p2p:,.2f} NGN
 - Payout Schedule: Every 5 Business Days (Weekly Cycle)
 """
@@ -122,12 +146,12 @@ CRITICAL STYLE INSTRUCTION:
 - Keep ALL responses ULTRA-CONCISE, BRIEF, and STRAIGHT TO THE POINT.
 - Max 2 to 4 bullet points or short sentences. No essays, no filler, no corporate disclaimers.
 - Answer directly with exact numbers, prices, percentages, and execution actions.
+- When David asks about active trades, cite exact symbol, entry price, floating PnL, and distance to TP/SL.
 - Use Telegram HTML: <b>bold</b>, <code>code</code>.
 {account_section}
-5-ASSET INSTITUTIONAL UNIVERSE:
-- Assets: SPY, QQQ, AAPL, NVDA, GLD (5 top institutional liquid assets).
-- S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Gold (GLD macro hedge).
-- Pruned assets: AMZN, GOOGL (drawdown drag), IWM (small-cap volatility breach).
+7-ASSET INSTITUTIONAL UNIVERSE:
+- Assets: GLD (XAUUSD), SPY (SPX500), QQQ (NDX100), AAPL, NVDA, MSFT, META.
+- S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Microsoft (MSFT), Meta (META), Gold (GLD/XAUUSD macro hedge).
 
 ATLAS-QUANT STRATEGY TRIAD:
 1. Sniper Dip-Buy (Mean Reversion):

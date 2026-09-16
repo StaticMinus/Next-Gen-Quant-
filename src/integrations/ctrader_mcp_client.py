@@ -110,6 +110,8 @@ class CTraderMCPClient:
         return []
 
     def call_tool(self, name: str, arguments: Optional[dict] = None) -> Optional[dict]:
+        if not self.session_id:
+            self.initialize()
         payload = {
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -119,7 +121,11 @@ class CTraderMCPClient:
             },
             "id": self._next_id()
         }
-        return self._post_sse(payload)
+        res = self._post_sse(payload)
+        if not res and not self.session_id:
+            self.initialize()
+            res = self._post_sse(payload)
+        return res
 
     def _parse_content_json(self, response: Optional[dict]) -> Optional[Any]:
         if not response or "result" not in response or "content" not in response["result"]:
@@ -201,6 +207,111 @@ class CTraderMCPClient:
         if data and isinstance(data, dict) and "positions" in data:
             return data["positions"]
         return []
+
+    def get_enriched_positions(self) -> List[dict]:
+        """
+        Returns list of active open positions enriched with:
+          - symbol_name (e.g. 'XAUUSD', 'NDX100')
+          - display_name (e.g. 'Spot Gold')
+          - lots (converted from raw cTrader volume)
+          - current_price (live spot bid/ask)
+          - floating_pnl (unrealized profit/loss in USD)
+          - floating_pnl_pct
+          - take_profit & dist_to_tp (USD and %)
+          - stop_loss & dist_to_sl (USD and %)
+        """
+        positions = self.get_positions()
+        if not positions:
+            return []
+
+        s_map = self.get_symbol_map()
+        id_to_sym = {v: k for k, v in s_map.items()}
+
+        friendly_names = {
+            "XAUUSD": "Spot Gold",
+            "SPX500": "S&P 500 Index",
+            "NDX100": "Nasdaq 100 Index",
+            "AAPL": "Apple Inc.",
+            "NVDA": "Nvidia Corp.",
+            "MSFT": "Microsoft Corp.",
+            "META": "Meta Platforms"
+        }
+
+        enriched = []
+        for p in positions:
+            sym_id = p.get("symbolId")
+            sym_name = id_to_sym.get(sym_id, p.get("symbolName", f"SYM_{sym_id}")).upper()
+            display_name = friendly_names.get(sym_name, sym_name)
+            side = p.get("tradeSide", "BUY").upper()
+            raw_vol = p.get("volume", 0)
+            entry_p = float(p.get("entryPrice", 0.0))
+            sl_p = float(p.get("stopLoss", 0.0)) if p.get("stopLoss") else None
+            tp_p = float(p.get("takeProfit", 0.0)) if p.get("takeProfit") else None
+
+            # Sizing multiplier and lots calculation
+            if "XAU" in sym_name or "GOLD" in sym_name:
+                lots = raw_vol / 10000.0
+                multiplier = 100.0  # 100 oz per lot
+            elif "SPX" in sym_name or "NDX" in sym_name or "US30" in sym_name:
+                lots = raw_vol / 100.0
+                multiplier = 1.0    # 1 index contract per lot
+            else:
+                lots = raw_vol / 100.0
+                multiplier = 1.0    # 1 share per lot
+
+            # Fetch live spot
+            spot = self.get_spot_price(sym_name)
+            if spot:
+                curr_p = float(spot["bid"] if side == "BUY" else spot["ask"])
+            else:
+                curr_p = entry_p
+
+            # Calculate floating PnL
+            if side == "BUY":
+                pnl = (curr_p - entry_p) * lots * multiplier
+                pnl_pct = ((curr_p - entry_p) / entry_p) * 100 if entry_p > 0 else 0.0
+            else:
+                pnl = (entry_p - curr_p) * lots * multiplier
+                pnl_pct = ((entry_p - curr_p) / entry_p) * 100 if entry_p > 0 else 0.0
+
+            # Distance to TP
+            dist_tp_val = None
+            dist_tp_pct = None
+            if tp_p:
+                dist_tp = (tp_p - curr_p) if side == "BUY" else (curr_p - tp_p)
+                dist_tp_val = dist_tp * lots * multiplier
+                dist_tp_pct = (dist_tp / curr_p) * 100 if curr_p > 0 else 0.0
+
+            # Distance to SL (cushion left)
+            dist_sl_val = None
+            dist_sl_pct = None
+            if sl_p:
+                dist_sl = (curr_p - sl_p) if side == "BUY" else (sl_p - curr_p)
+                dist_sl_val = dist_sl * lots * multiplier
+                dist_sl_pct = (dist_sl / curr_p) * 100 if curr_p > 0 else 0.0
+
+            enriched.append({
+                "position_id": p.get("positionId"),
+                "symbol_id": sym_id,
+                "symbol_name": sym_name,
+                "display_name": display_name,
+                "trade_side": side,
+                "volume_raw": raw_vol,
+                "lots": round(lots, 2),
+                "entry_price": entry_p,
+                "current_price": curr_p,
+                "take_profit": tp_p,
+                "stop_loss": sl_p,
+                "floating_pnl": round(pnl, 2),
+                "floating_pnl_pct": round(pnl_pct, 2),
+                "dist_to_tp_usd": round(dist_tp_val, 2) if dist_tp_val is not None else None,
+                "dist_to_tp_pct": round(dist_tp_pct, 2) if dist_tp_pct is not None else None,
+                "dist_to_sl_usd": round(dist_sl_val, 2) if dist_sl_val is not None else None,
+                "dist_to_sl_pct": round(dist_sl_pct, 2) if dist_sl_pct is not None else None,
+                "commission": p.get("commission", 0) / 100.0 if p.get("commission") else 0.0,
+                "swap": p.get("swap", 0) / 100.0 if p.get("swap") else 0.0
+            })
+        return enriched
 
     def get_pending_orders(self) -> List[dict]:
         """
