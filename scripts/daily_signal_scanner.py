@@ -80,7 +80,7 @@ def scan_live_signals():
     assets = [
         {"ticker": "GLD", "ctrader_symbol": "XAUUSD", "name": "Spot Gold", "target_lots": 0.01},
         {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10},
-        {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.05},
+        {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10},
         {"ticker": "AAPL", "ctrader_symbol": "AAPL", "name": "Apple Inc.", "target_lots": 1.0},
         {"ticker": "NVDA", "ctrader_symbol": "NVDA", "name": "Nvidia Corp.", "target_lots": 1.0},
         {"ticker": "MSFT", "ctrader_symbol": "MSFT", "name": "Microsoft Corp.", "target_lots": 1.0},
