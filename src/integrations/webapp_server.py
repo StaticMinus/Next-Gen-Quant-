@@ -7,6 +7,7 @@ the /api/telemetry JSON endpoint synced with live cTrader and market radar data.
 
 import json
 import mimetypes
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -240,4 +241,12 @@ def launch_server_in_thread(port=None):
 
 
 if __name__ == "__main__":
-    start_webapp_server()
+    # If run directly on Render or locally, launch the Telegram Bot Polling service
+    # which starts the WebApp server in a background thread and runs the bot loop.
+    try:
+        from src.integrations.telegram_bot_service import run_polling
+        run_polling()
+    except Exception as e:
+        print(f"[!] Warning: Could not start Telegram Bot polling: {e}")
+        start_webapp_server()
+
