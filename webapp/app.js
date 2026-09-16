@@ -119,16 +119,16 @@ async function fetchLiveBinanceRate() {
 // =========================================================================
 
 let currentTab = 'radar';
-let activeRadarAsset = 'GLD'; // 'GLD', 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'
+let activeRadarAsset = 'QQQ'; // 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'
 let radarAnimId = null;
 let radarPulsePhase = 0;
 const navHistory = ['radar'];
 
-const ASSETS_LIST = ['GLD', 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'];
+const ASSETS_LIST = ['QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'];
 
 let telemetryData = {
   capital: 6000.0, equity: 5997.47, buffer: 360.0, daily_buffer: 180.0,
-  strategy_name: '7-Asset Quantitative Opportunity Engine',
+  strategy_name: '6-Asset Quantitative Opportunity Engine',
   gld_price: 4332.46, gld_mean: 4340.00, gld_dip: 4330.00, gld_dist: 2.26, gld_dist_pct: 0.05,
   qqq_price: 704.54, qqq_mean: 707.20, qqq_dip: 704.68, qqq_dist: 0.00, qqq_dist_pct: 0.00,
   spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84, spy_dist_pct: 0.76,

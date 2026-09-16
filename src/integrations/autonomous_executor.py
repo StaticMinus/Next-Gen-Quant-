@@ -52,7 +52,6 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 COOLDOWN_SECONDS = 14400      # 4 hours per ticker
 
 TARGET_UNIVERSE = [
-    {"ticker": "GLD", "ctrader_symbol": "XAUUSD", "name": "Spot Gold", "target_lots": 0.01, "max_risk_usd": 15.0},
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
     {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 30.0},
     {"ticker": "AAPL", "ctrader_symbol": "AAPL", "name": "Apple Inc.", "target_lots": 1.0, "max_risk_usd": 15.0},

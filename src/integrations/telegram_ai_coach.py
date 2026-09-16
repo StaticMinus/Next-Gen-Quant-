@@ -36,7 +36,7 @@ TERTIARY_MODEL = "openai/gpt-4o-mini"
 CONVERSATION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
 MAX_HISTORY_TURNS = 16
 
-CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "GLD"]
+CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
 
 # Cache for market telemetry to avoid fetching yfinance on every keystroke
 _MARKET_CACHE = {
@@ -81,7 +81,7 @@ def get_live_market_context() -> str:
         return summary
     except Exception as e:
         logger.warning(f"Market context fetch error: {e}")
-        return "SPY: $757.39 (RSI:54) | QQQ: $704.54 (RSI:52) | AAPL: $331.34 (RSI:58) | NVDA: $212.17 (RSI:51) | GLD: $394.15 (RSI:62)"
+        return "SPY: $757.39 (RSI:54) | QQQ: $704.54 (RSI:52) | AAPL: $331.34 (RSI:58) | NVDA: $212.17 (RSI:51) | MSFT: $425.10 (RSI:53)"
 
 
 def build_system_prompt(account_telemetry: dict = None) -> str:
@@ -154,9 +154,9 @@ CRITICAL STYLE & TONE INSTRUCTION:
   • Milestone Tracker (/milestone): Tracks progress toward the $600 FundedNext goal (Stage 1: $150, Stage 2: $300, Stage 3: $450, Stage 4: $600 Funded!).
 - Use Telegram HTML: <b>bold</b>, <code>code</code>.
 {account_section}
-7-ASSET INSTITUTIONAL UNIVERSE:
-- Assets: GLD (XAUUSD), SPY (SPX500), QQQ (NDX100), AAPL, NVDA, MSFT, META.
-- S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Microsoft (MSFT), Meta (META), Gold (GLD/XAUUSD macro hedge).
+6-ASSET INSTITUTIONAL UNIVERSE:
+- Assets: SPY (SPX500), QQQ (NDX100), AAPL, NVDA, MSFT, META.
+- S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Microsoft (MSFT), Meta (META). (Gold excluded by operator directive).
 
 ATLAS-QUANT STRATEGY TRIAD:
 1. Sniper Dip-Buy (Mean Reversion):
@@ -373,13 +373,14 @@ def run_autonomous_ai_scan() -> str:
         return (
             f"📡 <b>AUTONOMOUS AI RADAR SCAN</b> <code>[{now_str}]</code>\n"
             "────────────────────────────\n"
-            "🟢 <b>STATUS:</b> <code>[ 5 ASSETS MONITORED // 100% CASH SAFE ]</code>\n\n"
+            "🟢 <b>STATUS:</b> <code>[ 6 ASSETS MONITORED // 100% CASH SAFE ]</code>\n\n"
             "<b>Institutional Universe Coverage:</b>\n"
             "• <b>SPY:</b> Mean Reversion Dip Scanner (Active)\n"
             "• <b>QQQ:</b> Mean Reversion Dip Scanner (Active)\n"
             "• <b>AAPL:</b> 20 EMA Trend Pullback (Active)\n"
             "• <b>NVDA:</b> Momentum Squeeze Radar (Active)\n"
-            "• <b>GLD:</b> Macro Hedge Trend Monitor (Active)\n\n"
-            "🎯 <b>TACTICAL VERDICT:</b> No triggers active right now. All 5 assets are trading in equilibrium buffers. 100% capital preserved."
+            "• <b>MSFT:</b> Trend Reversal Scanner (Active)\n"
+            "• <b>META:</b> Volatility Breakout Radar (Active)\n\n"
+            "🎯 <b>TACTICAL VERDICT:</b> No triggers active right now. All 6 assets are trading in equilibrium buffers. 100% capital preserved."
         )
 

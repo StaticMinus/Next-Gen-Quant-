@@ -351,10 +351,8 @@ def sync_ctrader_telemetry_worker():
     except Exception as e:
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
-CORE_UNIVERSE = ["GLD", "SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
-_ALERTED_SIGNALS = {
-    "GLD_Sniper Dip-Buy": time.time(),
-}  # {ticker_strat: timestamp}
+CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
+_ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
 
 
 def sync_market_radar_worker():

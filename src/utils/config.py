@@ -85,7 +85,7 @@ class AppConfig(BaseModel):
     project_name: str = "AgentQuant"
     log_level: str = "INFO"
     data_path: str = "data_store"
-    universe: List[str] = Field(default_factory=lambda: ["SPY", "QQQ", "IWM", "TLT", "GLD"])
+    universe: List[str] = Field(default_factory=lambda: ["SPY", "QQQ", "IWM", "TLT"])
     reference_asset: str = "SPY"
     vix_ticker: str = "^VIX"
     data: DataConfig = DataConfig()
