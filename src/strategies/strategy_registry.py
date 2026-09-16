@@ -3,6 +3,7 @@
 from src.exceptions import StrategyNotFoundError
 from src.strategies.base import (
     BreakoutStrategy,
+    DualThrustStrategy,
     MeanReversionStrategy,
     MomentumStrategy,
     RegimeBasedStrategy,
@@ -17,6 +18,7 @@ STRATEGY_REGISTRY = {
     "volatility": VolatilityStrategy(),
     "trend_following": TrendFollowingStrategy(),
     "breakout": BreakoutStrategy(),
+    "dual_thrust": DualThrustStrategy(),
     "regime_based": RegimeBasedStrategy(),
     "scalper": ScalperStrategy(),
 }

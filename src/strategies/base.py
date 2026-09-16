@@ -211,3 +211,52 @@ class RegimeBasedStrategy(Strategy):
             "momentum_params": {"type": "dict"},
             "mean_reversion_params": {"type": "dict"},
         }
+
+
+class DualThrustStrategy(Strategy):
+    """Dual Thrust opening range breakout strategy."""
+
+    def generate_signal(self, df: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        close = _get_close(df)
+        high = _get_high(df).reindex(close.index).ffill()
+        low = _get_low(df).reindex(close.index).ffill()
+        try:
+            open_p = _get_col(df, "open")
+        except KeyError:
+            open_p = close
+
+        lookback = int(params.get("lookback", 4))
+        k_up = float(params.get("k_up", 0.5))
+        k_down = float(params.get("k_down", 0.5))
+
+        hh = high.rolling(window=lookback, min_periods=1).max()
+        lc = close.rolling(window=lookback, min_periods=1).min()
+        hc = close.rolling(window=lookback, min_periods=1).max()
+        ll = low.rolling(window=lookback, min_periods=1).min()
+
+        range_val = (hh - lc).combine(hc - ll, max)
+        upper_trigger = open_p + k_up * range_val.shift(1)
+        lower_trigger = open_p - k_down * range_val.shift(1)
+
+        signal = pd.Series(0, index=df.index, dtype=int)
+        in_pos = 0
+        for i in range(len(df)):
+            if pd.isna(upper_trigger.iloc[i]) or pd.isna(lower_trigger.iloc[i]):
+                signal.iloc[i] = 0
+                continue
+            c_val = close.iloc[i]
+            if c_val > upper_trigger.iloc[i]:
+                in_pos = 1
+            elif c_val < lower_trigger.iloc[i]:
+                in_pos = 0
+            signal.iloc[i] = in_pos
+        return signal.reindex(df.index).fillna(0)
+
+    @property
+    def param_schema(self) -> Dict[str, Any]:
+        return {
+            "lookback": {"type": "int", "min": 1, "max": 20},
+            "k_up": {"type": "float", "min": 0.1, "max": 2.0},
+            "k_down": {"type": "float", "min": 0.1, "max": 2.0},
+        }
+
