@@ -74,26 +74,28 @@ def _pick_non_repeating_index(pool_len: int, history_key: str, state: dict) -> i
 
 def _format_trade_block(pos: list, rate: float, is_weekend: bool = False) -> str:
     """Formats live trade update in warm, simple, romantic language."""
-    has_gold = any("XAU" in p.get("symbol_name", "") or "GOLD" in p.get("display_name", "").upper() for p in pos)
-    if has_gold and pos:
+    if pos:
         g = pos[0]
-        curr = g.get("current_price", 4334.0)
-        pnl = g.get("floating_pnl", 8.96)
-        tp = g.get("take_profit", 4443.38)
+        sym = g.get("symbol_name") or g.get("symbolName") or "Investment"
+        name = "Gold" if ("XAU" in sym or "GOLD" in sym.upper()) else ("S&P 500" if "SP" in sym else ("Nasdaq" if "NDX" in sym or "QQQ" in sym else sym))
+        curr = g.get("current_price", 0.0) or g.get("entry_price", 0.0)
+        pnl = g.get("floating_pnl") if g.get("floating_pnl") is not None else g.get("profit", 0.0)
+        tp = g.get("take_profit") or g.get("takeProfit", 0.0)
         pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-        naira_target = 109.72 * rate
 
         if is_weekend:
+            tp_text = f"• When trading resumes, it aims straight for our target at <b>${tp:,.2f}</b>!\n" if tp else ""
             return (
-                f"🟡 <b>Our Active Gold Investment:</b>\n"
-                f"• While the markets rest for the weekend, our Gold trade is sitting safely at <b>${curr:,.2f}</b> ({pnl_str} in profit).\n"
-                f"• When trading resumes, it aims straight for our target at <b>${tp:,.2f}</b> to automatically lock in <b>+$109.72 USD (~₦{naira_target:,.0f} Naira)</b> for us!\n"
+                f"🟡 <b>Our Active {name} Investment:</b>\n"
+                f"• While the markets rest for the weekend, our {name} trade is sitting safely at <b>${curr:,.2f}</b> ({pnl_str} result).\n"
+                f"{tp_text}"
             )
         else:
+            tp_text = f"• When it reaches <b>${tp:,.2f}</b>, it automatically banks profits for our wallet!\n" if tp else ""
             return (
-                f"🟡 <b>Our Active Gold Investment:</b>\n"
-                f"• We are holding our Gold trade safely at <b>${curr:,.2f}</b> (Current floating profit: <b>{pnl_str}</b>).\n"
-                f"• When it hits our target price of <b>${tp:,.2f}</b>, it automatically collects <b>+$109.72 USD (~₦{naira_target:,.0f} Naira)</b> for our wallet!\n"
+                f"🟡 <b>Our Active {name} Investment:</b>\n"
+                f"• We are holding our {name} trade safely at <b>${curr:,.2f}</b> (Current result: <b>{pnl_str}</b>).\n"
+                f"{tp_text}"
             )
     else:
         if is_weekend:
