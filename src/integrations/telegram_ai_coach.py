@@ -267,6 +267,9 @@ FAB-4 REAL-TIME SPOT & DIP TELEMETRY:
 {backtest_edge}
 """
 
+# Alias for backwards compatibility with tests and callers
+build_system_prompt = build_quant_council_prompt
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. RESPONSE POST-PROCESSING & HTML SANITIZATION

@@ -208,11 +208,11 @@ def generate_option_a_sniper_card(
     for i in range(n):
         o = float(df["open"].iloc[i])
         h = float(df["high"].iloc[i])
-        l = float(df["low"].iloc[i])
+        low_val = float(df["low"].iloc[i])
         c = float(df["close"].iloc[i])
         color = GREEN_NEON if c >= o else RED_NEON
 
-        ax1.plot([x[i], x[i]], [l, h], color=color, linewidth=1.1, zorder=3)
+        ax1.plot([x[i], x[i]], [low_val, h], color=color, linewidth=1.1, zorder=3)
         body_bottom = min(o, c)
         body_height = max(abs(c - o), 0.08)
         rect = patches.Rectangle(
@@ -717,7 +717,7 @@ def generate_milestone_progress_card(capital=6000.0, target=600.0, profit=109.72
 
     # Header
     ax.text(0.08, 0.85, "FUNDEDNEXT $6,000 CHALLENGE  |  MILESTONE TRACKER", color="#38bdf8", fontsize=11, fontweight="bold")
-    ax.text(0.08, 0.79, f"Target: +$600.00 (+10.0%)  *  1-Phase Evaluation  *  5-Day Payout Cycle", color="#8b949e", fontsize=8.5)
+    ax.text(0.08, 0.79, "Target: +$600.00 (+10.0%)  *  1-Phase Evaluation  *  5-Day Payout Cycle", color="#8b949e", fontsize=8.5)
 
     # Progress Metric
     ax.text(0.08, 0.68, f"+${profit:,.2f} USD", color="#00ff88", fontsize=20, fontweight="bold")

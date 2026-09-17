@@ -43,7 +43,7 @@ load_dotenv(ROOT_DIR / ".env")
 from src.strategies.scalper import ScalperStrategy
 from src.backtest.runner import _get_close
 from src.integrations.risk_guardian import guardian
-from src.integrations.ctrader_mcp_client import CTraderMCPClient, RiskViolationError, ctrader_client
+from src.integrations.ctrader_mcp_client import CTraderMCPClient, RiskViolationError
 
 logger = logging.getLogger("autonomous_executor")
 logger.setLevel(logging.INFO)

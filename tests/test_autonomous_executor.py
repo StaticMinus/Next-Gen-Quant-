@@ -78,9 +78,10 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.mock_ctrader.close_position.return_value = {"positionId": 999, "volume": 0}
         
         eod_dt = pd.Timestamp("2026-09-16 15:55:00", tz="America/New_York")
-        closed = self.engine.check_and_execute_same_day_flatten(
-            self.mock_ctrader.get_positions(), dt_ny=eod_dt
-        )
+        with patch("src.integrations.autonomous_executor.ALLOW_OVERNIGHT_HOLD", False):
+            closed = self.engine.check_and_execute_same_day_flatten(
+                self.mock_ctrader.get_positions(), dt_ny=eod_dt
+            )
         self.assertIn(999, closed)
         self.mock_ctrader.close_position.assert_called_with(999)
 

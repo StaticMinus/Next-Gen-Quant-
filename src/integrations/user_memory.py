@@ -101,8 +101,8 @@ def get_memory_prompt_context() -> str:
     ]
     if lessons:
         lines.append("• Key Historical Lessons:")
-        for l in lessons[-3:]:
-            lines.append(f"  - {l}")
+        for item in lessons[-3:]:
+            lines.append(f"  - {item}")
     if notes:
         lines.append("• Active User Notes:")
         for n in notes[-3:]:

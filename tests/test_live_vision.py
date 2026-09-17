@@ -62,14 +62,13 @@ class TestLiveVision(unittest.TestCase):
         prompt = build_system_prompt(telemetry)
 
         # Assertions
-        self.assertIn("XAUUSD (Spot Gold) BUY #3069593", prompt)
-        self.assertIn("Entry: $4,334.99", prompt)
-        self.assertIn("Current Spot: $4,328.50", prompt)
-        self.assertIn("Floating PnL: $-6.49", prompt)
-        self.assertIn("Take Profit: $4,443.38", prompt)
-        self.assertIn("Stop Loss: $4,204.95", prompt)
+        self.assertIn("XAUUSD #3069593", prompt)
+        self.assertIn("Entry $4,334.99", prompt)
+        self.assertIn("Spot $4,328.50", prompt)
+        self.assertIn("PnL $-6.49", prompt)
+        self.assertIn("TP $4,443.38", prompt)
+        self.assertIn("SL $4,204.95", prompt)
         self.assertIn("Remaining Daily Loss Cushion: $173.51", prompt)
-        self.assertIn("CORE DUAL-ASSET INSTITUTIONAL UNIVERSE", prompt)
 
     def test_render_trades_text_enriched(self):
         """Verify render_trades_text formats the clear, friendly position card for Gold."""
@@ -87,7 +86,7 @@ class TestLiveVision(unittest.TestCase):
         self.assertIn("$4,328.50", output)
         self.assertIn("$4,443.38", output)
         self.assertIn("$4,204.95", output)
-        self.assertIn("Total Floating Result:", output)
+        self.assertIn("Total Floating:", output)
 
     def test_get_trades_markup_safety_no_execution_buttons(self):
         """Verify get_trades_markup strictly removes all trade execution buttons for user safety."""

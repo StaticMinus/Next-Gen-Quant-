@@ -25,14 +25,18 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-import pandas as pd
 import requests
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
+from src.integrations.autonomous_executor import run_autonomous_execution_cycle
+from src.integrations.chacha_romantic_briefings import (
+    render_morning_briefing_chacha,
+    render_nightly_summary_chacha,
+)
 from src.integrations.ctrader_mcp_client import CTraderMCPClient
 from src.integrations.risk_guardian import guardian
 from src.integrations.telegram_ai_coach import (
@@ -41,11 +45,6 @@ from src.integrations.telegram_ai_coach import (
     run_autonomous_ai_scan,
 )
 from src.integrations.telegram_voice_transcriber import transcribe_telegram_voice
-from src.integrations.chacha_romantic_briefings import (
-    render_morning_briefing_chacha,
-    render_nightly_summary_chacha,
-)
-from src.integrations.autonomous_executor import run_autonomous_execution_cycle
 from src.integrations.webapp_server import launch_server_in_thread
 from src.visualization.telegram_charts import (
     generate_cycle_statement_pdf,
@@ -560,7 +559,7 @@ def check_and_dispatch_scheduled_briefings():
     Persists sent state to disk so server restarts never skip or duplicate messages.
     """
     try:
-        from datetime import timezone, timedelta
+        from datetime import timedelta, timezone
         WAT = timezone(timedelta(hours=1))
         now_wat = datetime.now(WAT)
         today_str = now_wat.strftime("%Y-%m-%d")
@@ -611,6 +610,9 @@ def check_and_dispatch_scheduled_briefings():
         print(f"[!] Scheduled briefings dispatch error: {e}")
 
 
+_DISPATCHED_ROUTINES = {"milestones": set()}
+
+
 def check_and_dispatch_milestone_alerts():
     """
     Monitors account equity and sends celebration card to all partners when passing 25%, 50%, 75%, 100% of $600 target.
@@ -618,7 +620,7 @@ def check_and_dispatch_milestone_alerts():
     try:
         eq = _CACHE.get("equity", 6000.0)
         profit = max(0.0, eq - 6000.0)
-        
+
         milestones = [
             (25, 150.0, "🎉 <b>MILESTONE REACHED: 25% OF CHALLENGE CLEARED!</b>\n• You banked +$150 profit toward the $600 target!"),
             (50, 300.0, "🔥 <b>HALFWAY THERE! 50% OF CHALLENGE COMPLETE!</b>\n• You are at +$300 profit! Only $300 left to unlock funded payouts!"),
@@ -777,9 +779,6 @@ ACCOUNTS_CONFIG = {
 _CACHE = {
     "account_id": "3028655",
     "active_model_key": "stellar_1step_6k",
-    "last_telemetry_sync": None,
-    "positions": [],
-    "enriched_positions": [],
     "spy_price": 764.29,
     "spy_mean_5d": 764.13,
     "spy_lower_band": 758.45,
@@ -842,6 +841,20 @@ _CACHE = {
     "last_market_scan": 0.0,
     "last_scan_time_str": datetime.now().strftime("%H:%M:%S WAT"),
 }
+
+# Pre-seed cache from disk snapshot if available for instant warm-start
+try:
+    _telem_file = ROOT_DIR / "webapp" / "telemetry.json"
+    if _telem_file.exists():
+        _saved = json.loads(_telem_file.read_text(encoding="utf-8"))
+        if "active_positions" in _saved and _saved["active_positions"]:
+            _CACHE["enriched_positions"] = _saved["active_positions"]
+            _CACHE["positions"] = _saved["active_positions"]
+        for _k in ["capital", "equity", "free_margin", "spy_price", "qqq_price", "dia_price", "iwm_price"]:
+            if _k in _saved:
+                _CACHE[_k] = _saved[_k]
+except Exception:
+    pass
 
 
 def api_call(method: str, payload: dict, max_retries: int = 2) -> dict:
@@ -1020,7 +1033,7 @@ def get_webapp_url() -> str:
     qqq = _CACHE.get("qqq_price", 704.54)
     cap = _CACHE.get("capital", 6000.0)
     eq = _CACHE.get("equity", 6000.0)
-    
+
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     raw_list = enriched if enriched else positions
@@ -1042,7 +1055,7 @@ def get_webapp_url() -> str:
             "tp": p.get("take_profit") or p.get("takeProfit"),
             "sl": p.get("stop_loss") or p.get("stopLoss")
         })
-    
+
     encoded_trades = urllib.parse.quote(json.dumps(trades_data))
     params = f"?v=7.1&rate={rate}&spy={spy}&qqq={qqq}&cap={cap}&eq={eq}&trades={encoded_trades}"
     if wallet and wallet.startswith("T") and len(wallet) == 34:
@@ -1250,20 +1263,20 @@ _CLOSE_CONFIRMATIONS: dict = {}
 
 def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[int] = None, pending_step: int = 0):
     keyboard = []
-    
+
     # Check if caller is David (Primary Owner)
     is_david = str(user_id) == str(PRIMARY_CHAT_ID)
-    
+
     # Clean expired confirmations (>15 seconds)
     now_t = time.time()
     expired = [pid for pid, data in _CLOSE_CONFIRMATIONS.items() if now_t - data.get("timestamp", 0) > 15.0]
     for pid in expired:
         _CLOSE_CONFIRMATIONS.pop(pid, None)
-        
+
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     active_list = enriched_positions if enriched_positions else positions
-    
+
     # If David, render multi-tap safety close buttons for each open trade
     if is_david and active_list:
         for p in active_list:
@@ -1271,14 +1284,14 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
             if not pos_id:
                 continue
             sym = p.get("symbol_name") or p.get("symbolName") or ("XAUUSD" if p.get("symbolId") == 41 else f"SYM_{pos_id}")
-            short_name = "Gold" if "XAU" in sym or "GOLD" in sym else ("Nasdaq" if "NDX" in sym else sym)
-            
+            short_name = "Gold" if ("XAU" in sym or "GOLD" in sym) else ("Nasdaq" if ("NDX" in sym or "QQQ" in sym) else ("S&P 500" if ("SPX" in sym or "SPY" in sym) else ("Dow 30" if ("US30" in sym or "DIA" in sym) else ("Russell" if ("US2000" in sym or "IWM" in sym) else sym))))
+
             # Check current step for this position
             conf = _CLOSE_CONFIRMATIONS.get(pos_id)
             step = conf.get("step", 0) if conf else 0
             if pending_pos_id == pos_id and pending_step > 0:
                 step = pending_step
-                
+
             if step == 1:
                 keyboard.append([
                     {"text": f"⚠️ Confirm Close {short_name}? (Tap 2/3)", "callback_data": f"cmd_close_tap2_{pos_id}"},
@@ -1297,7 +1310,7 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
     # Universal controls
     keyboard.append([{"text": "⚡ Live Sync / Refresh", "callback_data": "cmd_trades"}])
     keyboard.append([{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}])
-    
+
     return {"inline_keyboard": keyboard}
 
 
@@ -1430,12 +1443,23 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
 
     # Non-blocking instant serve (<1ms) from background telemetry cache
     now = time.time()
-    last_sync = _CACHE.get("last_telemetry_sync", 0.0)
+    last_sync = _CACHE.get("last_telemetry_sync", 0.0) or 0.0
     if (now - last_sync > 45.0 or "enriched_positions" not in _CACHE) and executor:
         executor.submit(sync_ctrader_telemetry_worker)
 
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
+
+    if not enriched_positions and not positions:
+        try:
+            _telem_file = ROOT_DIR / "webapp" / "telemetry.json"
+            if _telem_file.exists():
+                _saved = json.loads(_telem_file.read_text(encoding="utf-8"))
+                if _saved.get("active_positions"):
+                    enriched_positions = _saved["active_positions"]
+                    _CACHE["enriched_positions"] = enriched_positions
+        except Exception:
+            pass
 
     if not enriched_positions and not positions:
         capital = _CACHE.get("capital", 5982.16)
@@ -1457,9 +1481,9 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         ]
 
         if pending_pos_id and pending_step == 1:
-            lines.append(f"• ⚠️ <b>Close Step 2/3:</b> Position #{pending_pos_id} selected. Tap confirm below.\n")
+            lines.append(f"• ⚠️ <b>SAFETY CLOSE INITIATED:</b> Position #{pending_pos_id} selected. Tap confirm below.\n")
         elif pending_pos_id and pending_step == 2:
-            lines.append(f"• 🚨 <b>Final Step 3/3:</b> Tap execute to close #{pending_pos_id} at market price.\n")
+            lines.append(f"• 🚨 <b>FINAL EXECUTION WARNING:</b> Tap execute to close #{pending_pos_id} at market price.\n")
 
         total_pnl = 0.0
 
@@ -1520,7 +1544,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
         lines.append("• <b>Holding Mode:</b> Overnight Hold Active (Protected by Server Hard Stop)\n")
         if is_david and (enriched_positions or positions):
-            lines.append("• <b>Manual Override:</b> Use multi-tap buttons below to close instantly")
+            lines.append("• <b>Manual Control (David Exclusive):</b> Use multi-tap buttons below to close instantly")
 
         return "".join(lines)
 
@@ -1553,7 +1577,7 @@ def render_morning_briefing_text():
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     active_pos = enriched if enriched else positions
-    
+
     lines = [
         f"{get_breadcrumb('cmd_morning')}\n",
         "────────────────────────────\n",
@@ -1582,7 +1606,7 @@ def render_morning_briefing_text():
     spy_p = _CACHE.get("spy_price", 754.07)
     spy_dip = _CACHE.get("spy_lower_band", 755.23)
     lines.append(f"   • 🏛️ <b>SPY (S&P 500):</b> At <b>${spy_p:.2f}</b> (Dip Trigger: ${spy_dip:.2f})\n")
-    
+
     qqq_p = _CACHE.get("qqq_price", 704.75)
     qqq_dip = _CACHE.get("qqq_lower_band", 704.01)
     lines.append(f"   • 💻 <b>QQQ (Nasdaq 100):</b> At <b>${qqq_p:.2f}</b> (Dip Trigger: ${qqq_dip:.2f})\n")
@@ -1604,7 +1628,7 @@ def render_nightly_summary_text():
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     active_pos = enriched if enriched else positions
-    
+
     lines = [
         f"{get_breadcrumb('cmd_nightly')}\n",
         "────────────────────────────\n",
@@ -2036,7 +2060,10 @@ def handle_update(update: dict):
             })
             return
 
-        ack_callback(cq_id)
+        if data == "cmd_trades":
+            ack_callback(cq_id, "📊 Active Trades refreshed")
+        else:
+            ack_callback(cq_id)
 
         new_text = ""
         markup = get_menu_for_user(user_id)

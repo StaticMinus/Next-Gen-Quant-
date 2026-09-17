@@ -7,13 +7,16 @@ via FFmpeg, and transcribes speech to text using Google Speech API.
 """
 
 import logging
-import os
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 import requests
-import speech_recognition as sr
+
+try:
+    import speech_recognition as sr
+except ImportError:
+    sr = None
 
 logger = logging.getLogger("voice_transcriber")
 
@@ -26,6 +29,9 @@ def transcribe_telegram_voice(file_id: str, bot_token: str) -> Optional[str]:
     and returns the transcribed text. Returns None if transcription fails.
     """
     if not file_id or not bot_token:
+        return None
+    if sr is None:
+        logger.warning("speech_recognition not installed. Voice transcription unavailable.")
         return None
 
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -74,14 +80,13 @@ def transcribe_telegram_voice(file_id: str, bot_token: str) -> Optional[str]:
             logger.info(f"Successfully transcribed voice: '{text}'")
             return text
 
-    except sr.UnknownValueError:
-        logger.info("Speech recognition could not understand audio (inaudible or silence).")
-        return None
-    except sr.RequestError as e:
-        logger.error(f"Speech recognition service error: {e}")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected error in voice transcription: {e}")
+        if sr and isinstance(e, sr.UnknownValueError):
+            logger.info("Speech recognition could not understand audio (inaudible or silence).")
+        elif sr and isinstance(e, sr.RequestError):
+            logger.error(f"Speech recognition service error: {e}")
+        else:
+            logger.error(f"Unexpected error in voice transcription: {e}")
         return None
     finally:
         # Cleanup temporary files

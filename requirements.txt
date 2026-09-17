@@ -16,3 +16,4 @@ requests>=2.31
 reportlab>=4.0
 google-generativeai>=0.8
 openai>=1.0
+SpeechRecognition>=3.10.0
