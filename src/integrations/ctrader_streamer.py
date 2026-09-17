@@ -107,11 +107,11 @@ class CTraderRealtimeStreamer:
                             if not sym_name:
                                 continue
 
-                            bid = p.get("bid", 0) / div
-                            ask = p.get("ask", 0) / div
-                            high = p.get("high", 0) / div
-                            low = p.get("low", 0) / div
-                            close = p.get("sessionClose", 0) / div
+                            bid = (p.get("bid") or 0) / div
+                            ask = (p.get("ask") or 0) / div
+                            high = (p.get("high") or 0) / div
+                            low = (p.get("low") or 0) / div
+                            close = (p.get("sessionClose") or 0) / div
                             ts = p.get("timestamp")
 
                             quote = {

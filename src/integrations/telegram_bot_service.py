@@ -462,101 +462,12 @@ def sync_market_radar_worker():
 
 def check_and_dispatch_autonomous_alerts():
     """
-    Autonomous AI Scanning & Alerting Engine.
-    Periodically evaluates all 7 assets against the ATLAS-Quant Strategy Triad.
-    If a valid signal triggers and hasn't been alerted recently, sends a simple, friendly alert to Telegram.
-    SKIPS tickers that already have an open position (no duplicate alerts on held assets).
+    Autonomous Alert Dispatcher.
+    Silenced for Option A: Eliminates unsolicited pre-market spam notifications.
+    The bot trades 100% autonomously and dispatches real trade tickets with visual candlestick cards
+    the exact moment a trade fills during live market hours (2:30 PM WAT).
     """
-    try:
-        # Startup Guard: Do NOT dispatch alerts before telemetry sync has completed initial check
-        if _CACHE.get("last_telemetry_sync") is None:
-            return
-
-        signals = evaluate_market_signals()
-        now = time.time()
-
-        # Build set of tickers we already hold (from live cTrader positions)
-        held_tickers = set()
-
-        # 1. Enriched positions (keys: symbol_name, display_name, symbol_id)
-        for pos in _CACHE.get("enriched_positions", []):
-            sym = str(
-                pos.get("symbol_name")
-                or pos.get("display_name")
-                or pos.get("symbol")
-                or pos.get("symbolName")
-                or ""
-            ).upper()
-            sym_id = pos.get("symbol_id") or pos.get("symbolId")
-
-            # Map cTrader symbols → our ticker universe
-            if "GOLD" in sym or "XAU" in sym or sym_id == 41:
-                held_tickers.add("GLD")
-            elif any(k in sym for k in ["SPY", "US500", "SP500", "SPX"]):
-                held_tickers.add("SPY")
-            elif any(k in sym for k in ["QQQ", "USTECH", "NAS100", "NDX"]):
-                held_tickers.add("QQQ")
-            elif "AAPL" in sym:
-                held_tickers.add("AAPL")
-            elif "NVDA" in sym:
-                held_tickers.add("NVDA")
-            elif "MSFT" in sym:
-                held_tickers.add("MSFT")
-            elif "META" in sym:
-                held_tickers.add("META")
-
-        # 2. Raw positions fallback (keys: symbolId)
-        for pos in _CACHE.get("positions", []):
-            sym_id = pos.get("symbolId")
-            if sym_id == 41:
-                held_tickers.add("GLD")
-
-        friendly_asset_names = {
-            "GLD": "Spot Gold (XAUUSD)",
-            "QQQ": "Nasdaq Tech (QQQ)",
-            "SPY": "S&P 500 (SPY)",
-            "AAPL": "Apple Inc. (AAPL)",
-            "NVDA": "Nvidia Corp. (NVDA)",
-            "MSFT": "Microsoft Corp. (MSFT)",
-            "META": "Meta Platforms (META)",
-        }
-        for s in signals:
-            ticker = s['ticker']
-
-            # Skip alert if we already have an open position in this ticker
-            if ticker in held_tickers:
-                continue
-
-            key = f"{ticker}_{s['strategy']}"
-            last_sent = _ALERTED_SIGNALS.get(key, 0.0)
-            # Cooldown: 8 hours (28,800s) — one alert per ticker per session, not hourly spam
-            if now - last_sent > 28800:
-                _ALERTED_SIGNALS[key] = now
-                dname = friendly_asset_names.get(ticker, ticker)
-                msg = (
-                    f"🚨 <b>Market Opportunity Found: {dname}</b>\n"
-                    "────────────────────────────\n"
-                    f"• <b>Current Price:</b> <code>${s['price']:.2f}</code>\n"
-                    f"• <b>Profit Goal:</b> <code>${s['target']:.2f}</code> (+3.5%)\n"
-                    f"• <b>Safety Net:</b> <code>${s['stop']:.2f}</code> (-3.0% / -$13.50 risk)\n"
-                    "• <b>Trade Sizing:</b> Small, safe allocation ($450)\n"
-                    "────────────────────────────\n"
-                    f"💡 <b>Why:</b> {s['summary']}\n"
-                    "🛡️ <b>Account Safety:</b> 100% protected within your -$180 daily limit.\n\n"
-                    "🤖 <b>Automatic Execution:</b>\n"
-                    "The automated server manages entries and exits for you. You do NOT need to take any trades from Telegram!"
-                )
-                for cid in get_broadcast_chat_ids():
-                    markup = get_menu_for_user(cid)
-                    api_call("sendMessage", {
-                        "chat_id": cid,
-                        "text": msg,
-                        "parse_mode": "HTML",
-                        "reply_markup": markup
-                    })
-                print(f"[+] Dispatched autonomous alert for {ticker} ({s['strategy']}) to {len(get_broadcast_chat_ids())} chat(s)")
-    except Exception as e:
-        print(f"[!] Autonomous alerting engine exception: {e}")
+    return
 
 
 _DISPATCHED_ROUTINES = {
