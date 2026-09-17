@@ -119,18 +119,20 @@ async function fetchLiveBinanceRate() {
 // =========================================================================
 
 let currentTab = 'radar';
-let activeRadarAsset = 'QQQ'; // 'QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'
+let activeRadarAsset = 'SPY'; // 'SPY', 'QQQ', 'DIA', 'IWM'
 let radarAnimId = null;
 let radarPulsePhase = 0;
 const navHistory = ['radar'];
 
-const ASSETS_LIST = ['QQQ', 'SPY'];
+const ASSETS_LIST = ['SPY', 'QQQ', 'DIA', 'IWM'];
 
 let telemetryData = {
   capital: 6000.00, equity: 6000.00, buffer: 360.0, daily_buffer: 180.0,
-  strategy_name: 'Option A 1-Hour Quantitative Sniper (SPY & QQQ)',
-  qqq_price: 704.75, qqq_mean: 707.80, qqq_dip: 704.01, qqq_dist: 0.74, qqq_dist_pct: 0.11,
+  strategy_name: 'Option A 1-Hour Quantitative Sniper (Fab-4 US Indices)',
   spy_price: 754.07, spy_mean: 758.73, spy_dip: 755.23, spy_dist: -1.16, spy_dist_pct: -0.15,
+  qqq_price: 704.75, qqq_mean: 707.80, qqq_dip: 704.01, qqq_dist: 0.74, qqq_dist_pct: 0.11,
+  dia_price: 438.20, dia_mean: 440.15, dia_dip: 437.50, dia_dist: 0.70, dia_dist_pct: 0.16,
+  iwm_price: 218.40, iwm_mean: 220.10, iwm_dip: 217.80, iwm_dist: 0.60, iwm_dist_pct: 0.27,
   active_positions: [],
   payout_days: 5,
 };
@@ -138,7 +140,7 @@ let telemetryData = {
 
 const MAX_RADAR_POINTS = 32;
 const assetHistories = {
-  GLD: [], QQQ: [], SPY: [], AAPL: [], NVDA: [], MSFT: [], META: []
+  SPY: [], QQQ: [], DIA: [], IWM: []
 };
 
 function pushAssetTick(asset, price) {
@@ -511,8 +513,10 @@ function updateActiveTradesUI() {
     const sym = (pos.symbol_name || pos.symbolName || 'SPY').toUpperCase();
     const isSpy = sym.includes('SPY') || sym.includes('SPX');
     const isQqq = sym.includes('QQQ') || sym.includes('NDX');
+    const isDia = sym.includes('DIA') || sym.includes('US30');
+    const isIwm = sym.includes('IWM') || sym.includes('US2000');
     const isGold = sym.includes('XAU') || sym.includes('GOLD');
-    const dname = pos.display_name || (isSpy ? 'S&P 500 ETF' : (isQqq ? 'Nasdaq 100 Index' : (isGold ? 'Spot Gold' : sym)));
+    const dname = pos.display_name || (isSpy ? 'S&P 500 ETF' : (isQqq ? 'Nasdaq 100 Index' : (isDia ? 'Dow Jones 30 Index' : (isIwm ? 'Russell 2000 Index' : (isGold ? 'Spot Gold' : sym)))));
     const posId = pos.position_id || pos.positionId;
     const side = pos.trade_side || pos.tradeSide || 'BUY';
     const lots = pos.lots || 0.01;
@@ -521,7 +525,7 @@ function updateActiveTradesUI() {
     const pnl = Number(pos.floating_pnl !== undefined ? pos.floating_pnl : (pos.profit || 0));
     const pnlPrefix = pnl >= 0 ? '+$' : '-$';
     const pnlClass = pnl >= 0 ? 'val-green' : 'val-red';
-    const icon = isSpy ? '🏛️' : (isQqq ? '💻' : (isGold ? '🟡' : '📈'));
+    const icon = isSpy ? '🏛️' : (isQqq ? '💻' : (isDia ? '🏭' : (isIwm ? '🚀' : (isGold ? '🟡' : '📈'))));
     const tpText = pos.take_profit ? `$${Number(pos.take_profit).toFixed(2)}` : (pos.takeProfit ? `$${Number(pos.takeProfit).toFixed(2)}` : 'N/A');
     const slText = pos.stop_loss ? `$${Number(pos.stop_loss).toFixed(2)}` : (pos.stopLoss ? `$${Number(pos.stopLoss).toFixed(2)}` : 'Protected');
     
@@ -881,7 +885,7 @@ function updateMatrixUI() {
 
     const isHolding = activeList.some(p => {
       const s = (p.symbol_name || p.symbolName || '').toUpperCase();
-      return s.includes(asset) || (asset === 'QQQ' && s.includes('NDX')) || (asset === 'SPY' && s.includes('SPX'));
+      return s.includes(asset) || (asset === 'QQQ' && s.includes('NDX')) || (asset === 'SPY' && s.includes('SPX')) || (asset === 'DIA' && s.includes('US30')) || (asset === 'IWM' && s.includes('US2000'));
     });
 
     if (isHolding) {

@@ -56,9 +56,13 @@ STATE_FILE = ROOT_DIR / "cache" / "autonomous_execution_state.json"
 
 MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 
+ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "true").lower() in ("true", "1", "yes")
+
 TARGET_UNIVERSE = [
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 30.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
 ]
 
 # Active timeframe: "5m" (Default sharp in-and-out) or "1h"
@@ -213,21 +217,34 @@ class AutonomousExecutionEngine:
         return entry_start <= dt_ny <= entry_end
 
     def is_eod_flatten_time(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
-        """Returns True if current time is at or after 15:50 EST (8:50 PM WAT)."""
+        """
+        Determines if an end-of-session flattening is triggered.
+        - If ALLOW_OVERNIGHT_HOLD is True: Weekdays (Mon-Thu) hold overnight through 23-hour futures liquidity.
+          Only triggers on Friday close (>= 16:45 EST / 21:45 WAT) to prevent 48-hour weekend gap risk.
+        - If ALLOW_OVERNIGHT_HOLD is False: Triggers daily at 15:50 EST (8:50 PM WAT).
+        """
         if dt_ny is None:
             dt_ny = pd.Timestamp.now(tz="America/New_York")
         if dt_ny.weekday() >= 5:
             return False
-        flatten_time = dt_ny.replace(hour=15, minute=50, second=0, microsecond=0)
-        return dt_ny >= flatten_time
+
+        if ALLOW_OVERNIGHT_HOLD:
+            # Only flatten on Friday afternoon before weekend market shutdown (17:00 EST)
+            is_friday = dt_ny.weekday() == 4
+            if is_friday:
+                weekend_cutoff = dt_ny.replace(hour=16, minute=45, second=0, microsecond=0)
+                return dt_ny >= weekend_cutoff
+            return False  # Mon-Thu hold through the night!
+        else:
+            flatten_time = dt_ny.replace(hour=15, minute=50, second=0, microsecond=0)
+            return dt_ny >= flatten_time
 
     def check_and_execute_same_day_flatten(self, open_positions: List[dict], dt_ny: Optional[pd.Timestamp] = None) -> List[int]:
         """
-        Smart EOD Routine at 15:50 EST (8:50 PM WAT):
-        - If position is in PROFIT (>= +0.05% gain): Close immediately and bank the cash!
-        - If position is in DRAWDOWN / NEGATIVE: DO NOT FORCE-CLOSE AT A LOSS!
-          The position remains active on cTrader with its hard broker stop loss and take profit
-          to let it recover naturally through the 23-hour futures session rather than locking in a preventable red trade.
+        EOD / Weekend Protection Routine:
+        - When holding overnight (Mon-Thu): Positions remain active on cTrader with their server-side
+          hard stop loss (-$25) and take profit to allow natural mean reversion through 23-hour futures.
+        - On Friday close (or if overnight hold disabled): Closes open positions to avoid weekend gap risk.
         Returns list of closed position IDs.
         """
         if not self.is_eod_flatten_time(dt_ny):
@@ -236,6 +253,9 @@ class AutonomousExecutionEngine:
         closed_ids = []
         symbol_map = self.ctrader.get_symbol_map() or {}
         id_to_sym = {v: k for k, v in symbol_map.items()}
+
+        is_friday = (dt_ny or pd.Timestamp.now(tz="America/New_York")).weekday() == 4
+        reason_tag = "WEEKEND GAP DEFENSE" if is_friday else "EOD FLATTEN"
 
         for p in open_positions:
             pid = p.get("positionId")
@@ -247,43 +267,32 @@ class AutonomousExecutionEngine:
             entry_price = float(p.get("entryPrice", 0.0))
             trade_side = str(p.get("tradeSide", "BUY")).upper()
 
-            # Query current spot price to evaluate profit status
             spot = self.ctrader.get_spot_price(sym_name)
             curr_price = 0.0
             if spot:
                 curr_price = float(spot["bid"]) if trade_side == "BUY" else float(spot["ask"])
 
-            # Determine floating return
             if entry_price > 0 and curr_price > 0:
                 pnl_pct = ((curr_price - entry_price) / entry_price) if trade_side == "BUY" else ((entry_price - curr_price) / entry_price)
             else:
                 pnl_pct = 0.0
 
-            # Smart Rule: If in profit (>= +0.05%), close and bank it!
-            if pnl_pct >= 0.0005:
-                logger.info(f"💰 [SMART EOD LOCK] Closing profitable position #{pid} ({sym_name}) at +{pnl_pct*100:.2f}% before close...")
-                try:
-                    res = self.ctrader.close_position(pid)
-                    closed_ids.append(pid)
-                    msg = (
-                        "💰 <b>AGENTQUANT // SMART EOD PROFIT BANKED</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"• Position: <code>#{pid} ({sym_name})</code>\n"
-                        f"• Entry: <code>${entry_price:.2f}</code> | Exit: <code>${curr_price:.2f}</code>\n"
-                        f"• Gain: 🟢 <b>+{pnl_pct*100:.2f}% PROFIT BANKED</b>\n"
-                        "• Action: Closed flat to secure cash before market close.\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        "⚡ <i>Profits safely banked into cTrader account balance!</i>"
-                    )
-                    broadcast_telegram_ticket(msg)
-                except Exception as e:
-                    logger.error(f"[!] Error closing profitable position #{pid}: {e}")
-            else:
-                # In negative or breakeven: NEVER force-close at a loss!
-                logger.info(
-                    f"🛡️ [SMART EOD PROTECT] Position #{pid} ({sym_name}) is at {pnl_pct*100:+.2f}%. "
-                    f"NOT force-closing at a loss. Holding with strict hard stop-loss to allow recovery."
+            logger.info(f"🛡️ [{reason_tag}] Closing position #{pid} ({sym_name}) at {pnl_pct*100:+.2f}% before market shutdown...")
+            try:
+                res = self.ctrader.close_position(pid)
+                closed_ids.append(pid)
+                pnl_str = f"+{pnl_pct*100:.2f}%" if pnl_pct >= 0 else f"{pnl_pct*100:.2f}%"
+                msg = (
+                    f"🛡️ <b>AGENTQUANT // {reason_tag}</b>\n"
+                    f"• <b>Position:</b> <code>#{pid} ({sym_name})</code>\n"
+                    f"• <b>Entry:</b> <code>${entry_price:.2f}</code> | <b>Exit:</b> <code>${curr_price:.2f}</code>\n"
+                    f"• <b>Result:</b> <code>{pnl_str}</code>\n"
+                    f"• <b>Action:</b> Position flattened before weekend close to eliminate gap risk\n"
+                    f"• <b>Capital:</b> 100% secured in cash"
                 )
+                broadcast_telegram_ticket(msg)
+            except Exception as e:
+                logger.error(f"[!] Error closing position #{pid} during {reason_tag}: {e}")
         return closed_ids
 
     def run_cycle(self, dry_run: bool = False, dt_override: Optional[pd.Timestamp] = None) -> List[Dict[str, Any]]:
@@ -529,24 +538,19 @@ class AutonomousExecutionEngine:
                 available_slots -= 1
 
                 # Send Instant Telegram Execution Ticket
+                mode_desc = "Overnight Hold Allowed (Protected by Server-Side Hard Stop)" if ALLOW_OVERNIGHT_HOLD else "Same-Day In & Out"
                 ticket_msg = (
-                    f"🚀 <b>AGENTQUANT // {self.timeframe.upper()} SHARP TRADE EXECUTED</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🎫 <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
-                    "🏢 <b>Account:</b> FundedNext cTrader <code>#3028655</code>\n"
-                    f"📈 <b>Action:</b> 🟢 <b>BUY MARKET</b> ({strat_name})\n"
-                    f"📊 <b>Asset:</b> <code>{csym}</code> ({dname})\n"
-                    f"🎯 <b>Size:</b> <code>{lots} Lots</code> (1 Micro Contract)\n"
-                    f"💵 <b>Fill Price:</b> <code>${exec_price:.2f}</code>\n"
-                    f"🎯 <b>Take-Profit:</b> <code>${tp_price:.2f}</code> (+{target_pct*100:.2f}% / Mean Reversion)\n"
-                    f"🛑 <b>Stop-Loss:</b> <code>${sl_price:.2f}</code> (-{stop_pct*100:.2f}% Hard Broker Stop)\n"
-                    f"🕒 <b>Execution Mode:</b> <code>Same-Day In & Out (0% Overnight Risk)</code>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "🛡️ <b>FundedNext Protection:</b>\n"
-                    "• Daily Loss Limit: <code>$180.00 Cushion Intact</code>\n"
-                    "• Max Trailing Limit: <code>$360.00 Cushion Intact</code>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "⚡ <i>Auto-placed with sub-minute Freshness & Anti-Chase validation.</i>"
+                    f"🚀 <b>AGENTQUANT // {self.timeframe.upper()} TRADE EXECUTED</b>\n"
+                    f"• <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
+                    f"• <b>Action:</b> 🟢 <b>BUY MARKET</b> ({strat_name})\n"
+                    f"• <b>Asset:</b> <code>{csym}</code> ({dname})\n"
+                    f"• <b>Size:</b> <code>{lots} Lots</code> (1 Micro Contract)\n"
+                    f"• <b>Fill Price:</b> <code>${exec_price:.2f}</code>\n"
+                    f"• <b>Take-Profit:</b> <code>${tp_price:.2f}</code> (+{target_pct*100:.2f}% Mean Reversion)\n"
+                    f"• <b>Stop-Loss:</b> <code>${sl_price:.2f}</code> (-{stop_pct*100:.2f}% Hard Broker Stop)\n"
+                    f"• <b>Mode:</b> {mode_desc}\n"
+                    f"• <b>Protection:</b> $180 Daily / $360 Max Drawdown Cushion 100% Intact\n"
+                    f"• <b>Safety:</b> Anti-Chase & Freshness filters verified"
                 )
                 # Generate Institutional Candlestick Trade Card
                 card_buf = None

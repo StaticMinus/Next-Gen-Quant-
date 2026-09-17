@@ -21,10 +21,12 @@ _LIVE_STREAM_CACHE: Dict[str, dict] = {}
 _CACHE_LOCK = threading.Lock()
 _TICK_LISTENERS: List[Callable[[str, dict], None]] = []
 
-# Symbol mappings for the Option A universe
+# Symbol mappings for the Fab-4 US Indices universe
 STREAM_SYMBOLS = {
     "SPX500": 113,
     "NDX100": 112,
+    "US30": 115,
+    "US2000": 117,
 }
 ID_TO_SYMBOL = {v: k for k, v in STREAM_SYMBOLS.items()}
 

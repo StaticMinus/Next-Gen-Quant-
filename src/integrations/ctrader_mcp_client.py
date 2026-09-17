@@ -116,7 +116,8 @@ class CTraderMCPClient:
 
     def call_tool(self, name: str, arguments: Optional[dict] = None) -> Optional[dict]:
         if not self.session_id:
-            self.initialize()
+            if not self.initialize():
+                return None
         payload = {
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -128,8 +129,9 @@ class CTraderMCPClient:
         }
         res = self._post_sse(payload)
         if not res and not self.session_id:
-            self.initialize()
-            res = self._post_sse(payload)
+            # Session expired and was cleared; re-initialize and retry once
+            if self.initialize():
+                res = self._post_sse(payload)
         return res
 
     def _parse_content_json(self, response: Optional[dict]) -> Optional[Any]:

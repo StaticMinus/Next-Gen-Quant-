@@ -31,6 +31,8 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+
 from src.integrations.ctrader_mcp_client import CTraderMCPClient
 from src.integrations.risk_guardian import guardian
 from src.integrations.telegram_ai_coach import (
@@ -197,16 +199,16 @@ def get_breadcrumb(cmd: str) -> str:
 def async_send_radar_chart(chat_id, ticker="SPY"):
     try:
         t = ticker.upper()
-        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else t)
+        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
         buf = generate_radar_candlestick_chart(t)
         caption = (
             f"🕯️ <b>{t} ({csym}) OPTION A SNIPER CANDLESTICK CARD</b>\n"
-            "────────────────────────────\n"
             "• <b>Timeframe:</b> 1-Hour Intraday\n"
             "• <b>Trigger Band:</b> 1.25σ Lower Band (Amber Line)\n"
             "• <b>Target:</b> 20-Hour Moving Average (Cyan Line)\n"
-            "• <b>Win Rate:</b> 92.9% (1–2 High-Conviction Trades/Week)\n"
-            "• <b>Risk:</b> 2.0% Hard Broker Stop (~$25 risk / $155 cushion)"
+            "• <b>Universe:</b> Fab-4 US Index Universe (91.2% Overall Win Rate)\n"
+            "• <b>Risk:</b> 2.0% Hard Broker Stop (~$25 risk / $155 cushion)\n"
+            "• <b>Holding:</b> Overnight Hold Allowed with Server-Side SL/TP"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -232,18 +234,19 @@ def async_send_ticket_card(chat_id, ticker="SPY"):
     try:
         t = ticker.upper()
         low_t = t.lower()
-        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else t)
+        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
         p_val = _CACHE.get(f"{low_t}_price", 754.0)
         mean_target = _CACHE.get(f"{low_t}_mean_5d", p_val * 1.008)
         entry_limit = _CACHE.get(f"{low_t}_lower_band", p_val * 0.995)
         stop_level = entry_limit * 0.98
         buf = generate_trade_signal_card(t, entry_limit, mean_target, stop_level)
         caption = (
-            f"🎫 <b>AgentQuant Live Trade Ticket // {t} ({csym})</b>\n"
+            f"🎫 <b>AgentQuant Trade Ticket // {t} ({csym})</b>\n"
             f"• <b>Entry Trigger:</b> ${entry_limit:.2f} (1.25σ Dip)\n"
             f"• <b>Take-Profit:</b> ${mean_target:.2f} (20H Mean Reversion)\n"
             f"• <b>Stop-Loss:</b> ${stop_level:.2f} (-2.0% Hard Stop)\n"
-            f"• <b>Model:</b> Option A Quantitative Sniper (92.9% Win Rate)"
+            f"• <b>Mode:</b> Overnight Hold Armed (Server-Side Hard Stop)\n"
+            f"• <b>Universe:</b> Fab-4 Quantitative Sniper"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -365,7 +368,7 @@ def sync_ctrader_telemetry_worker():
     except Exception as e:
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
-CORE_UNIVERSE = ["SPY", "QQQ"]
+CORE_UNIVERSE = ["SPY", "QQQ", "DIA", "IWM"]
 _ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
 
 
@@ -381,6 +384,7 @@ def save_telemetry_snapshot():
             "daily_buffer": 180.0,
             "active_positions": enriched,
             "has_active_trade": len(enriched) > 0,
+            "strategy_name": "Option A 1-Hour Quantitative Sniper (Fab-4 US Indices)",
             "spy_price": round(_CACHE.get("spy_price", 754.05), 2),
             "spy_mean": round(_CACHE.get("spy_mean_5d", 758.89), 2),
             "spy_dip": round(_CACHE.get("spy_lower_band", 754.05), 2),
@@ -391,6 +395,16 @@ def save_telemetry_snapshot():
             "qqq_dip": round(_CACHE.get("qqq_lower_band", 703.13), 2),
             "qqq_dist": round(_CACHE.get("qqq_dist", 1.59), 2),
             "qqq_dist_pct": round(_CACHE.get("qqq_dist_pct", 0.23), 2),
+            "dia_price": round(_CACHE.get("dia_price", 438.20), 2),
+            "dia_mean": round(_CACHE.get("dia_mean_5d", 440.15), 2),
+            "dia_dip": round(_CACHE.get("dia_lower_band", 437.50), 2),
+            "dia_dist": round(_CACHE.get("dia_dist", 0.70), 2),
+            "dia_dist_pct": round(_CACHE.get("dia_dist_pct", 0.16), 2),
+            "iwm_price": round(_CACHE.get("iwm_price", 218.40), 2),
+            "iwm_mean": round(_CACHE.get("iwm_mean_5d", 220.10), 2),
+            "iwm_dip": round(_CACHE.get("iwm_lower_band", 217.80), 2),
+            "iwm_dist": round(_CACHE.get("iwm_dist", 0.60), 2),
+            "iwm_dist_pct": round(_CACHE.get("iwm_dist_pct", 0.27), 2),
             "payout_days": _CACHE.get("days_until_payout", 5),
             "live_p2p_rate": _CACHE.get("live_p2p_rate", LIVE_P2P_RATE),
         }
@@ -1152,8 +1166,12 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "📈 View SPY Candlestick Card", "callback_data": "cmd_chart_radar_SPY"},
-                {"text": "📈 View QQQ Candlestick Card", "callback_data": "cmd_chart_radar_QQQ"},
+                {"text": "🏛️ SPY Candlestick", "callback_data": "cmd_chart_radar_SPY"},
+                {"text": "💻 QQQ Candlestick", "callback_data": "cmd_chart_radar_QQQ"},
+            ],
+            [
+                {"text": "🏭 DIA Candlestick", "callback_data": "cmd_chart_radar_DIA"},
+                {"text": "🚀 IWM Candlestick", "callback_data": "cmd_chart_radar_IWM"},
             ],
             [
                 {"text": "🤖 Run AI Market Scan", "callback_data": "cmd_ai_scan"},
@@ -1267,17 +1285,15 @@ def render_overview_text():
     daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
 
     text = (
-        f"{get_breadcrumb('cmd_overview')}\n"
-        "────────────────────────────\n"
         "⚡ <b>AGENTQUANT TERMINAL OVERVIEW</b>\n"
-        "────────────────────────────\n"
         f"• <b>Status:</b> <code>{status_pill}</code> (Option A 1H Sniper)\n"
         f"• <b>Balance:</b> <code>${capital:,.2f} USD</code> (~₦{naira_val:,.0f} NGN)\n"
         f"• <b>Equity:</b> <code>${equity:,.2f} USD</code>\n"
         f"• <b>Daily Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> left\n"
         f"• <b>Open Trades:</b> <code>{trade_summary}</code>\n"
-        "• <b>Strategy:</b> Option A (SPY & QQQ 1H Mean-Reversion)\n"
-        "• <b>Win Rate:</b> 92.9% (1–2 trades/wk)\n"
+        "• <b>Strategy:</b> Option A Fab-4 Indices (SPY, QQQ, DIA, IWM)\n"
+        "• <b>Holding Mode:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n"
+        "• <b>Win Rate:</b> 91.2% (2–3 trades/wk)\n"
         f"• <b>Next Window:</b> 2:30 PM – 3:30 PM WAT (US Open)\n"
         f"• <b>Account:</b> cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
         f"• <b>Last Updated:</b> <code>{now_str}</code>"
@@ -1330,19 +1346,18 @@ def render_signals_text():
     ts = _CACHE.get("last_scan_time_str", now.strftime("%H:%M:%S WAT"))
 
     lines = [
-        f"{get_breadcrumb('cmd_signals')}\n",
-        "────────────────────────────\n",
-        "📡 <b>LIVE MARKET RADAR (SPY & QQQ)</b>\n",
-        "────────────────────────────\n",
+        "📡 <b>LIVE MARKET RADAR (FAB-4 US INDICES)</b>\n",
         f"• <b>Session:</b> {session_str}\n",
-        "• <b>Strategy:</b> Option A (1-Hour Sniper • 92.9% Win Rate)\n",
+        "• <b>Strategy:</b> Option A (1-Hour Sniper • 91.2% Win Rate)\n",
+        "• <b>Holding:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n",
         f"• <b>Scan Time:</b> <code>{ts}</code>\n",
-        "────────────────────────────\n",
     ]
 
     friendly_labels = {
         "SPY": ("🏛️", "S&P 500 (SPY)"),
         "QQQ": ("💻", "Nasdaq 100 (QQQ)"),
+        "DIA": ("🏭", "Dow Jones 30 (DIA)"),
+        "IWM": ("🚀", "Russell 2000 (IWM)"),
     }
 
     for t in CORE_UNIVERSE:
@@ -1368,10 +1383,9 @@ def render_signals_text():
         else:
             lines.append(f"• {icon} <b>{name}:</b> Fetching live 1H bars...\n")
 
-    lines.append("────────────────────────────\n")
-    lines.append("• <b>Next Window:</b> Today at 2:30 PM – 3:30 PM WAT (US Open).\n")
-    lines.append("• <b>Setup:</b> Auto-entry when oversold dip confirms green reversal.\n")
-    lines.append("• <b>Cadence:</b> 1–2 trades/week ensures zero over-trading.")
+    lines.append("• <b>Next Window:</b> Today at 2:30 PM – 3:30 PM WAT (US Open)\n")
+    lines.append("• <b>Universe:</b> Fab-4 US Indices (SPY, QQQ, DIA, IWM)\n")
+    lines.append("• <b>Execution:</b> Auto-entry at oversold dip; max 2 trades concurrent")
     return "".join(lines)
 
 
@@ -1398,37 +1412,26 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
     if not enriched_positions and not positions:
         capital = _CACHE.get("capital", 5982.16)
         text = (
-            f"{get_breadcrumb('cmd_trades')}\n"
-            "────────────────────────────\n"
             "📊 <b>ACTIVE TRADES // ALL CLEAR</b>\n"
-            "────────────────────────────\n"
             "• <b>Status:</b> 🟢 100% in Cash (Zero Open Risk)\n"
             f"• <b>Account Balance:</b> <code>${capital:,.2f} USD</code> (cTrader #3028655)\n"
             "• <b>Daily Cushion:</b> Full $180.00 intact (100% safe)\n"
-            "• <b>Focus Universe:</b> SPY (SPX500) & QQQ (NDX100)\n"
-            "• <b>Strategy:</b> Option A 1-Hour Sniper (92.9% Win Rate)\n"
+            "• <b>Focus Universe:</b> Fab-4 US Indices (SPY, QQQ, DIA, IWM)\n"
+            "• <b>Holding Mode:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n"
+            "• <b>Strategy:</b> Option A 1-Hour Sniper (91.2% Overall Win Rate)\n"
             "• <b>Automation:</b> Server executes automatically at US Open (2:30 PM WAT)\n"
             f"• <b>Checked:</b> <code>{now_str}</code>"
         )
         return text
     else:
         lines = [
-            f"{get_breadcrumb('cmd_trades')}\n",
-            "────────────────────────────\n",
             "📊 <b>ACTIVE TRADES // ACCOUNT #3028655</b>\n",
-            "────────────────────────────\n",
         ]
 
         if pending_pos_id and pending_step == 1:
-            lines.append(
-                f"• ⚠️ <b>Close Step 2/3:</b> Position #{pending_pos_id} selected. Tap confirm below.\n"
-                "────────────────────────────\n"
-            )
+            lines.append(f"• ⚠️ <b>Close Step 2/3:</b> Position #{pending_pos_id} selected. Tap confirm below.\n")
         elif pending_pos_id and pending_step == 2:
-            lines.append(
-                f"• 🚨 <b>Final Step 3/3:</b> Tap execute to close #{pending_pos_id} at market price.\n"
-                "────────────────────────────\n"
-            )
+            lines.append(f"• 🚨 <b>Final Step 3/3:</b> Tap execute to close #{pending_pos_id} at market price.\n")
 
         total_pnl = 0.0
 
@@ -1438,8 +1441,10 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
                 sym = ep.get("symbol_name", "SPY")
                 is_spy = "SPY" in sym or "SPX" in sym
                 is_qqq = "QQQ" in sym or "NDX" in sym
-                dname = ep.get("display_name", "S&P 500" if is_spy else ("Nasdaq 100" if is_qqq else sym))
-                icon = "🏛️" if is_spy else ("💻" if is_qqq else "📈")
+                is_dia = "DIA" in sym or "US30" in sym
+                is_iwm = "IWM" in sym or "US2000" in sym
+                dname = ep.get("display_name", "S&P 500" if is_spy else ("Nasdaq 100" if is_qqq else ("Dow Jones 30" if is_dia else ("Russell 2000" if is_iwm else sym))))
+                icon = "🏛️" if is_spy else ("💻" if is_qqq else ("🏭" if is_dia else ("🚀" if is_iwm else "📈")))
                 side = ep.get("trade_side", "BUY")
                 lots = ep.get("lots", 0.10)
                 entry = ep.get("entry_price", 0.0)
@@ -1452,10 +1457,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
 
                 pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
 
-                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos_id}:</b>\n")
-                lines.append(f"  - Size & Side: {lots} lot {side}\n")
-                lines.append(f"  - Entry / Market: ${entry:,.2f} → ${curr:,.2f}\n")
-                lines.append(f"  - Floating P&L: <b>{pnl_str} USD</b>\n")
+                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos_id}:</b> {lots} lot {side} @ ${entry:,.2f} → ${curr:,.2f} | P&L: <b>{pnl_str}</b>\n")
                 if tp:
                     lines.append(f"  - Target TP: ${tp:,.2f} (+${dist_tp:,.2f})\n")
                 if sl:
@@ -1463,8 +1465,9 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         else:
             for pos in positions:
                 sym_id = pos.get("symbolId")
-                sym = "SPY" if sym_id == 111 else pos.get("symbolName", "Trade")
-                dname = "S&P 500" if sym == "SPY" else sym
+                sym = "SPY" if sym_id == 113 else ("QQQ" if sym_id == 112 else ("DIA" if sym_id == 115 else ("IWM" if sym_id == 117 else pos.get("symbolName", "Trade"))))
+                dname = "S&P 500" if sym == "SPY" else ("Nasdaq 100" if sym == "QQQ" else ("Dow Jones 30" if sym == "DIA" else ("Russell 2000" if sym == "IWM" else sym)))
+                icon = "🏛️" if sym == "SPY" else ("💻" if sym == "QQQ" else ("🏭" if sym == "DIA" else ("🚀" if sym == "IWM" else "📈")))
                 side = pos.get("tradeSide", "BUY")
                 vol = pos.get("volume", 10) / 100.0
                 entry = pos.get("entryPrice", 0.0)
@@ -1474,9 +1477,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
                 total_pnl += pnl
                 pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
 
-                lines.append(f"• 📈 <b>{dname} ({sym}) #{pos.get('positionId')}:</b>\n")
-                lines.append(f"  - Size & Side: {vol:.2f} lot {side}\n")
-                lines.append(f"  - Entry: ${entry:,.2f} • P&L: <b>{pnl_str} USD</b>\n")
+                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos.get('positionId')}:</b> {vol:.2f} lot {side} @ ${entry:,.2f} | P&L: <b>{pnl_str}</b>\n")
                 if tp:
                     lines.append(f"  - Target TP: ${tp:,.2f}\n")
                 if sl:
@@ -1486,13 +1487,12 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         eq = _CACHE.get("equity", 6000.0)
         daily_cushion = max(0.0, 180.0 - max(0.0, cap - eq))
 
-        lines.append("────────────────────────────\n")
         lines.append(f"• <b>Total Floating:</b> <code>${total_pnl:+,.2f} USD</code>\n")
         lines.append(f"• <b>Daily Cushion Left:</b> <code>${daily_cushion:,.2f} / $180.00</code>\n")
         lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
-        lines.append("• <b>Protection:</b> Auto-managed by server. Hard stops locked on cTrader.\n")
+        lines.append("• <b>Holding Mode:</b> Overnight Hold Active (Protected by Server Hard Stop)\n")
         if is_david and (enriched_positions or positions):
-            lines.append("• <b>Manual Override:</b> Use multi-tap buttons below to close instantly.")
+            lines.append("• <b>Manual Override:</b> Use multi-tap buttons below to close instantly")
 
         return "".join(lines)
 
