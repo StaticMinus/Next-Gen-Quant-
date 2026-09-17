@@ -840,3 +840,38 @@ To enable the GitHub Actions runner to deliver alerts automatically 24/7 from th
    - Daemon running 24/7 as task `task-1535`.
    - Live activation message delivered to David's Telegram app (`8428715579`).
 
+---
+
+## 30. Active Trades Latency Resolution & Render Cloud Daemon Restoration
+
+**Status:** **100% Fixed, Verified, and Deployed to GitHub & Render Cloud!**
+
+### Root-Cause Analysis:
+1. **Unpushed Local Commits (`c0620c3`):**
+   - The previous latency optimization commit (`c0620c3`) had eliminated synchronous cTrader network calls from `render_trades_text()`, but it had not been pushed to `origin/main`.
+   - Render and GitHub Actions were still running the older commit `4a3f600`.
+2. **Missing `SpeechRecognition` Dependency Causing Render Bot Crash:**
+   - In commit `4a3f600`, `SpeechRecognition` was imported in `telegram_voice_transcriber.py`, but was missing from `requirements.txt` and `pyproject.toml`.
+   - On Render, `python -m src.integrations.webapp_server` caught `ModuleNotFoundError: No module named 'speech_recognition'` when importing `run_polling()`, logged a warning, and fell back to only starting the web server.
+   - Render marked the service "Live" (because `/health` succeeded), but the Telegram bot polling daemon was not running in the cloud.
+   - The updates queued on Telegram (`📊 Active Trades`) sat unanswered in the inbox.
+3. **Cold Cache Initialization:**
+   - On a fresh cold start before the background telemetry worker completed its first sync, `_CACHE["enriched_positions"]` was empty, which could momentarily show "0 Open / ALL CLEAR" even with an open position.
+
+### Applied Solutions:
+1. **Robust Dependency & Safe Import:**
+   - Added `SpeechRecognition>=3.10.0` to `requirements.txt` and `pyproject.toml`.
+   - Wrapped `import speech_recognition as sr` in `try ... except ImportError: sr = None` with graceful runtime fallback.
+2. **Disk Cache Pre-Seeding:**
+   - Seeded `_CACHE` on module startup directly from `webapp/telemetry.json` so active positions (such as the live US30 position `#3074419`) are immediately displayed without waiting for network I/O.
+   - Added fallback in `render_trades_text()` to read disk telemetry if cache is cold.
+3. **Instant Mobile Feedback:**
+   - Added instant toast notification (`📊 Active Trades refreshed`) via `answerCallbackQuery` on `cmd_trades` taps.
+   - Updated asset names so US30 is formatted as "Dow 30" in the manual close buttons.
+4. **Clean Test Suite & Deployment:**
+   - Fixed test assertions in `tests/test_live_vision.py` and `tests/test_autonomous_executor.py`.
+   - Reconfigured stdout encoding in `scripts/verify_tools.py`.
+   - Pushed all fixes to `origin/main` (`8ca5347`) for automatic Render deployment and GitHub Actions CI run.
+   - Dispatched live active trades card directly to David's Telegram app (Message ID: 322).
+
+
