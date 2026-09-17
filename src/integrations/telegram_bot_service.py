@@ -1014,18 +1014,6 @@ def is_owner(user_id: str) -> bool:
 
 
 def get_webapp_url() -> str:
-    try:
-        if ctrader_client.session_id:
-            live_en = ctrader_client.get_enriched_positions()
-            if live_en is not None:
-                _CACHE["enriched_positions"] = live_en
-            bal = ctrader_client.get_balance()
-            if bal and bal.get("balance", 0) > 0:
-                _CACHE["capital"] = bal["balance"]
-                _CACHE["equity"] = bal["equity"]
-    except Exception:
-        pass
-
     wallet = _CACHE.get("wallet_address", "")
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     spy = _CACHE.get("spy_price", 764.29)
@@ -1440,18 +1428,11 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
     now_str = datetime.now().strftime("%H:%M:%S WAT")
     is_david = str(user_id) == str(PRIMARY_CHAT_ID)
 
-    try:
-        if not ctrader_client.session_id:
-            ctrader_client.initialize()
-        en = ctrader_client.get_enriched_positions()
-        if en is not None:
-            _CACHE["enriched_positions"] = en
-        bal = ctrader_client.get_balance()
-        if bal:
-            _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
-            _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
-    except Exception:
-        pass
+    # Non-blocking instant serve (<1ms) from background telemetry cache
+    now = time.time()
+    last_sync = _CACHE.get("last_telemetry_sync", 0.0)
+    if (now - last_sync > 45.0 or "enriched_positions" not in _CACHE) and executor:
+        executor.submit(sync_ctrader_telemetry_worker)
 
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
