@@ -7,9 +7,7 @@ data_path: "data_store"
 universe:
   - "SPY"
   - "QQQ"
-  - "AAPL"
-  - "NVDA"
-  - "GLD"
+
 reference_asset: "SPY"
 vix_ticker: "^VIX"
 

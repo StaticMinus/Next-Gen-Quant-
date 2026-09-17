@@ -348,11 +348,45 @@ def sync_ctrader_telemetry_worker():
         _CACHE["enriched_positions"] = enriched or []
         _CACHE["last_telemetry_sync"] = time.time()
         _LAST_SYNC_TIME = time.time()
+        save_telemetry_snapshot()
     except Exception as e:
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
-CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
+CORE_UNIVERSE = ["SPY", "QQQ"]
 _ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
+
+
+def save_telemetry_snapshot():
+    """Persists real-time telemetry to webapp/telemetry.json for the web dashboard."""
+    try:
+        enriched = _CACHE.get("enriched_positions", [])
+        payload = {
+            "capital": round(_CACHE.get("capital", 6000.0), 2),
+            "equity": round(_CACHE.get("equity", 6000.0), 2),
+            "free_margin": round(_CACHE.get("free_margin", 5704.31), 2),
+            "buffer": 360.0,
+            "daily_buffer": 180.0,
+            "active_positions": enriched,
+            "has_active_trade": len(enriched) > 0,
+            "spy_price": round(_CACHE.get("spy_price", 754.05), 2),
+            "spy_mean": round(_CACHE.get("spy_mean_5d", 758.89), 2),
+            "spy_dip": round(_CACHE.get("spy_lower_band", 754.05), 2),
+            "spy_dist": round(_CACHE.get("spy_dist", 0.0), 2),
+            "spy_dist_pct": round(_CACHE.get("spy_dist_pct", 0.0), 2),
+            "qqq_price": round(_CACHE.get("qqq_price", 704.72), 2),
+            "qqq_mean": round(_CACHE.get("qqq_mean_5d", 708.40), 2),
+            "qqq_dip": round(_CACHE.get("qqq_lower_band", 703.13), 2),
+            "qqq_dist": round(_CACHE.get("qqq_dist", 1.59), 2),
+            "qqq_dist_pct": round(_CACHE.get("qqq_dist_pct", 0.23), 2),
+            "payout_days": _CACHE.get("days_until_payout", 5),
+            "live_p2p_rate": _CACHE.get("live_p2p_rate", LIVE_P2P_RATE),
+        }
+        telem_path = ROOT_DIR / "webapp" / "telemetry.json"
+        with open(telem_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except Exception:
+        pass
+
 
 
 def sync_market_radar_worker():
@@ -964,6 +998,18 @@ def is_owner(user_id: str) -> bool:
 
 
 def get_webapp_url() -> str:
+    try:
+        if ctrader_client.session_id:
+            live_en = ctrader_client.get_enriched_positions()
+            if live_en is not None:
+                _CACHE["enriched_positions"] = live_en
+            bal = ctrader_client.get_balance()
+            if bal and bal.get("balance", 0) > 0:
+                _CACHE["capital"] = bal["balance"]
+                _CACHE["equity"] = bal["equity"]
+    except Exception:
+        pass
+
     wallet = _CACHE.get("wallet_address", "")
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     spy = _CACHE.get("spy_price", 764.29)
@@ -974,6 +1020,7 @@ def get_webapp_url() -> str:
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     raw_list = enriched if enriched else positions
+
     trades_data = []
     for p in raw_list:
         pos_id = p.get("position_id") or p.get("positionId")

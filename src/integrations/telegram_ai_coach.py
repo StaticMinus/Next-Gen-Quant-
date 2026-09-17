@@ -36,7 +36,7 @@ TERTIARY_MODEL = "openai/gpt-4o-mini"
 CONVERSATION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
 MAX_HISTORY_TURNS = 16
 
-CORE_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "META"]
+CORE_UNIVERSE = ["SPY", "QQQ"]
 
 # Cache for market telemetry to avoid fetching yfinance on every keystroke
 _MARKET_CACHE = {
@@ -154,9 +154,9 @@ CRITICAL STYLE & TONE INSTRUCTION:
   • Milestone Tracker (/milestone): Tracks progress toward the $600 FundedNext goal (Stage 1: $150, Stage 2: $300, Stage 3: $450, Stage 4: $600 Funded!).
 - Use Telegram HTML: <b>bold</b>, <code>code</code>.
 {account_section}
-6-ASSET INSTITUTIONAL UNIVERSE:
-- Assets: SPY (SPX500), QQQ (NDX100), AAPL, NVDA, MSFT, META.
-- S&P 500 (SPY), Nasdaq 100 (QQQ), Apple (AAPL), Nvidia (NVDA), Microsoft (MSFT), Meta (META). (Gold excluded by operator directive).
+CORE DUAL-ASSET INSTITUTIONAL UNIVERSE:
+- Assets: SPY (SPX500), QQQ (NDX100).
+- S&P 500 (SPY), Nasdaq 100 (QQQ). Core high-edge index dip-buying engine. (Individual stocks and gold excluded to maximize safety and edge).
 
 ATLAS-QUANT STRATEGY TRIAD:
 1. Sniper Dip-Buy (Mean Reversion):
@@ -373,14 +373,11 @@ def run_autonomous_ai_scan() -> str:
         return (
             f"📡 <b>AUTONOMOUS AI RADAR SCAN</b> <code>[{now_str}]</code>\n"
             "────────────────────────────\n"
-            "🟢 <b>STATUS:</b> <code>[ 6 ASSETS MONITORED // 100% CASH SAFE ]</code>\n\n"
+            "🟢 <b>STATUS:</b> <code>[ 2 CORE ASSETS MONITORED // 100% CASH SAFE ]</code>\n\n"
             "<b>Institutional Universe Coverage:</b>\n"
             "• <b>SPY:</b> Mean Reversion Dip Scanner (Active)\n"
-            "• <b>QQQ:</b> Mean Reversion Dip Scanner (Active)\n"
-            "• <b>AAPL:</b> 20 EMA Trend Pullback (Active)\n"
-            "• <b>NVDA:</b> Momentum Squeeze Radar (Active)\n"
-            "• <b>MSFT:</b> Trend Reversal Scanner (Active)\n"
-            "• <b>META:</b> Volatility Breakout Radar (Active)\n\n"
-            "🎯 <b>TACTICAL VERDICT:</b> No triggers active right now. All 6 assets are trading in equilibrium buffers. 100% capital preserved."
+            "• <b>QQQ:</b> Mean Reversion Dip Scanner (Active)\n\n"
+            "🎯 <b>TACTICAL VERDICT:</b> No new triggers active right now. Monitoring SPY and QQQ dip thresholds. 100% capital preserved."
         )
+
 

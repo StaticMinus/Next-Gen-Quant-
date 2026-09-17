@@ -4,7 +4,7 @@ AgentQuant Autonomous Trade Execution Engine (cTrader #3028655)
 Fully automated background execution system for FundedNext Stellar Prop Account.
 
 Features:
-- Scans 7-asset universe: GLD (XAUUSD), SPY (SPX500), QQQ (NDX100), AAPL, NVDA, MSFT, META
+- Scans core dual-asset universe: SPY (SPX500), QQQ (NDX100)
 - Strict 2-Position Concurrency Ceiling (Never exceeds 2 open trades)
 - Broker-Level Hard Stop Loss (-3.0%) & Take Profit (+3.5% or mean reversion)
 - Risk Guardian Pre-Trade Verification (Drawdown buffer check vs -$180 daily / -$360 max limit)
@@ -54,11 +54,8 @@ COOLDOWN_SECONDS = 14400      # 4 hours per ticker
 TARGET_UNIVERSE = [
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
     {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 30.0},
-    {"ticker": "AAPL", "ctrader_symbol": "AAPL", "name": "Apple Inc.", "target_lots": 1.0, "max_risk_usd": 15.0},
-    {"ticker": "NVDA", "ctrader_symbol": "NVDA", "name": "Nvidia Corp.", "target_lots": 1.0, "max_risk_usd": 15.0},
-    {"ticker": "MSFT", "ctrader_symbol": "MSFT", "name": "Microsoft Corp.", "target_lots": 1.0, "max_risk_usd": 15.0},
-    {"ticker": "META", "ctrader_symbol": "META", "name": "Meta Platforms", "target_lots": 1.0, "max_risk_usd": 20.0},
 ]
+
 
 STRATEGY_PARAMS = {
     "window": 5,

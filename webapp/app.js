@@ -124,17 +124,13 @@ let radarAnimId = null;
 let radarPulsePhase = 0;
 const navHistory = ['radar'];
 
-const ASSETS_LIST = ['QQQ', 'SPY', 'AAPL', 'NVDA', 'MSFT', 'META'];
+const ASSETS_LIST = ['QQQ', 'SPY'];
 
 let telemetryData = {
-  capital: 6000.0, equity: 5997.47, buffer: 360.0, daily_buffer: 180.0,
-  strategy_name: '6-Asset Quantitative Opportunity Engine',
-  gld_price: 4332.46, gld_mean: 4340.00, gld_dip: 4330.00, gld_dist: 2.26, gld_dist_pct: 0.05,
-  qqq_price: 704.54, qqq_mean: 707.20, qqq_dip: 704.68, qqq_dist: 0.00, qqq_dist_pct: 0.00,
-  spy_price: 764.29, spy_mean: 764.13, spy_dip: 758.45, spy_dist: 5.84, spy_dist_pct: 0.76,
-  aapl_price: 331.34, aapl_mean: 330.50, aapl_dip: 318.50, aapl_dist: 12.84, aapl_dist_pct: 3.90,
-  nvda_price: 212.17, nvda_mean: 212.00, nvda_dip: 210.27, nvda_dist: 1.90, nvda_dist_pct: 0.90,
-  msft_price: 495.20, msft_mean: 494.80, msft_dip: 486.50, msft_dist: 8.70, msft_dist_pct: 1.75,
+  capital: 6002.08, equity: 5990.66, buffer: 360.0, daily_buffer: 180.0,
+  strategy_name: 'Dual-Asset Quantitative Opportunity Engine (SPY & QQQ)',
+  qqq_price: 704.72, qqq_mean: 708.40, qqq_dip: 703.13, qqq_dist: 1.59, qqq_dist_pct: 0.23,
+  spy_price: 754.05, spy_mean: 758.89, spy_dip: 754.05, spy_dist: 0.00, spy_dist_pct: 0.00,
   active_positions: [
     {
       position_id: 3069593,
@@ -144,27 +140,28 @@ let telemetryData = {
       trade_side: 'BUY',
       lots: 0.01,
       entry_price: 4334.99,
-      current_price: 4272.89,
+      current_price: 4330.95,
       take_profit: 4443.38,
       stop_loss: 4204.95,
-      floating_pnl: -62.10
+      floating_pnl: -4.04
     },
     {
-      position_id: 3071210,
+      position_id: 3072827,
       symbol_id: 112,
       symbol_name: 'NDX100',
       display_name: 'Nasdaq 100 Index',
       trade_side: 'BUY',
       lots: 0.1,
-      entry_price: 29118.12,
-      current_price: 28966.02,
-      take_profit: 29552.37,
-      stop_loss: 28242.17,
-      floating_pnl: -15.21
+      entry_price: 29222.95,
+      current_price: 29250.43,
+      take_profit: 29659.47,
+      stop_loss: 28344.52,
+      floating_pnl: 2.75
     }
   ],
   payout_days: 5,
 };
+
 
 const MAX_RADAR_POINTS = 32;
 const assetHistories = {
@@ -972,7 +969,7 @@ function parseQueryParams() {
         } catch (e1) {
           trades = JSON.parse(decodeURIComponent(rawTrades));
         }
-        if (Array.isArray(trades) && trades.length > 0) {
+        if (Array.isArray(trades)) {
           telemetryData.active_positions = trades.map(t => ({
             position_id: t.id || t.position_id,
             symbol_name: t.sym || t.symbol_name,
@@ -986,6 +983,7 @@ function parseQueryParams() {
             stop_loss: t.sl || t.stop_loss
           }));
         }
+
       } catch (err) {
         console.warn("Could not parse trades parameter", err);
       }
