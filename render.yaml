@@ -22,3 +22,7 @@ services:
         sync: false
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: AUTONOMOUS_TIMEFRAME
+        value: "1h"
+      - key: TRADING_MODE
+        value: "LIVE"

@@ -11,7 +11,7 @@ Unit & regression tests for Live Account & Position Vision (Context-Aware Intell
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -69,15 +69,16 @@ class TestLiveVision(unittest.TestCase):
         self.assertIn("Take Profit: $4,443.38", prompt)
         self.assertIn("Stop Loss: $4,204.95", prompt)
         self.assertIn("Remaining Daily Loss Cushion: $173.51", prompt)
-        self.assertIn("7-ASSET INSTITUTIONAL UNIVERSE", prompt)
+        self.assertIn("CORE DUAL-ASSET INSTITUTIONAL UNIVERSE", prompt)
 
     def test_render_trades_text_enriched(self):
         """Verify render_trades_text formats the clear, friendly position card for Gold."""
-        _CACHE["enriched_positions"] = self.mock_enriched_positions
-        _CACHE["capital"] = 6000.0
-        _CACHE["equity"] = 5993.51
+        with patch("src.integrations.telegram_bot_service.ctrader_client.get_enriched_positions", return_value=self.mock_enriched_positions):
+            _CACHE["enriched_positions"] = self.mock_enriched_positions
+            _CACHE["capital"] = 6000.0
+            _CACHE["equity"] = 5993.51
 
-        output = render_trades_text()
+            output = render_trades_text()
 
         self.assertIn("Spot Gold (XAUUSD)", output)
         self.assertIn("#3069593", output)

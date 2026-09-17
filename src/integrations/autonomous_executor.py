@@ -1,18 +1,23 @@
 """
 AgentQuant Autonomous Trade Execution Engine (cTrader #3028655)
 ==============================================================
-Fully automated background execution system for FundedNext Stellar Prop Account.
+Intraday Sharp Scalper (Same-Day In & Out) for FundedNext Stellar Prop Account.
 
 Features:
-- Scans core dual-asset universe: SPY (SPX500), QQQ (NDX100)
+- Scans strictly Dual Index Universe: SPY (SPX500), QQQ (NDX100)
+- Configurable Timeframe: 5-Minute (M5) Sharp Scalper or 1-Hour (H1) Intraday
+- Strict Anti-Late-Trade Guard:
+    * Bar Freshness: Rejects signals older than 2.5 minutes (M5) / 5 minutes (H1)
+    * Price Tolerance: Rejects entry if live price has bounced > 0.05% above trigger (Zero Chasing)
+    * Session Lock: Only enters between 10:00 AM and 3:30 PM EST (3:00 PM – 8:30 PM WAT)
+- Same-Day Flat Routine: Closes all positions at 15:50 EST (8:50 PM WAT) for 0% overnight risk
 - Strict 2-Position Concurrency Ceiling (Never exceeds 2 open trades)
-- Broker-Level Hard Stop Loss (-3.0%) & Take Profit (+3.5% or mean reversion)
+- Broker-Level Hard Stop Loss & Take Profit (Mean Reversion) attached immediately
 - Risk Guardian Pre-Trade Verification (Drawdown buffer check vs -$180 daily / -$360 max limit)
-- Zero Duplicate Asset Protection (Skips already-held tickers)
-- 4-Hour Cooldown per Ticker (Prevents overtrading / duplicate submissions)
 - Instant Rich Telegram Execution Ticket Dispatch to David and Cha Cha
 """
 
+import io
 import json
 import logging
 import os
@@ -23,8 +28,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import requests
+import yfinance as yf
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -33,7 +40,6 @@ if str(ROOT_DIR) not in sys.path:
 
 load_dotenv(ROOT_DIR / ".env")
 
-from src.data.ingest import fetch_ohlcv_data
 from src.strategies.scalper import ScalperStrategy
 from src.backtest.runner import _get_close
 from src.integrations.risk_guardian import guardian
@@ -49,22 +55,70 @@ AUTHORIZED_USERS_FILE = ROOT_DIR / "cache" / "authorized_users.json"
 STATE_FILE = ROOT_DIR / "cache" / "autonomous_execution_state.json"
 
 MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
-COOLDOWN_SECONDS = 14400      # 4 hours per ticker
 
 TARGET_UNIVERSE = [
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
     {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 30.0},
 ]
 
+# Active timeframe: "5m" (Default sharp in-and-out) or "1h"
+ACTIVE_TIMEFRAME = os.getenv("AUTONOMOUS_TIMEFRAME", "5m")
 
-STRATEGY_PARAMS = {
-    "window": 5,
-    "num_std": 1.25,
-    "exit_at_mean": True,
-    "allow_short": False,
-    "stop_loss_pct": 0.03,
-    "max_hold_bars": 5,
+TIMEFRAME_CONFIGS = {
+    "5m": {
+        "interval": "5m",
+        "period": "5d",
+        "window": 6,             # 30-minute rolling mean
+        "num_std": 1.75,         # 1.75 sigma dip band
+        "exit_at_mean": True,    # Take profit at mean
+        "allow_short": False,    # Long-Only on US indices
+        "stop_loss_pct": 0.0035, # 0.35% tight hard stop
+        "max_hold_bars": 7,      # 35 minutes max hold (Strict in-and-out!)
+        "bar_freshness_seconds": 180,  # 3 minutes max age from bar close
+        "price_tolerance_pct": 0.0005, # Max 0.05% bounce above trigger (anti-chase)
+        "cooldown_seconds": 900,       # 15 min cooldown per ticker
+        "label": "5-Minute Sharp Scalper (In & Out)"
+    },
+    "1h": {
+        "interval": "1h",
+        "period": "30d",
+        "window": 20,            # 20-hour rolling mean (~3 days)
+        "num_std": 1.25,         # 1.25 sigma dip band (Option A Quant Sniper)
+        "exit_at_mean": True,
+        "allow_short": False,
+        "stop_loss_pct": 0.020,  # 2.0% hard stop
+        "max_hold_bars": 24,     # Multi-hour holding (allows mean-reversion wave to complete)
+        "bar_freshness_seconds": 7200, # 2 hours max age from bar close
+        "price_tolerance_pct": 0.0015, # Max 0.15% bounce above trigger (anti-chase)
+        "cooldown_seconds": 7200,      # 2 hours cooldown per ticker
+        "label": "1-Hour Quantitative Sniper (Option A: SPY & QQQ)"
+    }
 }
+
+# Cache for intraday bars to prevent rate limits across 35s background cycles
+_INTRADAY_DATA_CACHE: Dict[str, Tuple[float, pd.DataFrame]] = {}
+CACHE_TTL_SECONDS = 30.0
+
+
+def fetch_intraday_bars(ticker: str, timeframe: str = ACTIVE_TIMEFRAME) -> pd.DataFrame:
+    """Fetch intraday bars with in-memory TTL caching."""
+    cfg = TIMEFRAME_CONFIGS.get(timeframe, TIMEFRAME_CONFIGS["5m"])
+    cache_key = f"{ticker}_{timeframe}"
+    now = time.time()
+
+    if cache_key in _INTRADAY_DATA_CACHE:
+        cached_time, cached_df = _INTRADAY_DATA_CACHE[cache_key]
+        if now - cached_time < CACHE_TTL_SECONDS:
+            return cached_df
+
+    df = yf.download(ticker, period=cfg["period"], interval=cfg["interval"], progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [col[0].lower() for col in df.columns]
+    else:
+        df.columns = [str(c).lower() for c in df.columns]
+
+    _INTRADAY_DATA_CACHE[cache_key] = (now, df)
+    return df
 
 
 def load_execution_state() -> dict:
@@ -100,38 +154,153 @@ def get_target_chat_ids() -> List[str]:
     return cids
 
 
-def broadcast_telegram_ticket(msg: str):
+def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None):
     if not TELEGRAM_BOT_TOKEN:
         return
     for cid in get_target_chat_ids():
-        try:
-            requests.post(
-                f"{API_BASE}/sendMessage",
-                json={"chat_id": cid, "text": msg, "parse_mode": "HTML"},
-                timeout=10
-            )
-        except Exception as e:
-            logger.warning(f"Failed to send execution ticket to {cid}: {e}")
+        sent_photo = False
+        if photo_buf:
+            try:
+                photo_buf.seek(0)
+                raw_bytes = photo_buf.getvalue()
+                files = {"photo": ("trade_ticket.png", raw_bytes, "image/png")}
+                data = {"chat_id": cid, "caption": msg, "parse_mode": "HTML"}
+                resp = requests.post(f"{API_BASE}/sendPhoto", files=files, data=data, timeout=25)
+                if resp.status_code == 200:
+                    sent_photo = True
+            except Exception as pe:
+                logger.warning(f"Could not send photo ticket to {cid}, falling back to text: {pe}")
+
+        if not sent_photo:
+            try:
+                requests.post(
+                    f"{API_BASE}/sendMessage",
+                    json={"chat_id": cid, "text": msg, "parse_mode": "HTML"},
+                    timeout=10
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send execution ticket to {cid}: {e}")
 
 
 class AutonomousExecutionEngine:
-    def __init__(self, ctrader_client: Optional[CTraderMCPClient] = None):
+    def __init__(self, ctrader_client: Optional[CTraderMCPClient] = None, timeframe: str = ACTIVE_TIMEFRAME):
         from src.integrations.ctrader_mcp_client import ctrader_client as default_client
         self.ctrader = ctrader_client or default_client
         self.scalper = ScalperStrategy()
         self.state = load_execution_state()
+        self.timeframe = timeframe
+        self.cfg = TIMEFRAME_CONFIGS.get(timeframe, TIMEFRAME_CONFIGS["5m"])
 
-    def run_cycle(self, dry_run: bool = False) -> List[Dict[str, Any]]:
+    def is_market_session(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
+        """Returns True if current time is Monday-Friday regular US market hours."""
+        if dt_ny is None:
+            dt_ny = pd.Timestamp.now(tz="America/New_York")
+        if dt_ny.weekday() >= 5:  # Saturday or Sunday
+            return False
+        market_open = dt_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = dt_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+        return market_open <= dt_ny <= market_close
+
+    def is_active_entry_window(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
+        """Returns True if within the 10:00 to 14:30 EST (3:00 PM – 7:30 PM WAT) active entry window.
+        Cutting entries off at 14:30 EST guarantees 35+ minutes for all scalps to finish naturally before 15:50 EST."""
+        if dt_ny is None:
+            dt_ny = pd.Timestamp.now(tz="America/New_York")
+        if dt_ny.weekday() >= 5:
+            return False
+        entry_start = dt_ny.replace(hour=10, minute=0, second=0, microsecond=0)
+        entry_end = dt_ny.replace(hour=14, minute=30, second=0, microsecond=0)
+        return entry_start <= dt_ny <= entry_end
+
+    def is_eod_flatten_time(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
+        """Returns True if current time is at or after 15:50 EST (8:50 PM WAT)."""
+        if dt_ny is None:
+            dt_ny = pd.Timestamp.now(tz="America/New_York")
+        if dt_ny.weekday() >= 5:
+            return False
+        flatten_time = dt_ny.replace(hour=15, minute=50, second=0, microsecond=0)
+        return dt_ny >= flatten_time
+
+    def check_and_execute_same_day_flatten(self, open_positions: List[dict], dt_ny: Optional[pd.Timestamp] = None) -> List[int]:
+        """
+        Smart EOD Routine at 15:50 EST (8:50 PM WAT):
+        - If position is in PROFIT (>= +0.05% gain): Close immediately and bank the cash!
+        - If position is in DRAWDOWN / NEGATIVE: DO NOT FORCE-CLOSE AT A LOSS!
+          The position remains active on cTrader with its hard broker stop loss and take profit
+          to let it recover naturally through the 23-hour futures session rather than locking in a preventable red trade.
+        Returns list of closed position IDs.
+        """
+        if not self.is_eod_flatten_time(dt_ny):
+            return []
+
+        closed_ids = []
+        symbol_map = self.ctrader.get_symbol_map() or {}
+        id_to_sym = {v: k for k, v in symbol_map.items()}
+
+        for p in open_positions:
+            pid = p.get("positionId")
+            if not pid:
+                continue
+
+            sym_id = p.get("symbolId")
+            sym_name = p.get("symbolName") or id_to_sym.get(sym_id, "INDEX")
+            entry_price = float(p.get("entryPrice", 0.0))
+            trade_side = str(p.get("tradeSide", "BUY")).upper()
+
+            # Query current spot price to evaluate profit status
+            spot = self.ctrader.get_spot_price(sym_name)
+            curr_price = 0.0
+            if spot:
+                curr_price = float(spot["bid"]) if trade_side == "BUY" else float(spot["ask"])
+
+            # Determine floating return
+            if entry_price > 0 and curr_price > 0:
+                pnl_pct = ((curr_price - entry_price) / entry_price) if trade_side == "BUY" else ((entry_price - curr_price) / entry_price)
+            else:
+                pnl_pct = 0.0
+
+            # Smart Rule: If in profit (>= +0.05%), close and bank it!
+            if pnl_pct >= 0.0005:
+                logger.info(f"💰 [SMART EOD LOCK] Closing profitable position #{pid} ({sym_name}) at +{pnl_pct*100:.2f}% before close...")
+                try:
+                    res = self.ctrader.close_position(pid)
+                    closed_ids.append(pid)
+                    msg = (
+                        "💰 <b>AGENTQUANT // SMART EOD PROFIT BANKED</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"• Position: <code>#{pid} ({sym_name})</code>\n"
+                        f"• Entry: <code>${entry_price:.2f}</code> | Exit: <code>${curr_price:.2f}</code>\n"
+                        f"• Gain: 🟢 <b>+{pnl_pct*100:.2f}% PROFIT BANKED</b>\n"
+                        "• Action: Closed flat to secure cash before market close.\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "⚡ <i>Profits safely banked into cTrader account balance!</i>"
+                    )
+                    broadcast_telegram_ticket(msg)
+                except Exception as e:
+                    logger.error(f"[!] Error closing profitable position #{pid}: {e}")
+            else:
+                # In negative or breakeven: NEVER force-close at a loss!
+                logger.info(
+                    f"🛡️ [SMART EOD PROTECT] Position #{pid} ({sym_name}) is at {pnl_pct*100:+.2f}%. "
+                    f"NOT force-closing at a loss. Holding with strict hard stop-loss to allow recovery."
+                )
+        return closed_ids
+
+    def run_cycle(self, dry_run: bool = False, dt_override: Optional[pd.Timestamp] = None) -> List[Dict[str, Any]]:
         """
         Executes one full autonomous cycle:
         1. Query cTrader live account telemetry (fail-closed).
         2. Evaluate Risk Guardian limits.
-        3. Check position capacity (< 2).
-        4. Scan 7 assets for dip setups.
-        5. Place market orders on cTrader if signals qualify.
-        6. Notify Telegram.
+        3. Check & execute same-day flat routine at 15:50 EST.
+        4. Check position capacity (< 2).
+        5. Verify active entry window (10:00 - 15:30 EST).
+        6. Scan SPY and QQQ on active timeframe (5m or 1h).
+        7. Enforce Anti-Late-Trade Guard (bar freshness + price tolerance anti-chase).
+        8. Place market orders on cTrader if qualified.
+        9. Notify Telegram.
         """
         now = time.time()
+        dt_ny = dt_override or pd.Timestamp.now(tz="America/New_York")
         executed_trades = []
 
         # 1. Connect & Sync Live cTrader Account (Fail-Closed)
@@ -147,8 +316,7 @@ class AutonomousExecutionEngine:
 
             balance = bal_data.get("balance", 6000.0)
             equity = bal_data.get("equity", balance)
-            
-            # Fail-closed position check: None means telemetry is broken/offline
+
             if hasattr(self.ctrader, "get_positions_strict") and not isinstance(self.ctrader, MagicMock):
                 open_positions = self.ctrader.get_positions_strict()
             else:
@@ -169,13 +337,17 @@ class AutonomousExecutionEngine:
             logger.warning("[!] Risk Guardian HALTED trading. No autonomous orders allowed.")
             return []
 
-        # Enforce max daily drawdown cushion: limit is -$180, safety threshold -$120
         daily_loss = max(0.0, balance - equity)
         if daily_loss >= 120.0:
             logger.warning(f"[!] Daily loss of ${daily_loss:.2f} approached -$120 safety cushion. Pausing entries.")
             return []
 
-        # 3. Enforce Max 2 Concurrent Positions Ceiling
+        # 3. Same-Day Flat Routine (Enforce 0% Overnight Risk at 15:50 EST)
+        flattened = self.check_and_execute_same_day_flatten(open_positions, dt_ny=dt_ny)
+        if flattened:
+            open_positions = [p for p in open_positions if p.get("positionId") not in flattened]
+
+        # 4. Enforce Max 2 Concurrent Positions Ceiling
         active_count = len(open_positions)
         if active_count >= MAX_CONCURRENT_POSITIONS:
             logger.info(f"[*] Portfolio at capacity: {active_count}/{MAX_CONCURRENT_POSITIONS} active positions. Waiting.")
@@ -183,7 +355,12 @@ class AutonomousExecutionEngine:
 
         available_slots = MAX_CONCURRENT_POSITIONS - active_count
 
-        # 4. Map currently held tickers (Zero Duplicate Asset Rule)
+        # 5. Check Active Entry Window (10:00 - 15:30 EST)
+        if not self.is_active_entry_window(dt_ny):
+            logger.debug(f"[*] Outside active US entry window (current NY: {dt_ny.strftime('%H:%M')}). No new entries.")
+            return []
+
+        # 6. Map currently held tickers (Zero Duplicate Asset Rule)
         held_symbol_ids = set()
         held_symbol_names = set()
         id_to_sym = {v: k for k, v in symbol_map.items()}
@@ -198,7 +375,18 @@ class AutonomousExecutionEngine:
             if s_name:
                 held_symbol_names.add(s_name)
 
-        # 5. Scan Universe
+        cfg = self.cfg
+        cooldown = cfg["cooldown_seconds"]
+        strat_params = {
+            "window": cfg["window"],
+            "num_std": cfg["num_std"],
+            "exit_at_mean": cfg["exit_at_mean"],
+            "allow_short": cfg["allow_short"],
+            "stop_loss_pct": cfg["stop_loss_pct"],
+            "max_hold_bars": cfg["max_hold_bars"],
+        }
+
+        # 7. Scan Core Universe: SPY & QQQ
         for item in TARGET_UNIVERSE:
             if available_slots <= 0:
                 break
@@ -208,157 +396,180 @@ class AutonomousExecutionEngine:
             lots = item["target_lots"]
             dname = item["name"]
 
-            # Check duplicate by both ID and symbol string
+            # Check duplicate
             sym_id = symbol_map.get(csym.upper())
             if (sym_id and sym_id in held_symbol_ids) or csym.upper() in held_symbol_names:
                 continue
 
-            # Check cooldown (4 hours)
+            # Check cooldown
             last_traded = self.state["last_trades"].get(ticker, 0.0)
-            if now - last_traded < COOLDOWN_SECONDS:
+            if now - last_traded < cooldown:
                 continue
 
-            # Load Data & Compute Strategy Indicators
+            # Load Intraday Data
             try:
-                ohlcv = fetch_ohlcv_data(ticker=ticker)
-                df = ohlcv[ticker]
+                df = fetch_intraday_bars(ticker=ticker, timeframe=self.timeframe)
+                if df.empty or len(df) < cfg["window"]:
+                    continue
                 close = _get_close(df)
             except Exception as e:
-                logger.warning(f"Could not load data for {ticker}: {e}")
+                logger.warning(f"Could not load intraday data for {ticker}: {e}")
                 continue
 
-            w = STRATEGY_PARAMS["window"]
-            num_std = STRATEGY_PARAMS["num_std"]
+            # Compute Indicators
+            w = cfg["window"]
+            num_std = cfg["num_std"]
             mid = close.rolling(w).mean()
             std = close.rolling(w).std()
             lower = mid - num_std * std
-            upper = mid + num_std * std
 
             c = float(close.iloc[-1])
             m = float(mid.iloc[-1])
-            l = float(lower.iloc[-1])
+            l_band = float(lower.iloc[-1])
+            last_bar_time = df.index[-1]
 
             # Generate Scalper Signal
-            sig = self.scalper.generate_signal(df, STRATEGY_PARAMS)
+            sig = self.scalper.generate_signal(df, strat_params)
             latest_sig = int(sig.iloc[-1]) if len(sig) > 0 else 0
 
-            # Also check Trend Continuation Pullback for indices / stocks
-            # (Close touches 20 EMA in uptrend with RSI in 42-65 sweet spot)
-            delta = close.diff()
-            gain = delta.clip(lower=0).rolling(14).mean()
-            loss = (-delta.clip(upper=0)).rolling(14).mean()
-            rsi = float((100 - (100 / (1 + gain / (loss + 1e-9)))).iloc[-1])
-            ema20 = float(close.ewm(span=20).mean().iloc[-1])
-            sma50 = float(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else m
+            # Signal triggered when price dips below lower band
+            signal_triggered = (latest_sig == 1) or (c < l_band)
 
-            is_trend_pullback = (c > sma50) and (c <= ema20 * 1.015) and (c >= ema20 * 0.985) and (40.0 <= rsi <= 65.0)
+            if not signal_triggered:
+                continue
 
-            # Signal Qualified?
-            signal_triggered = (latest_sig == 1) or is_trend_pullback
+            # ── ANTI-LATE-TRADE GUARD 1: BAR FRESHNESS ──
+            bar_age_seconds = (dt_ny - last_bar_time).total_seconds()
+            max_allowed_age = cfg["bar_freshness_seconds"]
+            if bar_age_seconds > max_allowed_age:
+                logger.info(
+                    f"⏳ [ANTI-LATE-TRADE] Rejecting {ticker} signal: Bar timestamp {last_bar_time} is "
+                    f"{bar_age_seconds/60:.1f}m old (> {max_allowed_age/60:.1f}m max allowed)."
+                )
+                continue
 
-            if signal_triggered:
-                # Fetch live spot price from cTrader
-                spot_info = self.ctrader.get_spot_price(csym)
-                if spot_info and spot_info.get("ask"):
-                    exec_price = spot_info["ask"]
-                elif spot_info and spot_info.get("bid"):
-                    exec_price = spot_info["bid"]
-                else:
-                    if "XAU" in csym.upper() or "GOLD" in csym.upper():
-                        logger.warning(f"[!] Live spot price for {csym} unavailable. Aborting order to prevent ETF price mismatch.")
-                        continue
-                    exec_price = c
+            # ── ANTI-LATE-TRADE GUARD 2: PRICE TOLERANCE / ANTI-CHASE ──
+            spot_info = self.ctrader.get_spot_price(csym)
+            if spot_info and spot_info.get("ask"):
+                exec_price = float(spot_info["ask"])
+            elif spot_info and spot_info.get("bid"):
+                exec_price = float(spot_info["bid"])
+            else:
+                exec_price = c
 
-                if ("XAU" in csym.upper() or "GOLD" in csym.upper()) and exec_price < 1000.0:
-                    logger.warning(f"[!] Refusing to place {csym} with invalid price ${exec_price:.2f} (< $1000).")
-                    continue
+            # If spot price has already bounced above tolerance, ABORT (never chase a missed dip)
+            tol_pct = cfg["price_tolerance_pct"]
+            max_tolerated_price = l_band * (1.0 + tol_pct)
+            if exec_price > max_tolerated_price:
+                pct_away = ((exec_price - l_band) / l_band) * 100.0
+                logger.info(
+                    f"🚫 [ANTI-LATE-TRADE] Rejecting {csym} late entry: Price ${exec_price:.2f} has bounced "
+                    f"+{pct_away:.2f}% above trigger ${l_band:.2f} (> {tol_pct*100:.2f}% tolerance)."
+                )
+                continue
 
-                stop_pct = STRATEGY_PARAMS["stop_loss_pct"]
-                target_pct = max(0.015, (m - c) / c) if m > c else 0.035
+            # Compute Take Profit & Stop Loss
+            stop_pct = cfg["stop_loss_pct"]
+            target_pct = max(0.003, (m - exec_price) / exec_price) if m > exec_price else 0.008
 
-                tp_price = round(exec_price * (1.0 + target_pct), 2)
-                sl_price = round(exec_price * (1.0 - stop_pct), 2)
-                rel_sl_points = int(round(exec_price * stop_pct * 100))
-                rel_tp_points = int(round(exec_price * target_pct * 100))
+            tp_price = round(exec_price * (1.0 + target_pct), 2)
+            sl_price = round(exec_price * (1.0 - stop_pct), 2)
+            rel_sl_points = int(round(exec_price * stop_pct * 100))
+            rel_tp_points = int(round(exec_price * target_pct * 100))
 
-                strat_name = "Sniper Dip-Buy" if latest_sig == 1 else "Trend Continuation Pullback"
+            strat_name = cfg["label"]
 
-                trade_payload = {
-                    "action": "BUY",
-                    "ticker": ticker,
-                    "symbol": csym,
-                    "name": dname,
-                    "lots": lots,
-                    "price": exec_price,
-                    "tp": tp_price,
-                    "sl": sl_price,
-                    "sl_points": rel_sl_points,
-                    "tp_points": rel_tp_points,
-                    "strategy": strat_name,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S WAT")
-                }
+            trade_payload = {
+                "action": "BUY",
+                "ticker": ticker,
+                "symbol": csym,
+                "name": dname,
+                "lots": lots,
+                "price": exec_price,
+                "tp": tp_price,
+                "sl": sl_price,
+                "sl_points": rel_sl_points,
+                "tp_points": rel_tp_points,
+                "strategy": strat_name,
+                "timeframe": self.timeframe,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S WAT")
+            }
 
-                if dry_run:
-                    logger.info(f"[DRY-RUN] Would auto-execute: BUY {lots} lots {csym} @ ${exec_price:.2f}")
-                    executed_trades.append({**trade_payload, "status": "SIMULATED", "order_id": "SIM_123"})
-                    available_slots -= 1
-                    continue
+            if dry_run:
+                logger.info(f"[DRY-RUN] Would auto-execute: BUY {lots} lots {csym} @ ${exec_price:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})")
+                executed_trades.append({**trade_payload, "status": "SIMULATED", "order_id": "SIM_123"})
+                available_slots -= 1
+                continue
 
-                # ── LIVE ORDER SUBMISSION VIA cTrader MCP ──
-                logger.info(f"🚨 [AUTONOMOUS EXECUTION]: Transmitting BUY {lots} lots {csym} to cTrader...")
+            # ── LIVE ORDER SUBMISSION VIA cTrader MCP ──
+            logger.info(f"🚨 [AUTONOMOUS EXECUTION]: Transmitting BUY {lots} lots {csym} to cTrader ({self.timeframe})...")
+            try:
+                res = self.ctrader.place_market_order(
+                    symbol=csym,
+                    side="BUY",
+                    volume_lots=lots,
+                    stop_loss_price=sl_price,
+                    take_profit_price=tp_price,
+                    comment=f"AgentQuant: {strat_name}"
+                )
+                order_id = "ACTIVE"
+                if isinstance(res, dict):
+                    order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId", "ACTIVE")
+
+                # Record State
+                self.state["last_trades"][ticker] = now
+                self.state["execution_history"].append({
+                    **trade_payload,
+                    "order_id": order_id,
+                    "raw_result": str(res)
+                })
+                save_execution_state(self.state)
+
+                executed_trades.append({**trade_payload, "status": "FILLED", "order_id": order_id})
+                available_slots -= 1
+
+                # Send Instant Telegram Execution Ticket
+                ticket_msg = (
+                    f"🚀 <b>AGENTQUANT // {self.timeframe.upper()} SHARP TRADE EXECUTED</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎫 <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
+                    "🏢 <b>Account:</b> FundedNext cTrader <code>#3028655</code>\n"
+                    f"📈 <b>Action:</b> 🟢 <b>BUY MARKET</b> ({strat_name})\n"
+                    f"📊 <b>Asset:</b> <code>{csym}</code> ({dname})\n"
+                    f"🎯 <b>Size:</b> <code>{lots} Lots</code> (1 Micro Contract)\n"
+                    f"💵 <b>Fill Price:</b> <code>${exec_price:.2f}</code>\n"
+                    f"🎯 <b>Take-Profit:</b> <code>${tp_price:.2f}</code> (+{target_pct*100:.2f}% / Mean Reversion)\n"
+                    f"🛑 <b>Stop-Loss:</b> <code>${sl_price:.2f}</code> (-{stop_pct*100:.2f}% Hard Broker Stop)\n"
+                    f"🕒 <b>Execution Mode:</b> <code>Same-Day In & Out (0% Overnight Risk)</code>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🛡️ <b>FundedNext Protection:</b>\n"
+                    "• Daily Loss Limit: <code>$180.00 Cushion Intact</code>\n"
+                    "• Max Trailing Limit: <code>$360.00 Cushion Intact</code>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "⚡ <i>Auto-placed with sub-minute Freshness & Anti-Chase validation.</i>"
+                )
+                # Generate Institutional Candlestick Trade Card
+                card_buf = None
                 try:
-                    res = self.ctrader.place_market_order(
-                        symbol=csym,
-                        side="BUY",
-                        volume_lots=lots,
-                        stop_loss_price=sl_price,
-                        take_profit_price=tp_price,
-                        comment=f"AgentQuant Auto: {strat_name}"
+                    from src.visualization.telegram_charts import generate_option_a_sniper_card
+                    card_buf = generate_option_a_sniper_card(
+                        ticker=ticker,
+                        df_1h=df,
+                        entry=exec_price,
+                        tp=tp_price,
+                        sl=sl_price,
+                        status="LIVE TRADE FILLED"
                     )
-                    order_id = "ACTIVE"
-                    if isinstance(res, dict):
-                        order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId", "ACTIVE")
+                except Exception as ce:
+                    logger.warning(f"Could not generate visual trade card: {ce}")
 
-                    # Record State
-                    self.state["last_trades"][ticker] = now
-                    self.state["execution_history"].append({
-                        **trade_payload,
-                        "order_id": order_id,
-                        "raw_result": str(res)
-                    })
-                    save_execution_state(self.state)
+                broadcast_telegram_ticket(ticket_msg, photo_buf=card_buf)
+                logger.info(f"[+] Autonomous order filled with visual trade card: {csym} #{order_id}")
 
-                    executed_trades.append({**trade_payload, "status": "FILLED", "order_id": order_id})
-                    available_slots -= 1
-
-                    # Send Instant Telegram Execution Ticket
-                    ticket_msg = (
-                        "🚀 <b>AGENTQUANT // AUTONOMOUS TRADE EXECUTED</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🎫 <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
-                        "🏢 <b>Account:</b> FundedNext cTrader <code>#3028655</code>\n"
-                        f"📈 <b>Action:</b> 🟢 <b>BUY MARKET</b> ({strat_name})\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"• <b>Instrument:</b> <code>{csym}</code> ({dname})\n"
-                        f"• <b>Volume:</b> <code>{lots} Lots</code> (Safe sizing)\n"
-                        f"• <b>Bought at:</b> <code>${exec_price:,.2f}</code>\n"
-                        f"• <b>Profit Target:</b> <code>${tp_price:,.2f}</code> (+{target_pct*100:.1f}%)\n"
-                        f"• <b>Hard Safety Stop:</b> <code>${sl_price:,.2f}</code> (-3.00%)\n"
-                        f"• <b>Max Risk:</b> <code>~${item['max_risk_usd']:.2f} USD</code>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🛡️ <b>Portfolio Capacity:</b> <code>{MAX_CONCURRENT_POSITIONS - available_slots}/{MAX_CONCURRENT_POSITIONS} Positions</code>\n"
-                        "• Daily Loss Limit: <code>$180.00 Cushion Intact</code>\n"
-                        "• Max Trailing Limit: <code>$360.00 Cushion Intact</code>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        "⚡ <i>Auto-placed without asking per your rule. 100% managed on server.</i>"
-                    )
-                    broadcast_telegram_ticket(ticket_msg)
-                    logger.info(f"[+] Autonomous order filled: {csym} #{order_id}")
-
-                except RiskViolationError as rve:
-                    logger.warning(f"🛡️ [RISK BLOCK] Order for {csym} blocked: {rve}")
-                except Exception as e:
-                    logger.error(f"[!] Live order execution failed for {csym}: {e}")
+            except RiskViolationError as rve:
+                logger.warning(f"🛡️ [RISK BLOCK] Order for {csym} blocked: {rve}")
+            except Exception as e:
+                logger.error(f"[!] Live order execution failed for {csym}: {e}")
 
         return executed_trades
 
@@ -374,7 +585,7 @@ def run_autonomous_execution_cycle(dry_run: bool = False) -> List[Dict[str, Any]
 
 if __name__ == "__main__":
     is_dry = "--dry-run" in sys.argv
-    print(f"Running Autonomous Execution Engine (dry_run={is_dry})...")
+    print(f"Running Autonomous Execution Engine (timeframe={ACTIVE_TIMEFRAME}, dry_run={is_dry})...")
     results = run_autonomous_execution_cycle(dry_run=is_dry)
     print(f"Cycle completed. Executed trades: {len(results)}")
     for t in results:

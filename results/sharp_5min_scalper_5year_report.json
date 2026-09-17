@@ -1,0 +1,33 @@
+{
+  "empirical_60_days": {
+    "period": "Last 60 Trading Days (~3 Months)",
+    "bars_tested": 9360,
+    "total_trades": 233,
+    "trades_per_day": 3.9,
+    "trades_per_week": 19.4,
+    "trades_per_month": 81.5,
+    "win_rate_pct": 52.4,
+    "total_wins": 122,
+    "total_losses": 111,
+    "net_pnl_usd": 11.47,
+    "max_drawdown_usd": 209.13,
+    "avg_duration_minutes": 29.8,
+    "spy_trades": 121,
+    "spy_win_rate": 55.4,
+    "spy_pnl": 42.26,
+    "qqq_trades": 112,
+    "qqq_win_rate": 49.1,
+    "qqq_pnl": -30.79
+  },
+  "projected_5_years": {
+    "trading_days": 1255,
+    "projected_total_trades": 4874,
+    "projected_trades_per_year": 975,
+    "win_rate_pct": 52.4,
+    "projected_total_profit_usd": 239.87,
+    "trader_85_takehome_usd": 203.89,
+    "trader_85_takehome_ngn": 336412.0,
+    "avg_monthly_payout_usd": 3.41,
+    "avg_monthly_payout_ngn": 5629.0
+  }
+}

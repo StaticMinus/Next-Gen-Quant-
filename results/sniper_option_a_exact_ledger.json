@@ -1,0 +1,518 @@
+{
+  "strategy": "Option A: Quantitative Sniper Scalper (SPY & QQQ)",
+  "total_trades": 296,
+  "overall_win_rate": 92.9,
+  "total_pnl_usd": 5559.79,
+  "avg_hold_days": 1.5,
+  "daily_stats": [
+    {
+      "date": "2026-06-04",
+      "trades_count": 1,
+      "net_profit_usd": -186.67,
+      "wins": 0,
+      "losses": 1,
+      "win_rate_pct": 0.0,
+      "net_profit_ngn": -308006.0
+    },
+    {
+      "date": "2026-06-05",
+      "trades_count": 1,
+      "net_profit_usd": -188.03,
+      "wins": 0,
+      "losses": 1,
+      "win_rate_pct": 0.0,
+      "net_profit_ngn": -310250.0
+    },
+    {
+      "date": "2026-06-09",
+      "trades_count": 1,
+      "net_profit_usd": 79.35,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 130927.0
+    },
+    {
+      "date": "2026-06-11",
+      "trades_count": 1,
+      "net_profit_usd": 75.61,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 124756.0
+    },
+    {
+      "date": "2026-06-23",
+      "trades_count": 2,
+      "net_profit_usd": 139.86,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 230769.0
+    },
+    {
+      "date": "2026-06-25",
+      "trades_count": 1,
+      "net_profit_usd": 43.49,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 71758.0
+    },
+    {
+      "date": "2026-06-29",
+      "trades_count": 1,
+      "net_profit_usd": 125.05,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 206332.0
+    },
+    {
+      "date": "2026-07-07",
+      "trades_count": 1,
+      "net_profit_usd": 77.62,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 128073.0
+    },
+    {
+      "date": "2026-07-08",
+      "trades_count": 1,
+      "net_profit_usd": 47.16,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 77814.0
+    },
+    {
+      "date": "2026-07-15",
+      "trades_count": 1,
+      "net_profit_usd": -181.23,
+      "wins": 0,
+      "losses": 1,
+      "win_rate_pct": 0.0,
+      "net_profit_ngn": -299030.0
+    },
+    {
+      "date": "2026-07-16",
+      "trades_count": 1,
+      "net_profit_usd": -8.71,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": -14372.0
+    },
+    {
+      "date": "2026-07-23",
+      "trades_count": 2,
+      "net_profit_usd": -135.85,
+      "wins": 1,
+      "losses": 1,
+      "win_rate_pct": 50.0,
+      "net_profit_ngn": -224152.0
+    },
+    {
+      "date": "2026-07-27",
+      "trades_count": 1,
+      "net_profit_usd": 44.81,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 73936.0
+    },
+    {
+      "date": "2026-07-29",
+      "trades_count": 2,
+      "net_profit_usd": 182.28,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 300762.0
+    },
+    {
+      "date": "2026-08-18",
+      "trades_count": 2,
+      "net_profit_usd": -90.66,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": -149589.0
+    },
+    {
+      "date": "2026-08-24",
+      "trades_count": 1,
+      "net_profit_usd": 27.54,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 45441.0
+    },
+    {
+      "date": "2026-08-31",
+      "trades_count": 1,
+      "net_profit_usd": 19.23,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 31730.0
+    },
+    {
+      "date": "2026-09-01",
+      "trades_count": 1,
+      "net_profit_usd": 58.58,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 96657.0
+    },
+    {
+      "date": "2026-09-09",
+      "trades_count": 1,
+      "net_profit_usd": 18.04,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 29766.0
+    },
+    {
+      "date": "2026-09-10",
+      "trades_count": 1,
+      "net_profit_usd": 75.9,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 125235.0
+    }
+  ],
+  "weekly_stats": [
+    {
+      "year": 2026,
+      "week": 18,
+      "trades_count": 2,
+      "net_profit_usd": 113.94,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 188001.0
+    },
+    {
+      "year": 2026,
+      "week": 20,
+      "trades_count": 2,
+      "net_profit_usd": 98.74000000000001,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 162921.0
+    },
+    {
+      "year": 2026,
+      "week": 21,
+      "trades_count": 2,
+      "net_profit_usd": 135.32999999999998,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 223294.0
+    },
+    {
+      "year": 2026,
+      "week": 23,
+      "trades_count": 3,
+      "net_profit_usd": -343.40999999999997,
+      "wins": 1,
+      "losses": 2,
+      "win_rate_pct": 33.3,
+      "net_profit_ngn": -566626.0
+    },
+    {
+      "year": 2026,
+      "week": 24,
+      "trades_count": 2,
+      "net_profit_usd": 154.95999999999998,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 255684.0
+    },
+    {
+      "year": 2026,
+      "week": 26,
+      "trades_count": 3,
+      "net_profit_usd": 183.35,
+      "wins": 3,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 302528.0
+    },
+    {
+      "year": 2026,
+      "week": 27,
+      "trades_count": 1,
+      "net_profit_usd": 125.05,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 206332.0
+    },
+    {
+      "year": 2026,
+      "week": 28,
+      "trades_count": 2,
+      "net_profit_usd": 124.78,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 205887.0
+    },
+    {
+      "year": 2026,
+      "week": 29,
+      "trades_count": 2,
+      "net_profit_usd": -189.94,
+      "wins": 1,
+      "losses": 1,
+      "win_rate_pct": 50.0,
+      "net_profit_ngn": -313401.0
+    },
+    {
+      "year": 2026,
+      "week": 30,
+      "trades_count": 2,
+      "net_profit_usd": -135.85,
+      "wins": 1,
+      "losses": 1,
+      "win_rate_pct": 50.0,
+      "net_profit_ngn": -224152.0
+    },
+    {
+      "year": 2026,
+      "week": 31,
+      "trades_count": 3,
+      "net_profit_usd": 227.09,
+      "wins": 3,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 374698.0
+    },
+    {
+      "year": 2026,
+      "week": 34,
+      "trades_count": 2,
+      "net_profit_usd": -90.66,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": -149589.0
+    },
+    {
+      "year": 2026,
+      "week": 35,
+      "trades_count": 1,
+      "net_profit_usd": 27.54,
+      "wins": 1,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 45441.0
+    },
+    {
+      "year": 2026,
+      "week": 36,
+      "trades_count": 2,
+      "net_profit_usd": 77.81,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 128386.0
+    },
+    {
+      "year": 2026,
+      "week": 37,
+      "trades_count": 2,
+      "net_profit_usd": 93.94,
+      "wins": 2,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 155001.0
+    }
+  ],
+  "monthly_stats": [
+    {
+      "month": "2025-10",
+      "trades_count": 7,
+      "net_profit_usd": 386.25,
+      "wins": 7,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 637312.0
+    },
+    {
+      "month": "2025-11",
+      "trades_count": 9,
+      "net_profit_usd": 184.88,
+      "wins": 8,
+      "losses": 1,
+      "win_rate_pct": 88.9,
+      "net_profit_ngn": 305052.0
+    },
+    {
+      "month": "2025-12",
+      "trades_count": 10,
+      "net_profit_usd": 23.23999999999999,
+      "wins": 9,
+      "losses": 1,
+      "win_rate_pct": 90.0,
+      "net_profit_ngn": 38346.0
+    },
+    {
+      "month": "2026-01",
+      "trades_count": 6,
+      "net_profit_usd": 110.89,
+      "wins": 6,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 182968.0
+    },
+    {
+      "month": "2026-02",
+      "trades_count": 10,
+      "net_profit_usd": 339.43,
+      "wins": 10,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 560060.0
+    },
+    {
+      "month": "2026-03",
+      "trades_count": 9,
+      "net_profit_usd": 299.40999999999997,
+      "wins": 8,
+      "losses": 1,
+      "win_rate_pct": 88.9,
+      "net_profit_ngn": 494026.0
+    },
+    {
+      "month": "2026-04",
+      "trades_count": 3,
+      "net_profit_usd": 152.45,
+      "wins": 3,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 251542.0
+    },
+    {
+      "month": "2026-05",
+      "trades_count": 4,
+      "net_profit_usd": 234.07,
+      "wins": 4,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 386216.0
+    },
+    {
+      "month": "2026-06",
+      "trades_count": 9,
+      "net_profit_usd": 119.94999999999999,
+      "wins": 7,
+      "losses": 2,
+      "win_rate_pct": 77.8,
+      "net_profit_ngn": 197917.0
+    },
+    {
+      "month": "2026-07",
+      "trades_count": 9,
+      "net_profit_usd": 26.080000000000013,
+      "wins": 7,
+      "losses": 2,
+      "win_rate_pct": 77.8,
+      "net_profit_ngn": 43032.0
+    },
+    {
+      "month": "2026-08",
+      "trades_count": 4,
+      "net_profit_usd": -43.89,
+      "wins": 4,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": -72418.0
+    },
+    {
+      "month": "2026-09",
+      "trades_count": 3,
+      "net_profit_usd": 152.52,
+      "wins": 3,
+      "losses": 0,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 251658.0
+    }
+  ],
+  "yearly_breakdown": [
+    {
+      "year": "2022",
+      "trades_in_year": 1,
+      "avg_trades_per_month": 0.1,
+      "avg_trades_per_day": 0.0,
+      "win_rate_pct": 100.0,
+      "gross_profit_usd": 68.03,
+      "trader_85_usd": 57.83,
+      "trader_85_ngn": 95412.0,
+      "cumulative_payout_usd": 57.83
+    },
+    {
+      "year": "2023",
+      "trades_in_year": 82,
+      "avg_trades_per_month": 6.8,
+      "avg_trades_per_day": 0.33,
+      "win_rate_pct": 92.7,
+      "gross_profit_usd": 671.31,
+      "trader_85_usd": 570.61,
+      "trader_85_ngn": 941512.0,
+      "cumulative_payout_usd": 628.44
+    },
+    {
+      "year": "2024",
+      "trades_in_year": 85,
+      "avg_trades_per_month": 7.1,
+      "avg_trades_per_day": 0.34,
+      "win_rate_pct": 94.1,
+      "gross_profit_usd": 1683.58,
+      "trader_85_usd": 1431.04,
+      "trader_85_ngn": 2361221.0,
+      "cumulative_payout_usd": 2059.48
+    },
+    {
+      "year": "2025",
+      "trades_in_year": 71,
+      "avg_trades_per_month": 5.9,
+      "avg_trades_per_day": 0.28,
+      "win_rate_pct": 93.0,
+      "gross_profit_usd": 1745.96,
+      "trader_85_usd": 1484.07,
+      "trader_85_ngn": 2448709.0,
+      "cumulative_payout_usd": 3543.55
+    },
+    {
+      "year": "2026",
+      "trades_in_year": 57,
+      "avg_trades_per_month": 4.8,
+      "avg_trades_per_day": 0.23,
+      "win_rate_pct": 91.2,
+      "gross_profit_usd": 1390.91,
+      "trader_85_usd": 1182.27,
+      "trader_85_ngn": 1950751.0,
+      "cumulative_payout_usd": 4725.82
+    }
+  ],
+  "averages": {
+    "trades_per_day": 0.24,
+    "trades_per_week": 1.2,
+    "trades_per_month": 4.9,
+    "profit_per_day_usd": 4.43,
+    "profit_per_week_usd": 22.15,
+    "profit_per_month_usd": 92.66,
+    "trader_monthly_takehome_usd": 78.76,
+    "trader_monthly_takehome_ngn": 129960.0
+  }
+}

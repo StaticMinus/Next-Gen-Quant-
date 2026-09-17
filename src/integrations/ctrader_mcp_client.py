@@ -181,7 +181,16 @@ class CTraderMCPClient:
     def get_spot_price(self, symbol: str) -> Optional[dict]:
         """
         Returns latest bid and ask for symbol (e.g. 'SPX500', 'NDX100', 'XAUUSD').
+        Checks real-time streaming cache first for sub-millisecond instant return.
         """
+        try:
+            from src.integrations.ctrader_streamer import get_streamed_spot_price
+            streamed = get_streamed_spot_price(symbol)
+            if streamed:
+                return streamed
+        except Exception:
+            pass
+
         s_map = self.get_symbol_map()
         sym_id = s_map.get(symbol.upper())
         if not sym_id:

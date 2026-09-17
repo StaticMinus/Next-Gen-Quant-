@@ -1,0 +1,262 @@
+{
+  "strategy": "1-Minute Ultra-Sharp Scalper (SPY & QQQ)",
+  "empirical_period_days": 16,
+  "total_empirical_bars": 14818,
+  "empirical_averages": {
+    "trades_per_day": 4.9,
+    "trades_per_week": 15.6,
+    "trades_per_month": 102.4,
+    "win_rate_pct": 35.9,
+    "profit_per_day_usd": -3.19,
+    "profit_per_week_usd": -10.2,
+    "profit_per_month_usd": -66.95,
+    "trader_monthly_takehome_usd": -56.91,
+    "trader_monthly_takehome_ngn": -93898.0
+  },
+  "daily_breakdown": [
+    {
+      "date": "2026-08-20",
+      "trades_count": 15,
+      "net_profit_usd": -12.420000000000002,
+      "wins": 4,
+      "win_rate_pct": 26.7,
+      "net_profit_ngn": -20493.0
+    },
+    {
+      "date": "2026-08-21",
+      "trades_count": 1,
+      "net_profit_usd": 5.0,
+      "wins": 1,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 8250.0
+    },
+    {
+      "date": "2026-08-24",
+      "trades_count": 1,
+      "net_profit_usd": 11.3,
+      "wins": 1,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 18645.0
+    },
+    {
+      "date": "2026-08-25",
+      "trades_count": 6,
+      "net_profit_usd": -28.279999999999998,
+      "wins": 0,
+      "win_rate_pct": 0.0,
+      "net_profit_ngn": -46662.0
+    },
+    {
+      "date": "2026-08-26",
+      "trades_count": 3,
+      "net_profit_usd": -3.7500000000000004,
+      "wins": 1,
+      "win_rate_pct": 33.3,
+      "net_profit_ngn": -6188.0
+    },
+    {
+      "date": "2026-08-28",
+      "trades_count": 10,
+      "net_profit_usd": 2.4299999999999997,
+      "wins": 4,
+      "win_rate_pct": 40.0,
+      "net_profit_ngn": 4009.0
+    },
+    {
+      "date": "2026-08-31",
+      "trades_count": 4,
+      "net_profit_usd": 9.86,
+      "wins": 2,
+      "win_rate_pct": 50.0,
+      "net_profit_ngn": 16269.0
+    },
+    {
+      "date": "2026-09-01",
+      "trades_count": 2,
+      "net_profit_usd": 10.75,
+      "wins": 2,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 17738.0
+    },
+    {
+      "date": "2026-09-03",
+      "trades_count": 2,
+      "net_profit_usd": 28.92,
+      "wins": 2,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 47718.0
+    },
+    {
+      "date": "2026-09-04",
+      "trades_count": 5,
+      "net_profit_usd": -25.07,
+      "wins": 0,
+      "win_rate_pct": 0.0,
+      "net_profit_ngn": -41366.0
+    },
+    {
+      "date": "2026-09-08",
+      "trades_count": 1,
+      "net_profit_usd": 3.17,
+      "wins": 1,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 5230.0
+    },
+    {
+      "date": "2026-09-09",
+      "trades_count": 7,
+      "net_profit_usd": -16.439999999999998,
+      "wins": 3,
+      "win_rate_pct": 42.9,
+      "net_profit_ngn": -27126.0
+    },
+    {
+      "date": "2026-09-10",
+      "trades_count": 1,
+      "net_profit_usd": 4.5,
+      "wins": 1,
+      "win_rate_pct": 100.0,
+      "net_profit_ngn": 7425.0
+    },
+    {
+      "date": "2026-09-11",
+      "trades_count": 3,
+      "net_profit_usd": 4.949999999999999,
+      "wins": 1,
+      "win_rate_pct": 33.3,
+      "net_profit_ngn": 8167.0
+    },
+    {
+      "date": "2026-09-15",
+      "trades_count": 6,
+      "net_profit_usd": -20.42,
+      "wins": 1,
+      "win_rate_pct": 16.7,
+      "net_profit_ngn": -33693.0
+    },
+    {
+      "date": "2026-09-16",
+      "trades_count": 11,
+      "net_profit_usd": -25.509999999999998,
+      "wins": 4,
+      "win_rate_pct": 36.4,
+      "net_profit_ngn": -42092.0
+    }
+  ],
+  "weekly_breakdown": [
+    {
+      "week": 34,
+      "trades_count": 16,
+      "net_profit_usd": -7.420000000000001,
+      "wins": 5,
+      "win_rate_pct": 31.2,
+      "net_profit_ngn": -12243.0
+    },
+    {
+      "week": 35,
+      "trades_count": 20,
+      "net_profit_usd": -18.3,
+      "wins": 6,
+      "win_rate_pct": 30.0,
+      "net_profit_ngn": -30195.0
+    },
+    {
+      "week": 36,
+      "trades_count": 13,
+      "net_profit_usd": 24.46,
+      "wins": 6,
+      "win_rate_pct": 46.2,
+      "net_profit_ngn": 40359.0
+    },
+    {
+      "week": 37,
+      "trades_count": 12,
+      "net_profit_usd": -3.8200000000000003,
+      "wins": 6,
+      "win_rate_pct": 50.0,
+      "net_profit_ngn": -6303.0
+    },
+    {
+      "week": 38,
+      "trades_count": 17,
+      "net_profit_usd": -45.93,
+      "wins": 5,
+      "win_rate_pct": 29.4,
+      "net_profit_ngn": -75784.0
+    }
+  ],
+  "yearly_breakdown": [
+    {
+      "year": "Year 1",
+      "regime": "Current Market Regime (High Volatility)",
+      "trades_in_year": 1228,
+      "avg_trades_per_month": 102.3,
+      "avg_trades_per_day": 4.9,
+      "win_rate_pct": 35.9,
+      "gross_profit_usd": -803.41,
+      "trader_85_usd": -682.9,
+      "trader_85_ngn": -1126779.0,
+      "cumulative_payout_usd": -682.9
+    },
+    {
+      "year": "Year 2",
+      "regime": "Trending Bull Run (Lower intraday range)",
+      "trades_in_year": 1130,
+      "avg_trades_per_month": 94.2,
+      "avg_trades_per_day": 4.5,
+      "win_rate_pct": 35.9,
+      "gross_profit_usd": -739.13,
+      "trader_85_usd": -628.26,
+      "trader_85_ngn": -1036637.0,
+      "cumulative_payout_usd": -1311.16
+    },
+    {
+      "year": "Year 3",
+      "regime": "High Volatility Rate Cycle (More setups)",
+      "trades_in_year": 1327,
+      "avg_trades_per_month": 110.6,
+      "avg_trades_per_day": 5.3,
+      "win_rate_pct": 35.9,
+      "gross_profit_usd": -867.68,
+      "trader_85_usd": -737.53,
+      "trader_85_ngn": -1216921.0,
+      "cumulative_payout_usd": -2048.69
+    },
+    {
+      "year": "Year 4",
+      "regime": "Consolidation / Sideways Regime",
+      "trades_in_year": 1081,
+      "avg_trades_per_month": 90.1,
+      "avg_trades_per_day": 4.3,
+      "win_rate_pct": 35.9,
+      "gross_profit_usd": -707.0,
+      "trader_85_usd": -600.95,
+      "trader_85_ngn": -991566.0,
+      "cumulative_payout_usd": -2649.64
+    },
+    {
+      "year": "Year 5",
+      "regime": "New Macro Expansion Cycle",
+      "trades_in_year": 1253,
+      "avg_trades_per_month": 104.4,
+      "avg_trades_per_day": 5.0,
+      "win_rate_pct": 35.9,
+      "gross_profit_usd": -819.48,
+      "trader_85_usd": -696.55,
+      "trader_85_ngn": -1149315.0,
+      "cumulative_payout_usd": -3346.19
+    }
+  ],
+  "ticker_summary": {
+    "SPY": {
+      "trades": 46,
+      "win_rate": 43.5,
+      "profit_usd": -25.49
+    },
+    "QQQ": {
+      "trades": 32,
+      "win_rate": 25.0,
+      "profit_usd": -25.52
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "yearly": [
+    {
+      "year": "Year 1 (2021)",
+      "trades_in_year": 27,
+      "avg_trades_per_month": 2.2,
+      "avg_trades_per_day": 0.11,
+      "win_rate_pct": 66.7,
+      "gross_profit_usd": 360.83,
+      "trader_85_usd": 306.71,
+      "trader_85_ngn": 506064.0,
+      "cumulative_payout_usd": 306.71
+    },
+    {
+      "year": "Year 2 (2022)",
+      "trades_in_year": 116,
+      "avg_trades_per_month": 9.7,
+      "avg_trades_per_day": 0.46,
+      "win_rate_pct": 54.3,
+      "gross_profit_usd": 994.91,
+      "trader_85_usd": 845.67,
+      "trader_85_ngn": 1395361.0,
+      "cumulative_payout_usd": 1152.38
+    },
+    {
+      "year": "Year 3 (2023)",
+      "trades_in_year": 79,
+      "avg_trades_per_month": 6.6,
+      "avg_trades_per_day": 0.31,
+      "win_rate_pct": 63.3,
+      "gross_profit_usd": 925.2,
+      "trader_85_usd": 786.42,
+      "trader_85_ngn": 1297593.0,
+      "cumulative_payout_usd": 1938.8
+    },
+    {
+      "year": "Year 4 (2024)",
+      "trades_in_year": 77,
+      "avg_trades_per_month": 6.4,
+      "avg_trades_per_day": 0.31,
+      "win_rate_pct": 71.4,
+      "gross_profit_usd": 1983.16,
+      "trader_85_usd": 1685.69,
+      "trader_85_ngn": 2781382.0,
+      "cumulative_payout_usd": 3624.48
+    },
+    {
+      "year": "Year 5 (2025)",
+      "trades_in_year": 87,
+      "avg_trades_per_month": 7.2,
+      "avg_trades_per_day": 0.35,
+      "win_rate_pct": 63.2,
+      "gross_profit_usd": 2208.41,
+      "trader_85_usd": 1877.15,
+      "trader_85_ngn": 3097295.0,
+      "cumulative_payout_usd": 5501.63
+    },
+    {
+      "year": "Year 6 (2026)",
+      "trades_in_year": 55,
+      "avg_trades_per_month": 4.6,
+      "avg_trades_per_day": 0.22,
+      "win_rate_pct": 56.4,
+      "gross_profit_usd": 755.57,
+      "trader_85_usd": 642.23,
+      "trader_85_ngn": 1059687.0,
+      "cumulative_payout_usd": 6143.87
+    }
+  ],
+  "total_trades": 441,
+  "win_rate": 61.7,
+  "total_pnl": 7228.08
+}
