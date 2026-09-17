@@ -40,6 +40,7 @@ from src.integrations.telegram_ai_coach import (
     evaluate_market_signals,
     run_autonomous_ai_scan,
 )
+from src.integrations.telegram_voice_transcriber import transcribe_telegram_voice
 from src.integrations.chacha_romantic_briefings import (
     render_morning_briefing_chacha,
     render_nightly_summary_chacha,
@@ -313,6 +314,7 @@ def async_send_ai_reply(chat_id, user_text: str):
     """
     Non-blocking async worker to handle conversational AI Coach queries.
     Sends typing chat action, calls OpenRouter via telegram_ai_coach, and replies with Telegram HTML.
+    Strictly adheres to 1-line bold header and bullet points only.
     """
     try:
         # Show "typing..." status in Telegram while inference is running
@@ -338,7 +340,52 @@ def async_send_ai_reply(chat_id, user_text: str):
         print(f"[!] Error in async_send_ai_reply: {e}")
         api_call("sendMessage", {
             "chat_id": chat_id,
-            "text": f"🤖 <b>AI Coach Error:</b> {e}",
+            "text": f"<b>⚠️ QUANT COUNCIL TELEMETRY ERROR</b>\n• {e}",
+            "parse_mode": "HTML",
+            "reply_markup": get_persistent_bottom_keyboard()
+        })
+
+
+def handle_incoming_voice_message(chat_id, file_id: str, user_id: str):
+    """
+    Voice Note Intelligence:
+    Downloads voice note from Telegram Bot API, converts to WAV via FFmpeg,
+    transcribes with Google Speech API, confirms transcription, and queries Quant Council.
+    """
+    try:
+        api_call("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+        transcribed_text = transcribe_telegram_voice(file_id, TOKEN)
+        if not transcribed_text:
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": (
+                    "<b>🎙️ VOICE INTELLIGENCE // AUDIO UNRECOGNIZED</b>\n"
+                    "• Could not transcribe voice note clearly (audio inaudible or low volume).\n"
+                    "• Please speak clearly or send your question as text."
+                ),
+                "parse_mode": "HTML",
+                "reply_markup": get_persistent_bottom_keyboard()
+            })
+            return
+
+        # Acknowledge transcribed question in strict 1-line bold header + bullet format
+        api_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": (
+                f"<b>🎙️ VOICE QUERY TRANSCRIBED</b>\n"
+                f"• <i>\"{transcribed_text}\"</i>\n"
+                f"• Consulting AI Quant Council..."
+            ),
+            "parse_mode": "HTML"
+        })
+
+        # Submit query to the AI Quant Council
+        async_send_ai_reply(chat_id, transcribed_text)
+    except Exception as e:
+        print(f"[!] Error handling voice message: {e}")
+        api_call("sendMessage", {
+            "chat_id": chat_id,
+            "text": f"<b>⚠️ VOICE INTELLIGENCE ERROR</b>\n• {e}",
             "parse_mode": "HTML",
             "reply_markup": get_persistent_bottom_keyboard()
         })
@@ -2440,11 +2487,7 @@ def handle_update(update: dict):
             except Exception:
                 pass
 
-        if not text:
-            return
-
-        raw_text = m.get("text", "").strip()
-
+        # 3. User Authorization Gate (Applies to all messages: text & voice)
         if not is_authorized_user(user_id, str(chat_id)):
             sender_name = m.get("from", {}).get("first_name", "Cha Cha")
             username = m.get("from", {}).get("username", "")
@@ -2486,6 +2529,20 @@ def handle_update(update: dict):
                 "reply_markup": approve_markup
             })
             return
+
+        # 4. Voice Note & Audio Intelligence (Transcribe and dispatch to AI Quant Council)
+        voice_obj = m.get("voice") or m.get("audio")
+        if voice_obj:
+            file_id = voice_obj.get("file_id")
+            if file_id:
+                api_call("sendChatAction", {"chat_id": chat_id, "action": "record_voice"})
+                executor.submit(handle_incoming_voice_message, chat_id, file_id, user_id)
+                return
+
+        if not text:
+            return
+
+        raw_text = m.get("text", "").strip()
 
         # ── Owner-Only Text Command Gate ──
         if not is_owner(user_id):

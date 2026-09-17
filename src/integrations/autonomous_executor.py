@@ -466,20 +466,25 @@ class AutonomousExecutionEngine:
             else:
                 exec_price = c
 
+            # Scale multiplier between ETF and cTrader index (e.g. DIA $516 -> US30 $51,600, SPY $580 -> SPX $5,800)
+            scale_multiplier = exec_price / c if c > 0 else 1.0
+            scaled_l_band = l_band * scale_multiplier
+            scaled_mean = m * scale_multiplier
+
             # If spot price has already bounced above tolerance, ABORT (never chase a missed dip)
             tol_pct = cfg["price_tolerance_pct"]
-            max_tolerated_price = l_band * (1.0 + tol_pct)
+            max_tolerated_price = scaled_l_band * (1.0 + tol_pct)
             if exec_price > max_tolerated_price:
-                pct_away = ((exec_price - l_band) / l_band) * 100.0
+                pct_away = ((exec_price - scaled_l_band) / scaled_l_band) * 100.0
                 logger.info(
                     f"🚫 [ANTI-LATE-TRADE] Rejecting {csym} late entry: Price ${exec_price:.2f} has bounced "
-                    f"+{pct_away:.2f}% above trigger ${l_band:.2f} (> {tol_pct*100:.2f}% tolerance)."
+                    f"+{pct_away:.2f}% above trigger ${scaled_l_band:.2f} (> {tol_pct*100:.2f}% tolerance)."
                 )
                 continue
 
             # Compute Take Profit & Stop Loss
             stop_pct = cfg["stop_loss_pct"]
-            target_pct = max(0.003, (m - exec_price) / exec_price) if m > exec_price else 0.008
+            target_pct = max(0.003, (scaled_mean - exec_price) / exec_price) if scaled_mean > exec_price else 0.008
 
             tp_price = round(exec_price * (1.0 + target_pct), 2)
             sl_price = round(exec_price * (1.0 - stop_pct), 2)
