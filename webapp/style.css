@@ -357,7 +357,7 @@ body {
 .segmented-control {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--bg-elevated);
   border: 1px solid var(--border-primary);
   padding: 3px;
@@ -370,7 +370,7 @@ body {
   position: absolute;
   top: 3px; left: 3px;
   height: calc(100% - 6px);
-  width: calc(25% - 1.5px);
+  width: calc(20% - 1.5px);
   background: var(--bg-card);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
@@ -384,8 +384,8 @@ body {
   position: relative; z-index: 2;
   border: none; background: transparent;
   color: var(--text-secondary);
-  display: flex; align-items: center; justify-content: center; gap: 4px;
-  padding: 7px 4px; font-size: 11.5px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  padding: 7px 2px; font-size: 10.5px; font-weight: 600;
   cursor: pointer; border-radius: var(--radius-pill);
   transition: color 0.2s ease; font-family: var(--font-sans);
 }
@@ -689,5 +689,144 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* 5. HISTORY DASHBOARD */
+
+.history-timeframe-pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.hist-pill {
+  flex: 1;
+  min-width: 68px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.hist-pill.active {
+  background: var(--accent-cyan);
+  color: #000;
+  border-color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.history-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.hist-kpi-cell {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-inner);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hist-kpi-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.hist-kpi-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.hist-kpi-sub {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.history-table-wrapper {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-inner);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.table-responsive-box {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.trade-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.trade-audit-table th {
+  padding: 8px 6px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+.trade-audit-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.history-benchmark-card {
+  background: rgba(100, 210, 255, 0.04);
+  border: 1px solid rgba(100, 210, 255, 0.15);
+  border-radius: var(--radius-inner);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.benchmark-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+.benchmark-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 

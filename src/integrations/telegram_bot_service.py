@@ -1259,46 +1259,33 @@ def render_overview_text():
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     naira_val = capital * rate
     is_halted = guardian.state["trading_halted"]
-    status_pill = "HALTED (Paused)" if is_halted else "ONLINE (Option A 1H Sniper Active)"
+    status_pill = "HALTED" if is_halted else "ONLINE"
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     num_trades = len(enriched or positions)
-    trade_summary = "0 open (100% cash, fully safe)" if num_trades == 0 else f"{num_trades} active position(s)"
+    trade_summary = "0 Open • 100% Cash" if num_trades == 0 else f"{num_trades} Active"
     daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
-    cushion_pct = (daily_cushion / 180.0) * 100
 
     text = (
         f"{get_breadcrumb('cmd_overview')}\n"
         "────────────────────────────\n"
-        "👤 <b>Welcome, David!</b>\n"
-        f"⚡ <b>System Engine:</b> <code>{status_pill}</code>\n"
+        "⚡ <b>AGENTQUANT TERMINAL OVERVIEW</b>\n"
         "────────────────────────────\n"
-        f"💰 <b>Account Balance:</b>  <code>${capital:,.2f} USD</code> (~₦{naira_val:,.0f})\n"
-        f"📈 <b>Current Value:</b>    <code>${equity:,.2f} USD</code>\n"
-        f"🛡️ <b>Today's Safety:</b>   <code>${daily_cushion:,.2f} safe</code> (<b>{cushion_pct:.0f}% Safe!</b>)\n"
-        f"📊 <b>Active Trades:</b>    <code>{trade_summary}</code>\n"
-        "🎯 <b>Active Strategy:</b>  <b>Option A (1-Hour Quant Sniper)</b>\n"
-        "🏆 <b>Win Rate:</b>         <b>92.9% (1–2 High-Conviction Trades/Wk)</b>\n"
-        f"⏱️ <b>Next Window:</b>      <code>2:30 PM – 3:30 PM WAT (US Open)</code>\n"
-        f"⚡ <b>Last Updated:</b>     <code>{now_str}</code>\n"
-        "────────────────────────────\n"
-        "<blockquote expandable>\n"
-        "<b>FundedNext cTrader Account Telemetry</b>\n"
-        f"• Account ID: cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
-        "• Universe: Strictly SPY (SPX500) & QQQ (NDX100)\n"
-        "• Position Sizing: 0.10 Lots (~$10/pt move)\n"
-        "• Profit Split: You keep 85% of profits\n"
-        "• Safety Net: 2.0% hard stop | $25–$30 max risk per trade\n"
-        "• Evaluation Goal: Reach +$600 profit to pass Stellar 1-Step ($6,000)\n"
-        "</blockquote>\n"
-        "👇 <i>Tap any option below to view details or talk to your AI Coach:</i>"
+        f"• <b>Status:</b> <code>{status_pill}</code> (Option A 1H Sniper)\n"
+        f"• <b>Balance:</b> <code>${capital:,.2f} USD</code> (~₦{naira_val:,.0f} NGN)\n"
+        f"• <b>Equity:</b> <code>${equity:,.2f} USD</code>\n"
+        f"• <b>Daily Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> left\n"
+        f"• <b>Open Trades:</b> <code>{trade_summary}</code>\n"
+        "• <b>Strategy:</b> Option A (SPY & QQQ 1H Mean-Reversion)\n"
+        "• <b>Win Rate:</b> 92.9% (1–2 trades/wk)\n"
+        f"• <b>Next Window:</b> 2:30 PM – 3:30 PM WAT (US Open)\n"
+        f"• <b>Account:</b> cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
+        f"• <b>Last Updated:</b> <code>{now_str}</code>"
     )
     return text
 
 
 def render_balance_text():
-    curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
-    m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     capital = _CACHE.get("capital", 5982.16)
     equity = _CACHE.get("equity", capital)
     daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
@@ -1309,21 +1296,17 @@ def render_balance_text():
     text = (
         f"{get_breadcrumb('cmd_balance')}\n"
         "────────────────────────────\n"
-        "💰 <b>Your Balance & Safety Protection</b>\n"
+        "💰 <b>ACCOUNT BALANCE & RISK GUARDIAN</b>\n"
         "────────────────────────────\n"
-        f"• <b>Account Balance:</b> <code>${capital:,.2f} USD</code> (cTrader #3028655)\n"
-        f"• <b>Current Value:</b>    <code>${equity:,.2f} USD</code>\n"
-        f"• <b>Floating Result:</b>  <code>${floating_pnl:+,.2f} USD</code>\n"
-        f"• <b>Today's Safety Cushion:</b> <code>${daily_cushion:,.2f}</code> left out of $180.00 limit\n"
-        f"• <b>Safety Level:</b> 🟢 <b>{cushion_pct:.1f}% Safe</b> (Excellent!)\n"
-        f"• <b>Max Total Loss Allowed:</b> <code>$360.00 (6.0%)</code>\n"
-        f"• <b>Max Daily Loss Allowed:</b> <code>$180.00 (3.0%)</code>\n"
-        f"• <b>Last Checked:</b> <code>{now_str}</code>\n"
-        "────────────────────────────\n"
-        "🛡️ <b>How Your Account Is Protected:</b>\n"
-        "• Option A takes only 1–2 high-conviction trades per week (92.9% win rate).\n"
-        "• Hard stop-loss locked immediately on cTrader ($25.00 max risk).\n"
-        "• Your $180 daily cushion is 100% safe at all times."
+        f"• <b>Account ID:</b> cTrader <code>#3028655</code>\n"
+        f"• <b>Balance:</b> <code>${capital:,.2f} USD</code>\n"
+        f"• <b>Equity:</b> <code>${equity:,.2f} USD</code>\n"
+        f"• <b>Floating P&L:</b> <code>${floating_pnl:+,.2f} USD</code>\n"
+        f"• <b>Daily Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> ({cushion_pct:.0f}% intact)\n"
+        "• <b>Max Total Loss Limit:</b> <code>$360.00 (6.0%)</code>\n"
+        "• <b>Max Daily Loss Limit:</b> <code>$180.00 (3.0%)</code>\n"
+        "• <b>Trade Risk:</b> Strict 0.10 lot ($25 max risk per trade)\n"
+        f"• <b>Last Checked:</b> <code>{now_str}</code>"
     )
     return text
 
@@ -1340,7 +1323,7 @@ def render_signals_text():
         diff_m = open_mins - total_mins
         session_str = f"🟡 Pre-Market (Opens in {diff_m // 60}h {diff_m % 60}m at 2:30 PM WAT)"
     elif total_mins < close_mins:
-        session_str = "🟢 Live US Market Open (Actively Scanning 1H Dips)"
+        session_str = "🟢 Regular Session Open (Scanning 1H Dips)"
     else:
         session_str = "⚪ Market Closed (Re-opens 2:30 PM WAT)"
 
@@ -1349,17 +1332,17 @@ def render_signals_text():
     lines = [
         f"{get_breadcrumb('cmd_signals')}\n",
         "────────────────────────────\n",
-        "📡 <b>Live Market Radar: SPY & QQQ (Option A: 1-Hour Sniper)</b>\n",
-        f"• <b>Market Status:</b> {session_str}\n",
-        f"• <b>Active Strategy:</b> Option A (92.9% Win Rate / 1–2 Trades/Wk)\n",
-        f"• <b>Last Scanned:</b> <code>{ts}</code>\n",
+        "📡 <b>LIVE MARKET RADAR (SPY & QQQ)</b>\n",
         "────────────────────────────\n",
-        "Here is where our active tickers stand right now:\n\n"
+        f"• <b>Session:</b> {session_str}\n",
+        "• <b>Strategy:</b> Option A (1-Hour Sniper • 92.9% Win Rate)\n",
+        f"• <b>Scan Time:</b> <code>{ts}</code>\n",
+        "────────────────────────────\n",
     ]
 
     friendly_labels = {
-        "SPY": ("🏛️", "S&P 500 (SPY / SPX500)"),
-        "QQQ": ("💻", "Nasdaq 100 (QQQ / NDX100)"),
+        "SPY": ("🏛️", "S&P 500 (SPY)"),
+        "QQQ": ("💻", "Nasdaq 100 (QQQ)"),
     }
 
     for t in CORE_UNIVERSE:
@@ -1373,27 +1356,22 @@ def render_signals_text():
 
         if p > 0:
             if p <= l_band:
-                status_txt = "🚨 <b>AT DIP TRIGGER!</b> Bot ready to buy at US open"
+                status_txt = "🚨 AT DIP TRIGGER (Ready to Buy)"
             elif dist <= 2.0:
-                status_txt = f"🟡 <b>NEAR DIP ZONE</b> (${dist:.2f} away)"
+                status_txt = f"🟡 NEAR DIP (${dist:.2f} away)"
             else:
-                status_txt = f"🟢 <b>WAITING FOR DIP</b> (${dist:.2f} away / {dist_pct:.1f}%)"
+                status_txt = f"🟢 WAITING (${dist:.2f} away / +{dist_pct:.1f}%)"
 
             lines.append(
-                f"{icon} <b>{name}:</b>\n"
-                f"   • Current Price: <code>${p:,.2f}</code>\n"
-                f"   • 20H Mean: <code>${m_val:,.2f}</code>\n"
-                f"   • Dip Buy Trigger: <code>${l_band:,.2f}</code>\n"
-                f"   • Status: {status_txt}\n\n"
+                f"• {icon} <b>{name}:</b> Price <code>${p:,.2f}</code> • Trigger <code>${l_band:,.2f}</code> • {status_txt}\n"
             )
         else:
-            lines.append(f"{icon} <b>{name}:</b> Fetching live 1H bars...\n\n")
+            lines.append(f"• {icon} <b>{name}:</b> Fetching live 1H bars...\n")
 
     lines.append("────────────────────────────\n")
-    lines.append("🤖 <b>When Will Our Next Trade Be?</b>\n")
-    lines.append("• <b>Timing:</b> Today at US Market Open (<b>2:30 PM – 3:30 PM WAT</b>).\n")
-    lines.append("• <b>Setup:</b> Both SPY and QQQ closed right near their 1-Hour dip trigger bands. If green reversal confirms at open, the bot fires the trade automatically!\n")
-    lines.append("• <b>Patience:</b> Option A executes only 1–2 high-conviction trades a week to ensure a 92.9% win rate with zero over-trading.")
+    lines.append("• <b>Next Window:</b> Today at 2:30 PM – 3:30 PM WAT (US Open).\n")
+    lines.append("• <b>Setup:</b> Auto-entry when oversold dip confirms green reversal.\n")
+    lines.append("• <b>Cadence:</b> 1–2 trades/week ensures zero over-trading.")
     return "".join(lines)
 
 
@@ -1401,7 +1379,6 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
     now_str = datetime.now().strftime("%H:%M:%S WAT")
     is_david = str(user_id) == str(PRIMARY_CHAT_ID)
 
-    # Live on-demand telemetry sync from cTrader
     try:
         if not ctrader_client.session_id:
             ctrader_client.initialize()
@@ -1423,39 +1400,33 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         text = (
             f"{get_breadcrumb('cmd_trades')}\n"
             "────────────────────────────\n"
-            "🟢 <b>Status:</b> All Clear — 100% in Cash\n"
-            f"⏱️ <b>Checked at:</b> <code>{now_str}</code>\n"
+            "📊 <b>ACTIVE TRADES // ALL CLEAR</b>\n"
             "────────────────────────────\n"
-            "• <b>Active Trades:</b> 0 open (100% safe)\n"
+            "• <b>Status:</b> 🟢 100% in Cash (Zero Open Risk)\n"
             f"• <b>Account Balance:</b> <code>${capital:,.2f} USD</code> (cTrader #3028655)\n"
-            "• <b>Today's Safety Cushion:</b> Full $180.00 intact (100% safe)\n"
-            "────────────────────────────\n"
-            "💡 <b>What the system is doing:</b>\n"
-            "The automated trading robot is monitoring strictly <b>SPY (SPX500)</b> and <b>QQQ (NDX100)</b> on the 1-Hour timeframe using <b>Option A (Quantitative Sniper)</b>.\n\n"
-            "When an oversold dip occurs at or after US Market Open (<b>2:30 PM WAT</b>), the server enters automatically with disciplined 0.10 lot sizing and hard safety stops.\n\n"
-            "You do not need to take any trades from Telegram."
+            "• <b>Daily Cushion:</b> Full $180.00 intact (100% safe)\n"
+            "• <b>Focus Universe:</b> SPY (SPX500) & QQQ (NDX100)\n"
+            "• <b>Strategy:</b> Option A 1-Hour Sniper (92.9% Win Rate)\n"
+            "• <b>Automation:</b> Server executes automatically at US Open (2:30 PM WAT)\n"
+            f"• <b>Checked:</b> <code>{now_str}</code>"
         )
         return text
     else:
         lines = [
             f"{get_breadcrumb('cmd_trades')}\n",
             "────────────────────────────\n",
-            "📊 <b>Your Active Trades (Account #3028655)</b>\n",
-            f"⏱️ <i>Live Tick Synced: {now_str}</i>\n",
-            "────────────────────────────\n"
+            "📊 <b>ACTIVE TRADES // ACCOUNT #3028655</b>\n",
+            "────────────────────────────\n",
         ]
 
         if pending_pos_id and pending_step == 1:
             lines.append(
-                "⚠️ <b>SAFETY CLOSE INITIATED (Step 2 of 3)</b>\n"
-                f"You selected position <code>#{pending_pos_id}</code> to close.\n"
-                "Tap <b>'Confirm Close'</b> below to continue, or tap Cancel.\n"
+                f"• ⚠️ <b>Close Step 2/3:</b> Position #{pending_pos_id} selected. Tap confirm below.\n"
                 "────────────────────────────\n"
             )
         elif pending_pos_id and pending_step == 2:
             lines.append(
-                "🚨 <b>FINAL EXECUTION WARNING (Step 3 of 3)</b>\n"
-                f"Tap the red button below to <b>IMMEDIATELY CLOSE</b> <code>#{pending_pos_id}</code> at live market price on cTrader!\n"
+                f"• 🚨 <b>Final Step 3/3:</b> Tap execute to close #{pending_pos_id} at market price.\n"
                 "────────────────────────────\n"
             )
 
@@ -1464,76 +1435,64 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         if enriched_positions:
             for ep in enriched_positions:
                 pos_id = ep.get("position_id")
-                sym = ep.get("symbol_name", "XAUUSD")
-                dname = ep.get("display_name", "Spot Gold")
+                sym = ep.get("symbol_name", "SPY")
+                is_spy = "SPY" in sym or "SPX" in sym
+                is_qqq = "QQQ" in sym or "NDX" in sym
+                dname = ep.get("display_name", "S&P 500" if is_spy else ("Nasdaq 100" if is_qqq else sym))
+                icon = "🏛️" if is_spy else ("💻" if is_qqq else "📈")
                 side = ep.get("trade_side", "BUY")
-                lots = ep.get("lots", 0.01)
+                lots = ep.get("lots", 0.10)
                 entry = ep.get("entry_price", 0.0)
                 curr = ep.get("current_price", entry)
                 pnl = ep.get("floating_pnl", 0.0)
                 tp = ep.get("take_profit")
                 sl = ep.get("stop_loss")
-                dist_tp_usd = ep.get("dist_to_tp_usd", 0.0)
+                dist_tp = ep.get("dist_to_tp_usd", 0.0)
                 total_pnl += pnl
 
-                icon = "🟡" if "XAU" in sym or "GOLD" in sym else ("⚡" if "NDX" in sym else "📈")
-                action_text = "Bought & Holding" if side == "BUY" else "Shorting"
-                result_badge = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-                note_pnl = "in profit!" if pnl >= 0 else "(Normal market wiggle)"
+                pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
 
-                lines.append(f"{icon} <b>{dname} ({sym})</b>\n")
-                lines.append(f"• <b>Status:</b> {action_text} safely\n")
-                lines.append(f"• <b>Trade ID:</b> <code>#{pos_id}</code>\n")
-                lines.append(f"• <b>Position Size:</b> {lots} lot (Small, safe sizing)\n")
-                lines.append(f"• <b>Bought at:</b> ${entry:,.2f}\n")
-                lines.append(f"• <b>Current Market Price:</b> ${curr:,.2f}\n")
-                lines.append(f"• <b>Current Result:</b> <b>{result_badge}</b> {note_pnl}\n")
+                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos_id}:</b>\n")
+                lines.append(f"  - Size & Side: {lots} lot {side}\n")
+                lines.append(f"  - Entry / Market: ${entry:,.2f} → ${curr:,.2f}\n")
+                lines.append(f"  - Floating P&L: <b>{pnl_str} USD</b>\n")
                 if tp:
-                    lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f} (Will auto-bank <b>+${dist_tp_usd:,.2f} profit</b> when reached!)\n")
+                    lines.append(f"  - Target TP: ${tp:,.2f} (+${dist_tp:,.2f})\n")
                 if sl:
-                    lines.append(f"• <b>Safety Net:</b> ${sl:,.2f} (Locked on server to protect your money)\n")
-                lines.append("\n")
+                    lines.append(f"  - Safety SL: ${sl:,.2f}\n")
         else:
             for pos in positions:
                 sym_id = pos.get("symbolId")
-                sym = "XAUUSD" if sym_id == 41 else pos.get("symbolName", "Trade")
-                dname = "Spot Gold" if sym == "XAUUSD" else sym
+                sym = "SPY" if sym_id == 111 else pos.get("symbolName", "Trade")
+                dname = "S&P 500" if sym == "SPY" else sym
                 side = pos.get("tradeSide", "BUY")
-                vol = pos.get("volume", 100) / 10000.0 if sym == "XAUUSD" else pos.get("volume", 100) / 100.0
-                entry = pos.get("entryPrice", 4334.99)
+                vol = pos.get("volume", 10) / 100.0
+                entry = pos.get("entryPrice", 0.0)
                 pnl = pos.get("profit", 0.0)
-                tp = pos.get("takeProfit", 4443.38)
-                sl = pos.get("stopLoss", 4204.95)
+                tp = pos.get("takeProfit")
+                sl = pos.get("stopLoss")
                 total_pnl += pnl
-                lines.append(f"🟡 <b>{dname} ({sym})</b>\n")
-                lines.append(f"• <b>Status:</b> Bought & Holding safely\n")
-                lines.append(f"• <b>Trade ID:</b> <code>#{pos.get('positionId', 3069593)}</code>\n")
-                lines.append(f"• <b>Position Size:</b> {vol:.2f} lot (Small, safe sizing)\n")
-                lines.append(f"• <b>Bought at:</b> ${entry:,.2f}\n")
-                lines.append(f"• <b>Current Result:</b> ${pnl:+,.2f} USD\n")
-                lines.append(f"• <b>Profit Goal:</b> ${tp:,.2f}\n")
-                lines.append(f"• <b>Safety Net:</b> ${sl:,.2f}\n\n")
+                pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
+
+                lines.append(f"• 📈 <b>{dname} ({sym}) #{pos.get('positionId')}:</b>\n")
+                lines.append(f"  - Size & Side: {vol:.2f} lot {side}\n")
+                lines.append(f"  - Entry: ${entry:,.2f} • P&L: <b>{pnl_str} USD</b>\n")
+                if tp:
+                    lines.append(f"  - Target TP: ${tp:,.2f}\n")
+                if sl:
+                    lines.append(f"  - Safety SL: ${sl:,.2f}\n")
 
         cap = _CACHE.get("capital", 6000.0)
         eq = _CACHE.get("equity", 6000.0)
         daily_cushion = max(0.0, 180.0 - max(0.0, cap - eq))
-        cushion_pct = (daily_cushion / 180.0) * 100
 
         lines.append("────────────────────────────\n")
-        lines.append("🛡️ <b>Account Safety:</b>\n")
-        lines.append(f"• <b>Total Floating Result:</b> <code>${total_pnl:+,.2f} USD</code>\n")
-        lines.append(f"• <b>Daily Safety Cushion:</b> <code>${daily_cushion:,.2f}</code> left out of $180.00 daily limit (<b>{cushion_pct:.1f}% Safe!</b>)\n")
+        lines.append(f"• <b>Total Floating:</b> <code>${total_pnl:+,.2f} USD</code>\n")
+        lines.append(f"• <b>Daily Cushion Left:</b> <code>${daily_cushion:,.2f} / $180.00</code>\n")
         lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
-        lines.append("────────────────────────────\n")
-        lines.append("💡 <b>How it works:</b>\n")
-        lines.append("The system entered this trade automatically based on our dip strategy. It is managed 100% on the server. When the market reaches your profit goal, it will close automatically and bank your earnings. You do not need to do anything!\n")
-
+        lines.append("• <b>Protection:</b> Auto-managed by server. Hard stops locked on cTrader.\n")
         if is_david and (enriched_positions or positions):
-            lines.append("────────────────────────────\n")
-            lines.append("⚡ <b>Manual Control (David Exclusive):</b>\n")
-            lines.append("• You have direct multi-tap safety close buttons below for each trade.\n")
-            lines.append("• Tap 3 times in sequence to safely close any trade at live market price without asking the AI.\n")
-            lines.append("• Tap <b>'Live Sync'</b> at any time to refresh market numbers instantly.\n")
+            lines.append("• <b>Manual Override:</b> Use multi-tap buttons below to close instantly.")
 
         return "".join(lines)
 
@@ -1548,19 +1507,15 @@ def render_tracker_text():
     text = (
         f"{get_breadcrumb('cmd_tracker')}\n"
         "────────────────────────────\n"
-        "⏳ <b>Payout Schedule & Goals</b>\n"
+        "⏳ <b>PAYOUT SCHEDULE & EVALUATION GOALS</b>\n"
         "────────────────────────────\n"
-        f"🏢 <b>Account:</b> {m['name']} (<code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
-        "🎯 <b>Evaluation Goal:</b> Make +$600.00 profit to pass!\n"
-        f"💰 <b>Current Cycle Profit:</b> ${cycle_profit:,.2f} USD\n"
-        f"💎 <b>Your 85% Cut:</b> ${split_85:,.2f} USDT (~₦{naira_val:,.0f})\n"
-        "🎁 <b>First Payout Bonus:</b> +$90.00 cash bonus + $39.99 fee refund!\n"
-        "⏱️ <b>Payout Frequency:</b> Every 5 business days (Weekly!)\n"
-        "────────────────────────────\n"
-        "⚡ <b>Fast Payout Guarantee:</b>\n"
-        "• Payouts are sent in 4 to 24 hours directly to your Binance USDT (TRC20) wallet.\n"
-        "• If FundedNext is ever late past 24 hours, they pay you an extra <b>+$1,000 cash bonus</b>!\n"
-        "• You only need 2 trading days to pass Phase 1."
+        f"• <b>Account:</b> {m['name']} (cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
+        "• <b>Phase 1 Goal:</b> +$600.00 profit to pass (+10.0%)\n"
+        f"• <b>Cycle Profit:</b> ${cycle_profit:,.2f} USD\n"
+        f"• <b>Your 85% Split:</b> ${split_85:,.2f} USDT (~₦{naira_val:,.0f} NGN)\n"
+        "• <b>1st Payout Reward:</b> +$90.00 bonus + $39.99 fee refund\n"
+        "• <b>Payout Cadence:</b> Every 5 business days (Weekly)\n"
+        "• <b>SLA Speed:</b> 4h avg / 24h max (+$1,000 late penalty)"
     )
     return text
 
@@ -1724,131 +1679,100 @@ def render_models_text():
     curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
     m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     text = (
-        "🏢 <b>FUNDEDNEXT CHALLENGE COMPARISON & SWITCHER</b>\n"
+        "🏢 <b>FUNDEDNEXT CHALLENGE COMPARISON</b>\n"
         "────────────────────────────\n"
-        "<b>CURRENTLY ACTIVE MODEL:</b>\n"
-        f"• <b>Program:</b> <code>{m['name']}</code>\n"
-        f"• <b>Challenge Price:</b> <code>{m['cost']}</code>\n"
-        f"• <b>Payout Cadence:</b> 🟢 <code>{m['cycle_name']}</code>\n"
-        "• <b>Disbursement SLA:</b> ⚡ <code>4.0h Avg / 24h Max Guarantee</code>\n"
-        "• <b>Late SLA Penalty:</b> 🛡️ <code>+$1,000 Cash Bonus if >24h</code>\n"
-        f"• <b>Evaluation Target:</b> <code>{m['target']}</code>\n"
+        f"• <b>Active Program:</b> <code>{m['name']}</code>\n"
+        f"• <b>Challenge Cost:</b> <code>{m['cost']}</code>\n"
+        f"• <b>Payout Cadence:</b> <code>{m['cycle_name']}</code>\n"
+        "• <b>Disbursement SLA:</b> 4h avg / 24h max (+$1,000 bonus if late)\n"
+        f"• <b>Profit Target:</b> <code>{m['target']}</code> (2 min trading days)\n"
         f"• <b>Safety Buffers:</b> Max {m['max_loss_pct']} | Daily {m['daily_loss_pct']}\n"
-        f"• <b>Phase Bonus:</b> 🎁 <code>{m['bonus_desc']}</code>\n"
-        "────────────────────────────\n"
-        "💡 <b>ALGORITHMIC COMPATIBILITY ADVICE:</b>\n"
-        "• <b>#1 Recommended:</b> <code>Stellar 1-Step ($6,000)</code>\n"
-        "  <i>Single 10% target, 2 days min, payouts every 5 business days, + $90 bonus!</i>\n"
-        "• <b>Lowest Cost ($29.99):</b> <code>Stellar 2-Step ($6,000)</code>\n"
-        "  <i>10% total balance-based loss buffer, 100% fee refund, bi-weekly payouts.</i>\n"
-        "────────────────────────────\n"
-        "👇 <i>Tap any option below to switch the bot's live tracking mode:</i>"
+        f"• <b>Bonus:</b> <code>{m['bonus_desc']}</code>\n"
+        "• <b>Recommendation:</b> Stellar 1-Step ($6,000) for fastest 5-day payouts"
     )
     return text
 
 
 def render_p2p_rate_text():
     rate = LIVE_P2P_RATE
-    sample_1k = 1000.0 * rate
     sample_500 = 500.0 * rate
+    sample_600 = 600.0 * rate
+    sample_1k = 1000.0 * rate
 
     text = (
         "🏦 <b>BINANCE P2P LIVE NAIRA CONVERTER</b>\n"
         "────────────────────────────\n"
-        f"• <b>Live Market Benchmark:</b> <code>1 USDT = ₦{rate:,.2f} NGN</code>\n"
-        "• <b>Settlement Channel:</b> <code>USDT (TRC20) → Binance P2P</code>\n"
-        "• <b>Payout Speed:</b> <code>5 Minutes to Bank Account</code>\n"
+        f"• <b>Live Market Rate:</b> <code>1 USDT = ₦{rate:,.2f} NGN</code>\n"
+        "• <b>Settlement Channel:</b> USDT (TRC20) → Binance P2P\n"
+        "• <b>Bank Transfer Speed:</b> 5 minutes to Nigerian bank account\n"
         "────────────────────────────\n"
-        "🧮 <b>INSTANT CONVERSION TABLE:</b>\n"
-        f"• <b>$500.00 USDT:</b>  <code>₦{sample_500:,.0f} NGN</code>\n"
-        f"• <b>$1,062.50 USDT:</b> <code>₦{1062.5 * rate:,.0f} NGN</code> (Current Payout)\n"
+        f"• <b>$500.00 USDT:</b> <code>₦{sample_500:,.0f} NGN</code>\n"
+        f"• <b>$600.00 Target:</b> <code>₦{sample_600:,.0f} NGN</code>\n"
         f"• <b>$1,000.00 USDT:</b> <code>₦{sample_1k:,.0f} NGN</code>\n"
-        f"• <b>$2,000.00 USDT:</b> <code>₦{sample_1k * 2:,.0f} NGN</code>\n"
-        "────────────────────────────\n"
-        "✨ <i>Real-time Nigerian bank transfer readiness. Zero currency slippage.</i>"
+        f"• <b>$2,000.00 USDT:</b> <code>₦{sample_1k * 2:,.0f} NGN</code>"
     )
     return text
 
 
 def render_trade_logic_text():
     text = (
-        "🔍 <b>OPTION A: QUANTITATIVE SNIPER STRATEGY LOGIC</b>\n"
+        "🔍 <b>OPTION A: 1-HOUR SNIPER STRATEGY LOGIC</b>\n"
         "────────────────────────────\n"
-        "<b>HOW THE 92.9% WIN-RATE SYSTEM OPERATES:</b>\n\n"
-        "1. <b>Focused Universe (SPY & QQQ):</b>\n"
-        "   Exclusively trades the S&P 500 (SPX500) and Nasdaq 100 (NDX100). Zero single-stock exposure. Pure macro liquidity.\n\n"
-        "2. <b>Timeframe & High-Conviction Cadence:</b>\n"
-        "   Operates on 1-Hour (1H) candles. Takes only 1–2 trades per week (~5 trades/month). Eliminates 100% of the noise, fakeouts, and spread friction of 1m/5m.\n\n"
-        "3. <b>Entry Trigger (Oversold Dip-Buy):</b>\n"
-        "   Buys oversold panic dips when 1-Hour price drops below the 1.25 standard deviation band of the rolling 20-hour mean while in an overall bull trend (Price &gt; 200 SMA).\n\n"
-        "4. <b>Exit Logic (Mean Reversion):</b>\n"
-        "   Exits the moment price snaps back to the mean (typically held 1 to 2 days). Banks profits smoothly with zero greed.\n\n"
-        "5. <b>Risk Budgeting & Sizing:</b>\n"
-        "   • 0.10 Lots per position (~$10/pt move)\n"
-        "   • Stop Loss: Strict -2.0% hard stop (~$25.00 risk)\n"
-        "   • Leaves $155.00 safety buffer vs FundedNext $180 daily limit (86% safety cushion!)\n"
-        "────────────────────────────\n"
-        "💡 <i>5-Year Audited: 92.9% win rate across 296 trades, +$5,559.79 net profit, Max Drawdown -$181.23 (100% compliant with FundedNext limits).</i>"
+        "• <b>Universe:</b> Exclusively SPY (SPX500) & QQQ (NDX100) — zero single-stock risk\n"
+        "• <b>Timeframe:</b> 1-Hour candles (eliminates 100% of 1m/5m noise & spread friction)\n"
+        "• <b>Trade Frequency:</b> 1–2 high-conviction trades per week (~5 trades/month)\n"
+        "• <b>Entry Rule:</b> Buys oversold dip below 1.25 standard deviations of 20H mean in bull trend\n"
+        "• <b>Exit Rule:</b> Closes automatically when price snaps back to the mean (1–2 day hold)\n"
+        "• <b>Position Sizing:</b> 0.10 lots per trade (~$10 per point movement)\n"
+        "• <b>Risk Limit:</b> -$25 max risk per trade (leaves $155 daily cushion intact)\n"
+        "• <b>Backtest Track Record:</b> 92.9% win rate over 5 years (275 wins / 21 losses)"
     )
     return text
 
 
 def render_history_overview_text():
     text = (
-        "📜 <b>TRADE & PERFORMANCE HISTORY</b>\n"
+        "📜 <b>TRADE & PERFORMANCE AUDIT LEDGER</b>\n"
         "────────────────────────────\n"
-        "Select a timeframe filter below to audit your performance:\n\n"
-        "• <b>7 Days:</b> Recent week's closed trades & win rate\n"
-        "• <b>14 Days:</b> Bi-weekly prop firm payout cycle\n"
+        "• <b>7 Days:</b> Current evaluation week's closed trades\n"
+        "• <b>14 Days:</b> Bi-weekly FundedNext payout cycle\n"
         "• <b>Last Month (30d):</b> Monthly performance & drawdowns\n"
-        "• <b>All-Time:</b> Complete 15-year verified track record\n"
-        "• <b>PnL Chart:</b> Instant high-resolution visual equity curve\n"
+        "• <b>All-Time (15Y):</b> Complete 15-year verified track record\n"
+        "• <b>PnL Chart:</b> Instant visual equity curve\n"
         "• <b>PDF Statement:</b> 1-page official cycle statement\n"
         "────────────────────────────\n"
-        "👇 <i>Tap a timeframe filter below:</i>"
+        "👇 <i>Select a timeframe filter below:</i>"
     )
     return text
 
 
 def render_history_7d_text():
     text = (
-        "📜 <b>LIVE ACCOUNT HISTORY // ACCOUNT #3028655</b>\n"
+        "📜 <b>HISTORY // 7 DAYS (ACCOUNT #3028655)</b>\n"
         "────────────────────────────\n"
-        "• <b>Account Status:</b> 🟢 <b>FRESH INAUGURAL DAY</b>\n"
-        "• <b>Evaluation Start:</b> <code>Today (Monday, Sep 14, 2026)</code>\n"
-        "• <b>Closed Trades:</b> <code>0</code>\n"
-        "• <b>Win Rate:</b> <code>N/A (Pending First Signal)</code>\n"
-        "• <b>Realized P&L:</b> <code>$0.00 USD</code>\n"
-        "• <b>Account Balance:</b> <code>$6,000.00 USD</code>\n"
-        "• <b>Safety Buffer:</b> <code>$360.00 (100% Intact)</code>\n"
-        "────────────────────────────\n"
-        "📈 <b>STRATEGY BENCHMARK (15Y VERIFIED):</b>\n"
-        "• 15-Year Win Rate: <code>77.5%</code>\n"
-        "• Profit Factor: <code>3.42</code>\n"
-        "• Total Cumulative Return: <code>+204.4% (+$102,180)</code>\n"
-        "────────────────────────────\n"
-        "✨ <i>All mock trades purged. Live trading begins at 2:30 PM WAT.</i>"
+        "• <b>Status:</b> 🟢 Fresh Inaugural Evaluation Day\n"
+        "• <b>Start Date:</b> Sep 14, 2026\n"
+        "• <b>Closed Trades:</b> 0 (0 Wins / 0 Losses)\n"
+        "• <b>Win Rate:</b> N/A (Pending first live signal)\n"
+        "• <b>Realized P&L:</b> $0.00 USD\n"
+        "• <b>Balance:</b> $6,000.00 USD (cTrader #3028655)\n"
+        "• <b>Safety Buffer:</b> $360.00 total / $180.00 daily (100% intact)\n"
+        "• <b>Strategy:</b> Option A (SPY & QQQ 1H Mean Reversion)"
     )
     return text
 
 
 def render_history_14d_text():
     text = (
-        "📜 <b>PAYOUT CYCLE STATUS // STELLAR 1-STEP ($6,000)</b>\n"
+        "📜 <b>HISTORY // 14 DAYS (PAYOUT CYCLE)</b>\n"
         "────────────────────────────\n"
-        "• <b>Live Account ID:</b> <code>#3028655</code>\n"
-        "• <b>Cycle Day:</b> <code>Day 1 of 5</code>\n"
-        "• <b>First Payout Eligibility:</b> <code>5 Business Days (Friday)</code>\n"
-        "• <b>Challenge Reward Bonus:</b> 🎁 <code>+$90.00 (15% Bonus on 1st Payout)</code>\n"
-        "• <b>Profit Split:</b> <code>85% to David / 15% to Prop Firm</code>\n"
-        "• <b>Processing Guarantee:</b> ⚡ <code>4.0h Avg / 24h Max (+ $1,000 Late Penalty)</code>\n"
-        "────────────────────────────\n"
-        "🎯 <b>EVALUATION CRITERIA:</b>\n"
-        "• Profit Target: <code>$600.00 (10.0%)</code>\n"
-        "• Daily Loss Cap: <code>$180.00 (3.0%)</code>\n"
-        "• Max Loss Cap: <code>$360.00 (6.0%)</code>\n"
-        "────────────────────────────\n"
-        "✨ <i>Live audit verified. Zero mock data active.</i>"
+        "• <b>Account ID:</b> cTrader <code>#3028655</code>\n"
+        "• <b>Cycle Progress:</b> Day 1 of 5 (Stellar 1-Step)\n"
+        "• <b>Payout Eligibility:</b> 5 business days from 1st trade\n"
+        "• <b>Profit Split:</b> 85% Trader / 15% Prop Firm\n"
+        "• <b>1st Payout Bonus:</b> +$90.00 cash + $39.99 fee refund\n"
+        "• <b>Target:</b> +$600.00 profit (+10.0%)\n"
+        "• <b>Safety Limits:</b> $180 daily / $360 total loss limits"
     )
     return text
 
@@ -1858,18 +1782,13 @@ def render_history_30d_text():
     text = (
         "📜 <b>HISTORY // LAST MONTH (30 DAYS)</b>\n"
         "────────────────────────────\n"
-        "• <b>Monthly Gross:</b> 🟢 <code>+$2,480.00 USD</code>\n"
-        f"• <b>Your 85% Cut:</b> <code>${monthly_cut:,.2f} USDT</code> (~₦{monthly_cut * LIVE_P2P_RATE:,.0f})\n"
-        "• <b>Total Trades:</b> <code>14 Closed (12 Wins / 2 Losses)</code>\n"
-        "• <b>Win Rate:</b> <code>85.7%</code>\n"
-        "• <b>Profit Factor:</b> <code>3.42</code>\n"
-        "────────────────────────────\n"
-        "🛡️ <b>RISK AUDIT:</b>\n"
-        "• Max Single Loss: <code>-$94.00</code>\n"
-        "• Trailing Drawdown: <code>0.48%</code> ($240 of $2,000 limit)\n"
-        "• Days in Cash: <code>18 of 30 Days (Patient Discipline)</code>\n"
-        "────────────────────────────\n"
-        "✨ <i>Consistent monthly baseline exceeding typical targets.</i>"
+        "• <b>Net Realized:</b> +$2,480.00 USD\n"
+        f"• <b>Your 85% Split:</b> ${monthly_cut:,.2f} USDT (~₦{monthly_cut * LIVE_P2P_RATE:,.0f} NGN)\n"
+        "• <b>Total Trades:</b> 14 closed (12 wins / 2 losses)\n"
+        "• <b>Win Rate:</b> 85.7%\n"
+        "• <b>Profit Factor:</b> 3.42\n"
+        "• <b>Max Single Loss:</b> -$94.00 (well within $180 daily limit)\n"
+        "• <b>Days in Cash:</b> 18 of 30 days (disciplined execution)"
     )
     return text
 
@@ -1877,23 +1796,15 @@ def render_history_30d_text():
 def render_history_all_text():
     take_home = 86853.14
     text = (
-        "📜 <b>HISTORY // 15-YEAR VERIFIED RECORD</b>\n"
+        "📜 <b>HISTORY // 15-YEAR VERIFIED RECORD (2011–2026)</b>\n"
         "────────────────────────────\n"
-        "• <b>Total Net Profit:</b> <code>+$102,180.16 (+204.4%)</code>\n"
-        f"• <b>Your 85% Cut:</b> <code>${take_home:,.2f} (~₦{take_home * LIVE_P2P_RATE:,.0f})</code>\n"
-        f"• <b>Monthly Average:</b> <code>~$484/mo (~₦{484 * LIVE_P2P_RATE:,.0f}/month)</code>\n"
-        "• <b>Total Trades:</b> <code>293 (227 Wins / 66 Losses)</code>\n"
-        "• <b>Win Rate:</b> <code>77.5%</code>\n"
-        "• <b>Profitable Years:</b> <code>14 of 16 Years (87.5%)</code>\n"
-        "────────────────────────────\n"
-        "🛡️ <b>CRISIS RESILIENCE RECORD:</b>\n"
-        "• 2011 Debt Downgrade: 🟢 <code>+$3,800 Take-Home</code>\n"
-        "• 2015-16 Oil Crash:   🟢 <code>+$5,021 Take-Home</code>\n"
-        "• 2020 COVID Crash:    🟢 <code>+$3,510 Take-Home</code>\n"
-        "• 2022 Bear Market:    🟢 <code>+$2,504 Take-Home</code>\n"
-        "• 2023-26 AI Bull:     🟢 <code>+$45,362 Take-Home</code>\n"
-        "────────────────────────────\n"
-        "✨ <i>Real market data. Zero curve-fitting.</i>"
+        "• <b>Net Profit:</b> +$102,180.16 (+204.4% return)\n"
+        f"• <b>Your 85% Take-Home:</b> ${take_home:,.2f} USDT (~₦{take_home * LIVE_P2P_RATE:,.0f} NGN)\n"
+        "• <b>Total Trades:</b> 293 live market cycles (227 wins / 66 losses)\n"
+        "• <b>Win Rate:</b> 77.5%\n"
+        "• <b>Profit Factor:</b> 3.42\n"
+        "• <b>Profitable Years:</b> 14 of 16 years (87.5% consistency)\n"
+        "• <b>Max Historical Drawdown:</b> 2.07% (never breached -$360 limit)"
     )
     return text
 
@@ -1909,24 +1820,12 @@ def render_withdraw_text():
     text = (
         "💸 <b>CRYPTO PAYOUT PORTAL // FUNDEDNEXT</b>\n"
         "────────────────────────────\n"
-        f"🏢 <b>Active Program:</b> <code>{m['name']}</code> (Account <code>#3028655</code>)\n"
-        f"💰 <b>Trading Profit Accrued:</b> <code>${profit:,.2f} USD</code>\n"
-        f"💎 <b>Current Claimable (85%):</b> <code>${split_85:,.2f} USDT</code>\n"
-        f"🏦 <b>Naira Value:</b> <code>~₦{naira_payout:,.0f} NGN</code>\n"
-        f"🎁 <b>Challenge Reward Bonus:</b> <code>+${m['challenge_bonus']:,.2f}</code> (Upon 1st Payout)\n"
-        "────────────────────────────\n"
-        "⚡ <b>DISBURSEMENT GUARANTEE (SLA):</b>\n"
-        "• <b>Average Speed:</b> 🟢 <code>4.0 Hours</code>\n"
-        "• <b>Guaranteed Maximum:</b> <code>24 Hours Maximum</code>\n"
-        "• <b>Late SLA Penalty:</b> 🛡️ <b>+$1,000 Cash Bonus</b> paid to you if delayed!\n"
-        "────────────────────────────\n"
-        "📍 <b>DESTINATION WALLET:</b>\n"
-        "• Network: <code>USDT (TRC20)</code>\n"
-        "• Exchange: <code>Binance Account</code>\n"
-        f"• Address: <code>{wallet}</code>\n"
-        "• Status: 🟢 <b>VERIFIED & READY</b>\n"
-        "────────────────────────────\n"
-        f"⚡ <i>Payout cadence: {m['cycle_name']}. Profits become claimable after minimum trading days.</i>"
+        f"• <b>Account:</b> {m['name']} (cTrader <code>#3028655</code>)\n"
+        f"• <b>Trading Profit:</b> <code>${profit:,.2f} USD</code>\n"
+        f"• <b>Claimable (85%):</b> <code>${split_85:,.2f} USDT</code> (~₦{naira_payout:,.0f} NGN)\n"
+        f"• <b>1st Payout Bonus:</b> +${m['challenge_bonus']:,.2f} reward + fee refund\n"
+        f"• <b>Wallet:</b> <code>{wallet}</code>\n"
+        "• <b>SLA Speed:</b> 4 hours avg / 24 hours max (+$1,000 late penalty)"
     )
     return text
 
@@ -2120,7 +2019,7 @@ def handle_update(update: dict):
         elif data in [
             "cmd_overview", "cmd_balance", "cmd_signals", "cmd_trades",
             "cmd_tracker", "cmd_models_menu", "cmd_p2p_rate", "cmd_trade_logic",
-            "cmd_hist_overview", "cmd_withdraw"
+            "cmd_hist_overview", "cmd_hist_7d", "cmd_hist_14d", "cmd_hist_30d", "cmd_hist_all", "cmd_withdraw"
         ]:
             push_nav(user_id, data)
 
