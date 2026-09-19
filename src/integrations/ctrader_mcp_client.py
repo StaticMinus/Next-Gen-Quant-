@@ -428,26 +428,199 @@ class CTraderMCPClient:
             "label": "AgentQuant",
             "comment": comment[:256]
         }
-        if relative_sl_points and not stop_loss_price:
+
+        # ── ATOMIC SL/TP SUBMISSION (UPGRADE 3) ──
+        # cTrader MCP accepts relativeStopLoss & relativeTakeProfit in points directly on MARKET orders
+        if relative_sl_points:
             args["relativeStopLoss"] = int(relative_sl_points)
-        if relative_tp_points and not take_profit_price:
+        elif stop_loss_price:
+            spot = self.get_spot_price(symbol)
+            if spot:
+                base_p = float(spot["ask"]) if side.upper() == "BUY" else float(spot["bid"])
+                points = int(round(abs(base_p - float(stop_loss_price)) * 100))
+                if points > 0:
+                    args["relativeStopLoss"] = points
+
+        if relative_tp_points:
             args["relativeTakeProfit"] = int(relative_tp_points)
+        elif take_profit_price:
+            spot = self.get_spot_price(symbol)
+            if spot:
+                base_p = float(spot["ask"]) if side.upper() == "BUY" else float(spot["bid"])
+                points = int(round(abs(float(take_profit_price) - base_p) * 100))
+                if points > 0:
+                    args["relativeTakeProfit"] = points
 
         raw = self.call_tool("create_order", args)
         result = self._parse_content_json(raw)
 
-        # If order filled and display SL/TP provided, amend position with exact chart prices
-        if result and isinstance(result, dict) and (stop_loss_price or take_profit_price):
+        # Fallback amend ONLY if relative SL/TP was not included in the atomic order payload
+        if result and isinstance(result, dict) and ("relativeStopLoss" not in args or "relativeTakeProfit" not in args):
             pos_id = result.get("positionId") or (result.get("position", {}).get("positionId") if isinstance(result.get("position"), dict) else None)
             if pos_id:
                 amend_args = {"positionId": pos_id}
-                if stop_loss_price:
+                if stop_loss_price and "relativeStopLoss" not in args:
                     amend_args["stopLoss"] = round(float(stop_loss_price), 2)
-                if take_profit_price:
+                if take_profit_price and "relativeTakeProfit" not in args:
                     amend_args["takeProfit"] = round(float(take_profit_price), 2)
-                self.call_tool("amend_position", amend_args)
+                if len(amend_args) > 1:
+                    self.call_tool("amend_position", amend_args)
 
         return result
+
+    def place_limit_order(self, symbol: str, side: str = "BUY", volume_lots: float = 0.01,
+                          limit_price: float = 0.0,
+                          stop_loss_price: Optional[float] = None,
+                          take_profit_price: Optional[float] = None,
+                          expiry_seconds: int = 900,
+                          comment: str = "AgentQuant Sniper Limit",
+                          bypass_concurrency_check: bool = False) -> Optional[dict]:
+        """
+        Places a resting LIMIT order (Upgrade 1) at the specified limit_price.
+        Pre-attaches absolute stopLoss and takeProfit display prices atomically.
+        Sets timeInForce to GOOD_TILL_DATE with expirationTimestamp.
+        """
+        if not bypass_concurrency_check:
+            live_positions = self.get_positions_strict()
+            if live_positions is None:
+                raise RiskViolationError(
+                    "CRITICAL: Cannot verify broker positions (telemetry offline/unreachable). "
+                    "Order rejected to prevent over-concurrency."
+                )
+
+            pending_orders = self.get_pending_orders()
+            MAX_ALLOWED_CONCURRENT = 2
+            total_active = len(live_positions) + len(pending_orders)
+            if total_active >= MAX_ALLOWED_CONCURRENT:
+                raise RiskViolationError(
+                    f"CONCURRENCY VIOLATION: Cannot place limit order for {symbol}. Account already has "
+                    f"{len(live_positions)} active + {len(pending_orders)} pending ({total_active}/{MAX_ALLOWED_CONCURRENT})."
+                )
+
+            s_map = self.get_symbol_map()
+            target_sym_id = s_map.get(symbol.upper())
+            for p in live_positions:
+                p_sym_id = p.get("symbolId")
+                p_sym_name = str(p.get("symbolName", "")).upper() if p.get("symbolName") else None
+                if (target_sym_id and p_sym_id == target_sym_id) or (p_sym_name and p_sym_name == symbol.upper()):
+                    raise RiskViolationError(
+                        f"DUPLICATE ASSET VIOLATION: Symbol {symbol} is already held in active position #{p.get('positionId')}."
+                    )
+            for o in pending_orders:
+                o_sym_id = o.get("symbolId")
+                o_sym_name = str(o.get("symbolName", "")).upper() if o.get("symbolName") else None
+                if (target_sym_id and o_sym_id == target_sym_id) or (o_sym_name and o_sym_name == symbol.upper()):
+                    raise RiskViolationError(
+                        f"DUPLICATE ASSET VIOLATION: Symbol {symbol} already has pending order #{o.get('orderId')}."
+                    )
+
+        s_map = self.get_symbol_map()
+        sym_id = s_map.get(symbol.upper())
+        if not sym_id:
+            raise ValueError(f"Unknown symbol: {symbol}")
+
+        sym_upper = symbol.upper()
+        if "SPX" in sym_upper or "NDX" in sym_upper or "US30" in sym_upper or "UK100" in sym_upper:
+            raw_vol = int(round(volume_lots * 1 * 100))
+        elif "XAU" in sym_upper or "GOLD" in sym_upper:
+            raw_vol = int(round(volume_lots * 100 * 100))
+        else:
+            raw_vol = int(round(volume_lots * 100))
+
+        now_ms = int(time.time() * 1000)
+        exp_ms = now_ms + int(expiry_seconds * 1000)
+
+        args = {
+            "symbolId": sym_id,
+            "orderType": "LIMIT",
+            "tradeSide": side.upper(),
+            "volume": max(1, raw_vol),
+            "limitPrice": round(float(limit_price), 2),
+            "timeInForce": "GOOD_TILL_DATE",
+            "expirationTimestamp": exp_ms,
+            "label": "AgentQuant",
+            "comment": comment[:256]
+        }
+        if stop_loss_price:
+            args["stopLoss"] = round(float(stop_loss_price), 2)
+        if take_profit_price:
+            args["takeProfit"] = round(float(take_profit_price), 2)
+
+        raw = self.call_tool("create_order", args)
+        return self._parse_content_json(raw)
+
+    def cancel_order(self, order_id: int) -> Optional[dict]:
+        """
+        Cancels an active pending limit/stop order by orderId.
+        """
+        raw = self.call_tool("cancel_order", {"orderId": order_id})
+        return self._parse_content_json(raw)
+
+    def get_trendbars_dataframe(self, symbol: str, period: str = "M_15", count: int = 50) -> Optional[Any]:
+        """
+        Fetches historical trendbars directly from cTrader broker feeds (Upgrade 2)
+        and parses them into a pandas DataFrame with ['open', 'high', 'low', 'close', 'volume'].
+        Period format: 'M_1', 'M_5', 'M_15', 'M_30', 'H_1', 'D_1'.
+        """
+        import pandas as pd
+        s_map = self.get_symbol_map()
+        sym_id = s_map.get(symbol.upper())
+        if not sym_id:
+            return None
+
+        mins_per_bar = {
+            "M_1": 1, "M_5": 5, "M_15": 15, "M_30": 30, "H_1": 60, "D_1": 1440
+        }.get(period, 15)
+
+        now_ms = int(time.time() * 1000)
+        from_ms = now_ms - (count * mins_per_bar * 60 * 1000)
+
+        raw = self.call_tool("get_trendbars", {
+            "symbolId": sym_id,
+            "period": period,
+            "fromTimestamp": str(from_ms),
+            "toTimestamp": str(now_ms)
+        })
+        data = self._parse_content_json(raw)
+        if not data or not isinstance(data, dict) or "trendbars" not in data or not data["trendbars"]:
+            return None
+
+        bars = data["trendbars"]
+        div = 100000.0
+        records = []
+        for b in bars:
+            ts = b.get("timestamp")
+            if ts:
+                dt = pd.to_datetime(ts, unit="ms", utc=True).tz_convert("America/New_York")
+            elif b.get("utcTimestampInMinutes"):
+                dt = pd.to_datetime(b["utcTimestampInMinutes"], unit="m", utc=True).tz_convert("America/New_York")
+            else:
+                continue
+
+            low = b.get("low", 0) / div
+            if "open" in b and "high" in b and "close" in b:
+                open_p = b.get("open", 0) / div
+                high_p = b.get("high", 0) / div
+                close_p = b.get("close", 0) / div
+            else:
+                open_p = (b.get("low", 0) + b.get("deltaOpen", 0)) / div
+                high_p = (b.get("low", 0) + b.get("deltaHigh", 0)) / div
+                close_p = (b.get("low", 0) + b.get("deltaClose", 0)) / div
+
+            records.append({
+                "timestamp": dt,
+                "open": open_p,
+                "high": high_p,
+                "low": low,
+                "close": close_p,
+                "volume": b.get("volume", 0)
+            })
+
+        if not records:
+            return None
+
+        df = pd.DataFrame(records).set_index("timestamp").sort_index()
+        return df
 
     def close_position(self, position_id: int, volume: Optional[int] = None) -> Optional[dict]:
         """

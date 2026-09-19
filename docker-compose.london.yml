@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  agentquant-london-sniper:
+    build:
+      context: .
+      dockerfile: Dockerfile.london
+    container_name: agentquant_london_daemon
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/London
+      - EXECUTION_MODE=SNIPER_MARKET
+      - AUTONOMOUS_TIMEFRAME=15m
+    volumes:
+      - ./cache:/app/cache
+      - ./results:/app/results
+      - ./webapp/telemetry.json:/app/webapp/telemetry.json
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M

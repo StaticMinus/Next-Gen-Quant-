@@ -1,42 +1,75 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from src.integrations.ctrader_mcp_client import ctrader_client
 
-tk = yf.Ticker('QQQ')
-fi = tk.fast_info
-last_p = getattr(fi, 'last_price', None)
-print(f"QQQ Fast Info Last Price: {last_p:.2f}")
+def check_market():
+    ctrader_client.initialize()
+    
+    # 1. cTrader Live Spot Prices
+    spx_spot = ctrader_client.get_spot_price("SPX500")
+    ndx_spot = ctrader_client.get_spot_price("NDX100")
+    gold_spot = ctrader_client.get_spot_price("XAUUSD")
+    
+    print("=== LIVE CTRADER QUOTES ===")
+    print(f"SPX500: {spx_spot}")
+    print(f"NDX100: {ndx_spot}")
+    print(f"XAUUSD: {gold_spot}")
 
-hist = tk.history(period='3mo', interval='1d')
-c = hist['Close']
-p_curr = float(c.iloc[-1])
-m5 = float(c.rolling(5).mean().iloc[-1])
-s5 = float(c.rolling(5).std().iloc[-1])
-l_band = m5 - 1.25 * s5
-u_band = m5 + 1.25 * s5
+    # 2. Historical Daily Bars for SPY and QQQ
+    print("\n=== YFINANCE DAILY INDICATORS ===")
+    tickers = ["SPY", "QQQ"]
+    for t in tickers:
+        df = yf.download(t, period="3mo", interval="1d", progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        close = df["Close"]
+        
+        # 5-day Bollinger Bands / Dip levels
+        w = 5
+        num_std = 1.25
+        mid = close.rolling(w).mean()
+        std = close.rolling(w).std()
+        lower_band = mid - num_std * std
+        upper_band = mid + num_std * std
+        
+        # 20 EMA, 50 SMA, RSI
+        delta = close.diff()
+        gain = delta.clip(lower=0).rolling(14).mean()
+        loss = (-delta.clip(upper=0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + gain / (loss + 1e-9)))
+        ema20 = close.ewm(span=20).mean()
+        sma50 = close.rolling(50).mean()
+        
+        c = float(close.iloc[-1])
+        c_prev = float(close.iloc[-2])
+        m = float(mid.iloc[-1])
+        l = float(lower_band.iloc[-1])
+        u = float(upper_band.iloc[-1])
+        r = float(rsi.iloc[-1])
+        e20 = float(ema20.iloc[-1])
+        s50 = float(sma50.iloc[-1])
+        
+        dist_to_dip = c - l
+        dist_pct = (dist_to_dip / c) * 100
+        
+        is_sniper_dip = c <= l
+        is_trend_pullback = (c > s50) and (c <= e20 * 1.015) and (c >= e20 * 0.985) and (40.0 <= r <= 65.0)
+        
+        print(f"\n--- {t} ---")
+        print(f"Latest Close: ${c:.2f} (Previous: ${c_prev:.2f})")
+        print(f"5-Day Mean:   ${m:.2f}")
+        print(f"Lower Dip (1.25σ): ${l:.2f}")
+        print(f"Upper Band:   ${u:.2f}")
+        print(f"Distance to Dip: ${dist_to_dip:.2f} ({dist_pct:+.2f}%)")
+        print(f"20 EMA:       ${e20:.2f} | 50 SMA: ${s50:.2f}")
+        print(f"RSI (14):     {r:.1f}")
+        print(f"Is Sniper Dip (Close <= Dip): {is_sniper_dip}")
+        print(f"Is Trend Pullback (20 EMA sweet spot): {is_trend_pullback}")
 
-delta = c.diff()
-gain = delta.clip(lower=0).rolling(14).mean()
-loss = (-delta.clip(upper=0)).rolling(14).mean()
-rs = gain / (loss + 1e-9)
-rsi = float((100 - (100 / (1 + rs))).iloc[-1])
-
-ema20 = float(c.ewm(span=20).mean().iloc[-1])
-sma50 = float(c.rolling(50).mean().iloc[-1])
-
-dt_str = str(hist.index[-1])[:10]
-print(f"Latest Bar Date: {dt_str}")
-print(f"Close Price: ${p_curr:.2f}")
-print(f"5-day Mean: ${m5:.2f}")
-print(f"Lower Band (Dip Level): ${l_band:.2f}")
-print(f"Upper Band: ${u_band:.2f}")
-print(f"Distance to Dip Lower Band: ${p_curr - l_band:+.2f}")
-print(f"RSI(14): {rsi:.1f}")
-print(f"20 EMA: ${ema20:.2f} (Distance to EMA: ${p_curr - ema20:+.2f})")
-print(f"50 SMA: ${sma50:.2f}")
-
-# Check strategy criteria
-is_scalper_dip = p_curr <= l_band
-is_trend_pullback = (p_curr >= ema20 * 0.995) and (p_curr <= ema20 * 1.015) and (40 <= rsi <= 65)
-print(f"Scalper Dip Triggered (<= Lower Band): {is_scalper_dip}")
-print(f"Trend Pullback Sweet Spot (Near 20 EMA & RSI 40-65): {is_trend_pullback}")
+if __name__ == '__main__':
+    check_market()

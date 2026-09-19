@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+LABEL maintainer="AgentQuant Team"
+LABEL description="AgentQuant — London (LD4) Low-Latency Autonomous Sniper Engine"
+
+WORKDIR /app
+
+# Install minimal OS dependencies for low-latency networking & compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    iputils-ping \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set timezone to London (Equinix LD4 cTrader matching engine)
+ENV TZ=Europe/London
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -e ".[llm,data]"
+
+COPY . .
+
+RUN mkdir -p cache results data_store
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+CMD ["python", "-m", "src.integrations.webapp_server"]

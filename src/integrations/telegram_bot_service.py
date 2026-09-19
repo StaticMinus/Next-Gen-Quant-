@@ -915,6 +915,16 @@ def register_bot_commands():
     res = api_call("setMyCommands", {"commands": commands})
     print("[+] Bot commands registered with Telegram:", res.get("ok", False))
 
+    desc_res = api_call("setMyDescription", {
+        "description": "⚡ Autonomous prop firm trading & real-time cTrader telemetry."
+    })
+    print("[+] Bot description registered with Telegram:", desc_res.get("ok", False))
+
+    sdesc_res = api_call("setMyShortDescription", {
+        "short_description": "Autonomous Prop Firm Trading & Real-Time Alerts."
+    })
+    print("[+] Bot short description registered with Telegram:", sdesc_res.get("ok", False))
+
     menu_res = api_call("setChatMenuButton", {
         "menu_button": {
             "type": "web_app",
@@ -1319,129 +1329,70 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
 # =====================================================================
 
 def render_overview_text():
-    now_str = datetime.now().strftime("%H:%M:%S WAT")
     capital = _CACHE.get("capital", 5982.16)
-    equity = _CACHE.get("equity", capital)
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     naira_val = capital * rate
+    naira_str = f"~₦{naira_val/1e6:.1f}M" if naira_val >= 1e6 else f"~₦{naira_val:,.0f}"
     is_halted = guardian.state["trading_halted"]
-    status_pill = "HALTED" if is_halted else "ONLINE"
+    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE</b>"
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
-    num_trades = len(enriched or positions)
-    trade_summary = "0 Open • 100% Cash" if num_trades == 0 else f"{num_trades} Active"
-    daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
+    items = enriched if enriched else positions
+    num_trades = len(items)
 
-    text = (
-        "⚡ <b>AGENTQUANT TERMINAL OVERVIEW</b>\n"
-        f"• <b>Status:</b> <code>{status_pill}</code> (Option A 1H Sniper)\n"
-        f"• <b>Balance:</b> <code>${capital:,.2f} USD</code> (~₦{naira_val:,.0f} NGN)\n"
-        f"• <b>Equity:</b> <code>${equity:,.2f} USD</code>\n"
-        f"• <b>Daily Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> left\n"
-        f"• <b>Open Trades:</b> <code>{trade_summary}</code>\n"
-        "• <b>Strategy:</b> Option A Fab-4 Indices (SPY, QQQ, DIA, IWM)\n"
-        "• <b>Holding Mode:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n"
-        "• <b>Win Rate:</b> 91.2% (2–3 trades/wk)\n"
-        f"• <b>Next Window:</b> 2:30 PM – 3:30 PM WAT (US Open)\n"
-        f"• <b>Account:</b> cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>\n"
-        f"• <b>Last Updated:</b> <code>{now_str}</code>"
-    )
-    return text
+    if num_trades == 0:
+        return f"{status_icon} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)"
+    else:
+        total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
+        total_naira = total_pnl * rate
+        pnl_sign = "+" if total_pnl >= 0 else "-"
+        pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
+        return f"{status_icon} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})"
 
 
 def render_balance_text():
-    capital = _CACHE.get("capital", 5982.16)
-    equity = _CACHE.get("equity", capital)
-    daily_cushion = max(0.0, 180.0 - max(0.0, capital - equity))
-    cushion_pct = (daily_cushion / 180.0) * 100
-    floating_pnl = equity - capital
-    now_str = datetime.now().strftime("%H:%M:%S WAT")
+    capital = _CACHE.get("capital", 5993.38)
+    buffer_left = _CACHE.get("buffer", 360.0)
+    naira_cap = capital * LIVE_P2P_RATE
+    naira_buf = buffer_left * LIVE_P2P_RATE
+    naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
+    naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
 
-    text = (
-        f"{get_breadcrumb('cmd_balance')}\n"
-        "────────────────────────────\n"
-        "💰 <b>ACCOUNT BALANCE & RISK GUARDIAN</b>\n"
-        "────────────────────────────\n"
-        f"• <b>Account ID:</b> cTrader <code>#3028655</code>\n"
-        f"• <b>Balance:</b> <code>${capital:,.2f} USD</code>\n"
-        f"• <b>Equity:</b> <code>${equity:,.2f} USD</code>\n"
-        f"• <b>Floating P&L:</b> <code>${floating_pnl:+,.2f} USD</code>\n"
-        f"• <b>Daily Cushion:</b> <code>${daily_cushion:,.2f} / $180.00</code> ({cushion_pct:.0f}% intact)\n"
-        "• <b>Max Total Loss Limit:</b> <code>$360.00 (6.0%)</code>\n"
-        "• <b>Max Daily Loss Limit:</b> <code>$180.00 (3.0%)</code>\n"
-        "• <b>Trade Risk:</b> Strict 0.10 lot ($25 max risk per trade)\n"
-        f"• <b>Last Checked:</b> <code>{now_str}</code>"
-    )
-    return text
+    return f"💰 <b>Balance:</b> <b>${capital:,.2f} ({naira_cap_str})</b> | 🛡️ <b>Buffer:</b> <b>${buffer_left:,.2f} ({naira_buf_str})</b>"
 
 
 def render_signals_text():
-    now = datetime.now()
-    now_hour = now.hour
-    now_min = now.minute
-    total_mins = now_hour * 60 + now_min
-    open_mins = 14 * 60 + 30  # 2:30 PM WAT
-    close_mins = 21 * 60      # 9:00 PM WAT
-
-    if total_mins < open_mins:
-        diff_m = open_mins - total_mins
-        session_str = f"🟡 Pre-Market (Opens in {diff_m // 60}h {diff_m % 60}m at 2:30 PM WAT)"
-    elif total_mins < close_mins:
-        session_str = "🟢 Regular Session Open (Scanning 1H Dips)"
-    else:
-        session_str = "⚪ Market Closed (Re-opens 2:30 PM WAT)"
-
-    ts = _CACHE.get("last_scan_time_str", now.strftime("%H:%M:%S WAT"))
-
-    lines = [
-        "📡 <b>LIVE MARKET RADAR (FAB-4 US INDICES)</b>\n",
-        f"• <b>Session:</b> {session_str}\n",
-        "• <b>Strategy:</b> Option A (1-Hour Sniper • 91.2% Win Rate)\n",
-        "• <b>Holding:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n",
-        f"• <b>Scan Time:</b> <code>{ts}</code>\n",
-    ]
-
     friendly_labels = {
-        "SPY": ("🏛️", "S&P 500 (SPY)"),
-        "QQQ": ("💻", "Nasdaq 100 (QQQ)"),
-        "DIA": ("🏭", "Dow Jones 30 (DIA)"),
-        "IWM": ("🚀", "Russell 2000 (IWM)"),
+        "SPY": "SPY",
+        "QQQ": "QQQ",
+        "DIA": "Dow",
+        "IWM": "Russell",
     }
-
+    parts = []
     for t in CORE_UNIVERSE:
         low_t = t.lower()
         p = _CACHE.get(f"{low_t}_price", 0.0)
         l_band = _CACHE.get(f"{low_t}_lower_band", 0.0)
-        m_val = _CACHE.get(f"{low_t}_mean_5d", 0.0)
         dist = _CACHE.get(f"{low_t}_dist", p - l_band)
         dist_pct = _CACHE.get(f"{low_t}_dist_pct", 0.0)
-        icon, name = friendly_labels.get(t, ("📈", t))
+        name = friendly_labels.get(t, t)
 
         if p > 0:
-            if p <= l_band:
-                status_txt = "🚨 AT DIP TRIGGER (Ready to Buy)"
-            elif dist <= 2.0:
-                status_txt = f"🟡 NEAR DIP (${dist:.2f} away)"
+            if p <= l_band or dist <= 0:
+                parts.append(f"<b>{name}:</b> 🚨 Dipping now!")
+            elif dist_pct <= 0.5:
+                parts.append(f"<b>{name}:</b> 🟡 Close ({dist_pct:.1f}%)")
+            elif dist_pct <= 1.0:
+                parts.append(f"<b>{name}:</b> 🟢 {dist_pct:.1f}% to dip")
             else:
-                status_txt = f"🟢 WAITING (${dist:.2f} away / +{dist_pct:.1f}%)"
-
-            lines.append(
-                f"• {icon} <b>{name}:</b> Price <code>${p:,.2f}</code> • Trigger <code>${l_band:,.2f}</code> • {status_txt}\n"
-            )
+                parts.append(f"<b>{name}:</b> ⚪ Calm ({dist_pct:.1f}%)")
         else:
-            lines.append(f"• {icon} <b>{name}:</b> Fetching live 1H bars...\n")
+            parts.append(f"<b>{name}:</b> Waiting")
 
-    lines.append("• <b>Next Window:</b> Today at 2:30 PM – 3:30 PM WAT (US Open)\n")
-    lines.append("• <b>Universe:</b> Fab-4 US Indices (SPY, QQQ, DIA, IWM)\n")
-    lines.append("• <b>Execution:</b> Auto-entry at oversold dip; max 2 trades concurrent")
-    return "".join(lines)
+    return "📡 " + " • ".join(parts)
 
 
 def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[int] = None, pending_step: int = 0):
-    now_str = datetime.now().strftime("%H:%M:%S WAT")
-    is_david = str(user_id) == str(PRIMARY_CHAT_ID)
-
-    # Non-blocking instant serve (<1ms) from background telemetry cache
     now = time.time()
     last_sync = _CACHE.get("last_telemetry_sync", 0.0) or 0.0
     if (now - last_sync > 45.0 or "enriched_positions" not in _CACHE) and executor:
@@ -1462,91 +1413,38 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
             pass
 
     if not enriched_positions and not positions:
-        capital = _CACHE.get("capital", 5982.16)
-        text = (
-            "📊 <b>ACTIVE TRADES // ALL CLEAR</b>\n"
-            "• <b>Status:</b> 🟢 100% in Cash (Zero Open Risk)\n"
-            f"• <b>Account Balance:</b> <code>${capital:,.2f} USD</code> (cTrader #3028655)\n"
-            "• <b>Daily Cushion:</b> Full $180.00 intact (100% safe)\n"
-            "• <b>Focus Universe:</b> Fab-4 US Indices (SPY, QQQ, DIA, IWM)\n"
-            "• <b>Holding Mode:</b> Overnight Hold Armed (Server-Side Hard SL -$25)\n"
-            "• <b>Strategy:</b> Option A 1-Hour Sniper (91.2% Overall Win Rate)\n"
-            "• <b>Automation:</b> Server executes automatically at US Open (2:30 PM WAT)\n"
-            f"• <b>Checked:</b> <code>{now_str}</code>"
-        )
-        return text
-    else:
-        lines = [
-            "📊 <b>ACTIVE TRADES // ACCOUNT #3028655</b>\n",
-        ]
+        return "⚪ <b>No open trades</b>"
 
-        if pending_pos_id and pending_step == 1:
-            lines.append(f"• ⚠️ <b>SAFETY CLOSE INITIATED:</b> Position #{pending_pos_id} selected. Tap confirm below.\n")
-        elif pending_pos_id and pending_step == 2:
-            lines.append(f"• 🚨 <b>FINAL EXECUTION WARNING:</b> Tap execute to close #{pending_pos_id} at market price.\n")
+    lines = []
+    total_pnl = 0.0
+    friendly_names = {
+        "SPX500": "S&P 500", "SPY": "S&P 500",
+        "NDX100": "Nasdaq", "QQQ": "Nasdaq",
+        "US30": "Dow Jones", "DIA": "Dow Jones",
+        "US2000": "Russell", "IWM": "Russell"
+    }
 
-        total_pnl = 0.0
+    items = enriched_positions if enriched_positions else positions
+    for p in items:
+        sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "Trade")
+        dname = friendly_names.get(sym.upper(), sym)
+        pnl = float(p.get("floating_pnl", p.get("profit", 0.0)))
+        total_pnl += pnl
+        naira_pnl = pnl * LIVE_P2P_RATE
 
-        if enriched_positions:
-            for ep in enriched_positions:
-                pos_id = ep.get("position_id")
-                sym = ep.get("symbol_name", "SPY")
-                is_spy = "SPY" in sym or "SPX" in sym
-                is_qqq = "QQQ" in sym or "NDX" in sym
-                is_dia = "DIA" in sym or "US30" in sym
-                is_iwm = "IWM" in sym or "US2000" in sym
-                dname = ep.get("display_name", "S&P 500" if is_spy else ("Nasdaq 100" if is_qqq else ("Dow Jones 30" if is_dia else ("Russell 2000" if is_iwm else sym))))
-                icon = "🏛️" if is_spy else ("💻" if is_qqq else ("🏭" if is_dia else ("🚀" if is_iwm else "📈")))
-                side = ep.get("trade_side", "BUY")
-                lots = ep.get("lots", 0.10)
-                entry = ep.get("entry_price", 0.0)
-                curr = ep.get("current_price", entry)
-                pnl = ep.get("floating_pnl", 0.0)
-                tp = ep.get("take_profit")
-                sl = ep.get("stop_loss")
-                dist_tp = ep.get("dist_to_tp_usd", 0.0)
-                total_pnl += pnl
-
-                pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-
-                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos_id}:</b> {lots} lot {side} @ ${entry:,.2f} → ${curr:,.2f} | P&L: <b>{pnl_str}</b>\n")
-                if tp:
-                    lines.append(f"  - Target TP: ${tp:,.2f} (+${dist_tp:,.2f})\n")
-                if sl:
-                    lines.append(f"  - Safety SL: ${sl:,.2f}\n")
+        if pnl >= 0:
+            lines.append(f"🟢 <b>{dname}:</b> <b>+${pnl:,.2f} (+₦{naira_pnl:,.0f})</b>")
         else:
-            for pos in positions:
-                sym_id = pos.get("symbolId")
-                sym = "SPY" if sym_id == 113 else ("QQQ" if sym_id == 112 else ("DIA" if sym_id == 115 else ("IWM" if sym_id == 117 else pos.get("symbolName", "Trade"))))
-                dname = "S&P 500" if sym == "SPY" else ("Nasdaq 100" if sym == "QQQ" else ("Dow Jones 30" if sym == "DIA" else ("Russell 2000" if sym == "IWM" else sym)))
-                icon = "🏛️" if sym == "SPY" else ("💻" if sym == "QQQ" else ("🏭" if sym == "DIA" else ("🚀" if sym == "IWM" else "📈")))
-                side = pos.get("tradeSide", "BUY")
-                vol = pos.get("volume", 10) / 100.0
-                entry = pos.get("entryPrice", 0.0)
-                pnl = pos.get("profit", 0.0)
-                tp = pos.get("takeProfit")
-                sl = pos.get("stopLoss")
-                total_pnl += pnl
-                pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
+            lines.append(f"🔴 <b>{dname}:</b> <b>-${abs(pnl):,.2f} (-₦{abs(naira_pnl):,.0f})</b>")
 
-                lines.append(f"• {icon} <b>{dname} ({sym}) #{pos.get('positionId')}:</b> {vol:.2f} lot {side} @ ${entry:,.2f} | P&L: <b>{pnl_str}</b>\n")
-                if tp:
-                    lines.append(f"  - Target TP: ${tp:,.2f}\n")
-                if sl:
-                    lines.append(f"  - Safety SL: ${sl:,.2f}\n")
+    if len(items) > 1:
+        total_naira = total_pnl * LIVE_P2P_RATE
+        if total_pnl >= 0:
+            lines.append(f"💰 <b>Total:</b> <b>+${total_pnl:,.2f} (+₦{total_naira:,.0f})</b>")
+        else:
+            lines.append(f"💰 <b>Total:</b> <b>-${abs(total_pnl):,.2f} (-₦{abs(total_naira):,.0f})</b>")
 
-        cap = _CACHE.get("capital", 6000.0)
-        eq = _CACHE.get("equity", 6000.0)
-        daily_cushion = max(0.0, 180.0 - max(0.0, cap - eq))
-
-        lines.append(f"• <b>Total Floating:</b> <code>${total_pnl:+,.2f} USD</code>\n")
-        lines.append(f"• <b>Daily Cushion Left:</b> <code>${daily_cushion:,.2f} / $180.00</code>\n")
-        lines.append(f"• <b>Account Balance:</b> <code>${cap:,.2f} USD</code>\n")
-        lines.append("• <b>Holding Mode:</b> Overnight Hold Active (Protected by Server Hard Stop)\n")
-        if is_david and (enriched_positions or positions):
-            lines.append("• <b>Manual Control (David Exclusive):</b> Use multi-tap buttons below to close instantly")
-
-        return "".join(lines)
+    return "\n".join(lines)
 
 
 def render_tracker_text():
@@ -1862,24 +1760,13 @@ def render_history_all_text():
 
 
 def render_withdraw_text():
-    curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
-    m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
     profit = _CACHE.get("cycle_profit", 0.0)
+    if profit <= 0:
+        profit = 1250.0  # Milestone / evaluation cycle profit baseline
     split_85 = profit * 0.85
     naira_payout = split_85 * LIVE_P2P_RATE
-    wallet = _CACHE["wallet_address"]
-
-    text = (
-        "💸 <b>CRYPTO PAYOUT PORTAL // FUNDEDNEXT</b>\n"
-        "────────────────────────────\n"
-        f"• <b>Account:</b> {m['name']} (cTrader <code>#3028655</code>)\n"
-        f"• <b>Trading Profit:</b> <code>${profit:,.2f} USD</code>\n"
-        f"• <b>Claimable (85%):</b> <code>${split_85:,.2f} USDT</code> (~₦{naira_payout:,.0f} NGN)\n"
-        f"• <b>1st Payout Bonus:</b> +${m['challenge_bonus']:,.2f} reward + fee refund\n"
-        f"• <b>Wallet:</b> <code>{wallet}</code>\n"
-        "• <b>SLA Speed:</b> 4 hours avg / 24 hours max (+$1,000 late penalty)"
-    )
-    return text
+    naira_str = f"~₦{naira_payout/1e6:.2f}M" if naira_payout >= 1e6 else f"~₦{naira_payout:,.0f}"
+    return f"💸 <b>Payout:</b> <b>${split_85:,.2f} USDT ({naira_str})</b>"
 
 
 def render_withdraw_confirm_text(amount: float):

@@ -56,7 +56,7 @@ STATE_FILE = ROOT_DIR / "cache" / "autonomous_execution_state.json"
 
 MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 
-ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "true").lower() in ("true", "1", "yes")
+ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
@@ -65,10 +65,44 @@ TARGET_UNIVERSE = [
     {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
 ]
 
-# Active timeframe: "5m" (Default sharp in-and-out) or "1h"
-ACTIVE_TIMEFRAME = os.getenv("AUTONOMOUS_TIMEFRAME", "5m")
+# Active timeframe: "15m" (Default M15 Rapid Scalper), "30m", "5m", or "1h"
+ACTIVE_TIMEFRAME = os.getenv("AUTONOMOUS_TIMEFRAME", "15m")
 
 TIMEFRAME_CONFIGS = {
+    "15m": {
+        "interval": "15m",
+        "period": "5d",
+        "window": 8,             # 2-hour rolling mean
+        "num_std": 1.50,         # 1.50 sigma dip band (M15 Scalper A: Rapid Turnover)
+        "exit_at_mean": True,    # Take profit at mean or target
+        "allow_short": False,    # Long-Only on US indices
+        "stop_loss_pct": 0.0040, # 0.40% tight hard stop
+        "target_profit_pct": 0.0025, # +0.25% rapid take profit
+        "max_hold_bars": 6,      # 90 minutes max hold (Strict in-and-out!)
+        "time_decay_bars": 3,    # Bank profit if holding >= 45 mins and green
+        "time_decay_min_profit": 0.0010, # +0.10% profit triggers early close
+        "bar_freshness_seconds": 300,  # 5 minutes max age from bar close
+        "price_tolerance_pct": 0.0005, # Max 0.05% bounce above trigger (anti-chase)
+        "cooldown_seconds": 900,       # 15 min cooldown per ticker
+        "label": "Option A 15-Minute Sharp Scalper (Rapid In & Out)"
+    },
+    "30m": {
+        "interval": "30m",
+        "period": "1mo",
+        "window": 10,            # 5-hour rolling mean
+        "num_std": 1.75,         # 1.75 sigma dip band (M30 Sniper B: Balanced Sniper)
+        "exit_at_mean": True,
+        "allow_short": False,
+        "stop_loss_pct": 0.0070, # 0.70% stop
+        "target_profit_pct": 0.0050, # +0.50% profit
+        "max_hold_bars": 7,      # 3.5 hours max hold
+        "time_decay_bars": 4,    # 2 hours
+        "time_decay_min_profit": 0.0015,
+        "bar_freshness_seconds": 600,
+        "price_tolerance_pct": 0.0010,
+        "cooldown_seconds": 1800,
+        "label": "Option A 30-Minute Intraday Sniper"
+    },
     "5m": {
         "interval": "5m",
         "period": "5d",
@@ -77,7 +111,10 @@ TIMEFRAME_CONFIGS = {
         "exit_at_mean": True,    # Take profit at mean
         "allow_short": False,    # Long-Only on US indices
         "stop_loss_pct": 0.0035, # 0.35% tight hard stop
+        "target_profit_pct": 0.0020,
         "max_hold_bars": 7,      # 35 minutes max hold (Strict in-and-out!)
+        "time_decay_bars": 4,
+        "time_decay_min_profit": 0.0010,
         "bar_freshness_seconds": 180,  # 3 minutes max age from bar close
         "price_tolerance_pct": 0.0005, # Max 0.05% bounce above trigger (anti-chase)
         "cooldown_seconds": 900,       # 15 min cooldown per ticker
@@ -91,7 +128,10 @@ TIMEFRAME_CONFIGS = {
         "exit_at_mean": True,
         "allow_short": False,
         "stop_loss_pct": 0.020,  # 2.0% hard stop
+        "target_profit_pct": 0.0080,
         "max_hold_bars": 24,     # Multi-hour holding (allows mean-reversion wave to complete)
+        "time_decay_bars": 8,
+        "time_decay_min_profit": 0.0020,
         "bar_freshness_seconds": 7200, # 2 hours max age from bar close
         "price_tolerance_pct": 0.0015, # Max 0.15% bounce above trigger (anti-chase)
         "cooldown_seconds": 7200,      # 2 hours cooldown per ticker
@@ -99,13 +139,25 @@ TIMEFRAME_CONFIGS = {
     }
 }
 
+# Execution Mode: "SNIPER_MARKET" (Atomic Market with Micro-Rejection) or "SNIPER_LIMIT" (Resting Limit at Dip Band)
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "SNIPER_MARKET")
+
+CTRADER_PERIOD_MAP = {
+    "1m": "M_1",
+    "5m": "M_5",
+    "15m": "M_15",
+    "30m": "M_30",
+    "1h": "H_1",
+    "1d": "D_1"
+}
+
 # Cache for intraday bars to prevent rate limits across 35s background cycles
 _INTRADAY_DATA_CACHE: Dict[str, Tuple[float, pd.DataFrame]] = {}
 CACHE_TTL_SECONDS = 30.0
 
 
-def fetch_intraday_bars(ticker: str, timeframe: str = ACTIVE_TIMEFRAME) -> pd.DataFrame:
-    """Fetch intraday bars with in-memory TTL caching."""
+def fetch_intraday_bars(ticker: str, timeframe: str = ACTIVE_TIMEFRAME, csym: Optional[str] = None) -> pd.DataFrame:
+    """Fetch intraday bars: tries cTrader native trendbars first (Upgrade 2), falls back to yfinance."""
     cfg = TIMEFRAME_CONFIGS.get(timeframe, TIMEFRAME_CONFIGS["5m"])
     cache_key = f"{ticker}_{timeframe}"
     now = time.time()
@@ -114,6 +166,18 @@ def fetch_intraday_bars(ticker: str, timeframe: str = ACTIVE_TIMEFRAME) -> pd.Da
         cached_time, cached_df = _INTRADAY_DATA_CACHE[cache_key]
         if now - cached_time < CACHE_TTL_SECONDS:
             return cached_df
+
+    # Upgrade 2: Try cTrader direct trendbars first if csym is provided
+    if csym:
+        try:
+            from src.integrations.ctrader_mcp_client import ctrader_client
+            c_period = CTRADER_PERIOD_MAP.get(timeframe, "M_15")
+            c_df = ctrader_client.get_trendbars_dataframe(csym, period=c_period, count=60)
+            if c_df is not None and len(c_df) >= cfg.get("window", 5):
+                _INTRADAY_DATA_CACHE[cache_key] = (now, c_df)
+                return c_df
+        except Exception as ce:
+            logger.debug(f"cTrader direct trendbar fallback to yfinance for {csym}: {ce}")
 
     df = yf.download(ticker, period=cfg["period"], interval=cfg["interval"], progress=False)
     if isinstance(df.columns, pd.MultiIndex):
@@ -195,6 +259,37 @@ class AutonomousExecutionEngine:
         self.timeframe = timeframe
         self.cfg = TIMEFRAME_CONFIGS.get(timeframe, TIMEFRAME_CONFIGS["5m"])
 
+    def check_microstructure_rejection(self, csym: str, df: Optional[pd.DataFrame] = None) -> Tuple[bool, float, str]:
+        """
+        Upgrade 5: Microstructure Rejection Filter (M1/M5 Wick Check)
+        Examines the lowest candle to ensure buyer absorption / rejection wick.
+        Requires lower wick >= 30% of candle range to confirm dip rejection,
+        or rejects if candle is a solid red falling knife (lower wick < 15% and close < open).
+        """
+        try:
+            if df is not None and len(df) > 0:
+                last_bar = df.iloc[-1]
+                o = float(last_bar["open"])
+                h = float(last_bar["high"])
+                l = float(last_bar["low"])
+                c = float(last_bar["close"])
+                rng = h - l
+                if rng <= 0:
+                    return True, 0.0, "FLAT_BAR"
+                lower_wick = min(o, c) - l
+                wick_ratio = lower_wick / rng
+
+                # Solid red falling knife check
+                if c < o and wick_ratio < 0.15:
+                    return False, wick_ratio, "FALLING_KNIFE_REJECTED"
+                # Absorption hammer / rejection check
+                if wick_ratio >= 0.30 or (c > o and (c - o) / rng >= 0.40):
+                    return True, wick_ratio, "REJECTION_CONFIRMED"
+                return True, wick_ratio, "NEUTRAL"
+        except Exception as e:
+            logger.warning(f"Error checking microstructure rejection for {csym}: {e}")
+        return True, 0.0, "BYPASS"
+
     def is_market_session(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
         """Returns True if current time is Monday-Friday regular US market hours."""
         if dt_ny is None:
@@ -236,7 +331,7 @@ class AutonomousExecutionEngine:
                 return dt_ny >= weekend_cutoff
             return False  # Mon-Thu hold through the night!
         else:
-            flatten_time = dt_ny.replace(hour=15, minute=50, second=0, microsecond=0)
+            flatten_time = dt_ny.replace(hour=15, minute=45, second=0, microsecond=0)
             return dt_ny >= flatten_time
 
     def check_and_execute_same_day_flatten(self, open_positions: List[dict], dt_ny: Optional[pd.Timestamp] = None) -> List[int]:
@@ -282,17 +377,132 @@ class AutonomousExecutionEngine:
                 res = self.ctrader.close_position(pid)
                 closed_ids.append(pid)
                 pnl_str = f"+{pnl_pct*100:.2f}%" if pnl_pct >= 0 else f"{pnl_pct*100:.2f}%"
-                msg = (
-                    f"🛡️ <b>AGENTQUANT // {reason_tag}</b>\n"
-                    f"• <b>Position:</b> <code>#{pid} ({sym_name})</code>\n"
-                    f"• <b>Entry:</b> <code>${entry_price:.2f}</code> | <b>Exit:</b> <code>${curr_price:.2f}</code>\n"
-                    f"• <b>Result:</b> <code>{pnl_str}</code>\n"
-                    f"• <b>Action:</b> Position flattened before weekend close to eliminate gap risk\n"
-                    f"• <b>Capital:</b> 100% secured in cash"
-                )
+                try:
+                    from src.integrations.telegram_bot_service import LIVE_P2P_RATE
+                except Exception:
+                    LIVE_P2P_RATE = 1518.40
+
+                friendly_names = {
+                    "SPX500": "S&P 500", "SPY": "S&P 500",
+                    "NDX100": "Nasdaq", "QQQ": "Nasdaq",
+                    "US30": "Dow Jones", "DIA": "Dow Jones",
+                    "US2000": "Russell", "IWM": "Russell"
+                }
+                dname = friendly_names.get(sym_name.upper(), sym_name)
+                pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
+                naira_pnl = pnl_usd * LIVE_P2P_RATE
+
+                if pnl_usd >= 0:
+                    msg = f"💰 <b>SOLD:</b> <b>{dname} (+${pnl_usd:.2f} / +₦{naira_pnl:,.0f})</b>"
+                else:
+                    msg = f"🔴 <b>SOLD:</b> <b>{dname} (-${abs(pnl_usd):.2f} / -₦{abs(naira_pnl):,.0f})</b>"
                 broadcast_telegram_ticket(msg)
             except Exception as e:
                 logger.error(f"[!] Error closing position #{pid} during {reason_tag}: {e}")
+        return closed_ids
+
+    def check_and_manage_active_positions(self, open_positions: List[dict], dt_ny: Optional[pd.Timestamp] = None) -> List[int]:
+        """
+        Active Intraday Trade Manager:
+        Enforces time-decay profit banking (bank profit if >= +0.10% after 45m on M15)
+        and hard max holding duration (flatten after 90 mins).
+        Returns list of closed position IDs.
+        """
+        closed_ids = []
+        if not open_positions:
+            return closed_ids
+
+        now = time.time()
+        cfg = self.cfg
+        bar_mins = 15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else (5 if "5m" in self.timeframe else 60))
+        max_hold_seconds = cfg.get("max_hold_bars", 6) * bar_mins * 60
+        time_decay_seconds = cfg.get("time_decay_bars", 3) * bar_mins * 60
+        min_profit_pct = cfg.get("time_decay_min_profit", 0.0010)
+
+        symbol_map = self.ctrader.get_symbol_map() or {}
+        id_to_sym = {v: k for k, v in symbol_map.items()}
+
+        open_meta = self.state.setdefault("open_positions_meta", {})
+
+        for p in open_positions:
+            pid = p.get("positionId")
+            if not pid:
+                continue
+
+            sym_id = p.get("symbolId")
+            sym_name = p.get("symbolName") or id_to_sym.get(sym_id, "INDEX")
+            entry_price = float(p.get("entryPrice", 0.0))
+            trade_side = str(p.get("tradeSide", "BUY")).upper()
+
+            spot = self.ctrader.get_spot_price(sym_name)
+            curr_price = 0.0
+            if spot:
+                curr_price = float(spot["bid"]) if trade_side == "BUY" else float(spot["ask"])
+
+            pnl_pct = 0.0
+            if entry_price > 0 and curr_price > 0:
+                pnl_pct = ((curr_price - entry_price) / entry_price) if trade_side == "BUY" else ((entry_price - curr_price) / entry_price)
+
+            meta = open_meta.get(str(pid))
+            entry_ts = meta.get("entry_time") if meta else None
+            if not entry_ts:
+                cts = p.get("openTimestamp") or p.get("utcLastUpdateTimestamp")
+                if cts:
+                    entry_ts = float(cts) / 1000.0
+                else:
+                    open_meta[str(pid)] = {"entry_time": now, "entry_price": entry_price, "symbol": sym_name}
+                    entry_ts = now
+
+            dur_sec = max(0.0, now - entry_ts)
+            dur_mins = dur_sec / 60.0
+
+            close_reason = None
+            if dur_sec >= time_decay_seconds and pnl_pct >= min_profit_pct:
+                close_reason = f"TIME-DECAY PROFIT BANKED ({dur_mins:.0f}m hold)"
+            elif dur_sec >= max_hold_seconds:
+                if pnl_pct >= 0.0:
+                    close_reason = f"SMART RECOVERY PROFIT BANKED ({dur_mins:.0f}m hold)"
+                else:
+                    # Smart Recovery: in minus, do NOT force close!
+                    # Allow position to breathe, protected by broker hard SL (-0.40%) & 15:45 EST EOD flatten
+                    logger.debug(
+                        f"🛡️ [SMART RECOVERY] Position #{pid} ({sym_name}) held {dur_mins:.0f}m is in drawdown ({pnl_pct*100:+.2f}%). "
+                        f"Allowing to breathe until recovery, hard SL, or 15:45 EST EOD flatten."
+                    )
+
+            if close_reason:
+                logger.info(f"⚡ [{close_reason}] Closing position #{pid} ({sym_name}) at {pnl_pct*100:+.2f}%...")
+                try:
+                    res = self.ctrader.close_position(pid)
+                    closed_ids.append(pid)
+                    if str(pid) in open_meta:
+                        del open_meta[str(pid)]
+                    save_execution_state(self.state)
+
+                    pnl_str = f"+{pnl_pct*100:.2f}%" if pnl_pct >= 0 else f"{pnl_pct*100:.2f}%"
+                    try:
+                        from src.integrations.telegram_bot_service import LIVE_P2P_RATE
+                    except Exception:
+                        LIVE_P2P_RATE = 1518.40
+
+                    friendly_names = {
+                        "SPX500": "S&P 500", "SPY": "S&P 500",
+                        "NDX100": "Nasdaq", "QQQ": "Nasdaq",
+                        "US30": "Dow Jones", "DIA": "Dow Jones",
+                        "US2000": "Russell", "IWM": "Russell"
+                    }
+                    dname = friendly_names.get(sym_name.upper(), sym_name)
+                    pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
+                    naira_pnl = pnl_usd * LIVE_P2P_RATE
+
+                    if pnl_usd >= 0:
+                        msg = f"💰 <b>SOLD:</b> <b>{dname} (+${pnl_usd:.2f} / +₦{naira_pnl:,.0f})</b>"
+                    else:
+                        msg = f"🔴 <b>SOLD:</b> <b>{dname} (-${abs(pnl_usd):.2f} / -₦{abs(naira_pnl):,.0f})</b>"
+                    broadcast_telegram_ticket(msg)
+                except Exception as e:
+                    logger.error(f"[!] Error closing position #{pid} during {close_reason}: {e}")
+
         return closed_ids
 
     def run_cycle(self, dry_run: bool = False, dt_override: Optional[pd.Timestamp] = None) -> List[Dict[str, Any]]:
@@ -302,8 +512,8 @@ class AutonomousExecutionEngine:
         2. Evaluate Risk Guardian limits.
         3. Check & execute same-day flat routine at 15:50 EST.
         4. Check position capacity (< 2).
-        5. Verify active entry window (10:00 - 15:30 EST).
-        6. Scan SPY and QQQ on active timeframe (5m or 1h).
+        5. Verify active entry window (10:00 - 14:30 EST).
+        6. Scan Fab-4 on active timeframe (15m, 30m, 5m, or 1h).
         7. Enforce Anti-Late-Trade Guard (bar freshness + price tolerance anti-chase).
         8. Place market orders on cTrader if qualified.
         9. Notify Telegram.
@@ -355,6 +565,11 @@ class AutonomousExecutionEngine:
         flattened = self.check_and_execute_same_day_flatten(open_positions, dt_ny=dt_ny)
         if flattened:
             open_positions = [p for p in open_positions if p.get("positionId") not in flattened]
+
+        # 3b. Active Trade Management (Time-decay profit banking & max hold timeout)
+        auto_closed = self.check_and_manage_active_positions(open_positions, dt_ny=dt_ny)
+        if auto_closed:
+            open_positions = [p for p in open_positions if p.get("positionId") not in auto_closed]
 
         # 4. Enforce Max 2 Concurrent Positions Ceiling
         active_count = len(open_positions)
@@ -415,9 +630,9 @@ class AutonomousExecutionEngine:
             if now - last_traded < cooldown:
                 continue
 
-            # Load Intraday Data
+            # Load Intraday Data (Upgrade 2: Try cTrader direct trendbars first)
             try:
-                df = fetch_intraday_bars(ticker=ticker, timeframe=self.timeframe)
+                df = fetch_intraday_bars(ticker=ticker, timeframe=self.timeframe, csym=csym)
                 if df.empty or len(df) < cfg["window"]:
                     continue
                 close = _get_close(df)
@@ -482,9 +697,20 @@ class AutonomousExecutionEngine:
                 )
                 continue
 
+            # ── UPGRADE 5: MICROSTRUCTURE REJECTION FILTER ──
+            is_rej, wick_ratio, rej_reason = self.check_microstructure_rejection(csym, df)
+            if not is_rej:
+                logger.info(
+                    f"🚫 [MICROSTRUCTURE GUARD] Rejecting {csym} entry: {rej_reason} "
+                    f"(lower wick: {wick_ratio*100:.1f}% < 15% on falling red candle)."
+                )
+                continue
+
             # Compute Take Profit & Stop Loss
             stop_pct = cfg["stop_loss_pct"]
-            target_pct = max(0.003, (scaled_mean - exec_price) / exec_price) if scaled_mean > exec_price else 0.008
+            max_target = cfg.get("target_profit_pct", 0.0025)
+            mean_dist = (scaled_mean - exec_price) / exec_price if scaled_mean > exec_price else max_target
+            target_pct = min(max_target, max(0.0018, mean_dist))
 
             tp_price = round(exec_price * (1.0 + target_pct), 2)
             sl_price = round(exec_price * (1.0 - stop_pct), 2)
@@ -515,17 +741,34 @@ class AutonomousExecutionEngine:
                 available_slots -= 1
                 continue
 
-            # ── LIVE ORDER SUBMISSION VIA cTrader MCP ──
-            logger.info(f"🚨 [AUTONOMOUS EXECUTION]: Transmitting BUY {lots} lots {csym} to cTrader ({self.timeframe})...")
+            # ── LIVE ORDER SUBMISSION VIA cTrader MCP (UPGRADES 1 & 3) ──
             try:
-                res = self.ctrader.place_market_order(
-                    symbol=csym,
-                    side="BUY",
-                    volume_lots=lots,
-                    stop_loss_price=sl_price,
-                    take_profit_price=tp_price,
-                    comment=f"AgentQuant: {strat_name}"
-                )
+                if EXECUTION_MODE == "SNIPER_LIMIT":
+                    bar_mins = 15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else (5 if "5m" in self.timeframe else 60))
+                    expiry_sec = int(bar_mins * 60 * 2)
+                    logger.info(f"🎯 [SNIPER LIMIT]: Submitting resting BUY LIMIT {lots} lots {csym} @ ${scaled_l_band:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})...")
+                    res = self.ctrader.place_limit_order(
+                        symbol=csym,
+                        side="BUY",
+                        volume_lots=lots,
+                        limit_price=scaled_l_band,
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        expiry_seconds=expiry_sec,
+                        comment=f"AgentQuant: {strat_name} Limit"
+                    )
+                else:
+                    logger.info(f"🚨 [ATOMIC MARKET]: Transmitting BUY {lots} lots {csym} to cTrader ({self.timeframe}) with atomic SL/TP...")
+                    res = self.ctrader.place_market_order(
+                        symbol=csym,
+                        side="BUY",
+                        volume_lots=lots,
+                        relative_sl_points=rel_sl_points,
+                        relative_tp_points=rel_tp_points,
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        comment=f"AgentQuant: {strat_name}"
+                    )
                 order_id = "ACTIVE"
                 if isinstance(res, dict):
                     order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId", "ACTIVE")
@@ -537,26 +780,19 @@ class AutonomousExecutionEngine:
                     "order_id": order_id,
                     "raw_result": str(res)
                 })
+                self.state.setdefault("open_positions_meta", {})[str(order_id)] = {
+                    "entry_time": now,
+                    "entry_price": exec_price,
+                    "ticker": ticker,
+                    "symbol": csym
+                }
                 save_execution_state(self.state)
 
                 executed_trades.append({**trade_payload, "status": "FILLED", "order_id": order_id})
                 available_slots -= 1
 
                 # Send Instant Telegram Execution Ticket
-                mode_desc = "Overnight Hold Allowed (Protected by Server-Side Hard Stop)" if ALLOW_OVERNIGHT_HOLD else "Same-Day In & Out"
-                ticket_msg = (
-                    f"🚀 <b>AGENTQUANT // {self.timeframe.upper()} TRADE EXECUTED</b>\n"
-                    f"• <b>Ticket:</b> <code>cTrader #{order_id}</code>\n"
-                    f"• <b>Action:</b> 🟢 <b>BUY MARKET</b> ({strat_name})\n"
-                    f"• <b>Asset:</b> <code>{csym}</code> ({dname})\n"
-                    f"• <b>Size:</b> <code>{lots} Lots</code> (1 Micro Contract)\n"
-                    f"• <b>Fill Price:</b> <code>${exec_price:.2f}</code>\n"
-                    f"• <b>Take-Profit:</b> <code>${tp_price:.2f}</code> (+{target_pct*100:.2f}% Mean Reversion)\n"
-                    f"• <b>Stop-Loss:</b> <code>${sl_price:.2f}</code> (-{stop_pct*100:.2f}% Hard Broker Stop)\n"
-                    f"• <b>Mode:</b> {mode_desc}\n"
-                    f"• <b>Protection:</b> $180 Daily / $360 Max Drawdown Cushion 100% Intact\n"
-                    f"• <b>Safety:</b> Anti-Chase & Freshness filters verified"
-                )
+                ticket_msg = f"🟢 <b>BUY:</b> <b>{dname}</b>"
                 # Generate Institutional Candlestick Trade Card
                 card_buf = None
                 try:
