@@ -1968,7 +1968,7 @@ def handle_update(update: dict):
         # Navigation Callbacks
         if data in ["cmd_overview", "cmd_menu", "cmd_refresh"]:
             new_text = render_overview_text()
-            markup = get_menu_for_user(user_id)
+            markup = {"inline_keyboard": []}
         elif data == "cmd_balance":
             new_text = render_balance_text()
             markup = get_balance_markup()
@@ -2738,7 +2738,6 @@ def handle_update(update: dict):
                 "chat_id": chat_id,
                 "text": render_overview_text(),
                 "parse_mode": "HTML",
-                "reply_markup": get_main_menu_markup(),
             })
         elif any(cmd in text for cmd in ["/balance", "/bal", "💰 balance", "balance", "bal", "risk", "sentinel", "capital", "buffer"]):
             api_call("sendMessage", {
