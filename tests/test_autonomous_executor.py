@@ -10,11 +10,16 @@ from src.integrations.autonomous_executor import (
 
 class TestAutonomousExecutionEngine(unittest.TestCase):
     def setUp(self):
+        self.patcher_broadcast = patch("src.integrations.autonomous_executor.broadcast_telegram_ticket")
+        self.mock_broadcast = self.patcher_broadcast.start()
         self.mock_ctrader = MagicMock()
         self.mock_ctrader.get_spot_price.return_value = {"ask": 709.50, "bid": 709.40}
         self.engine = AutonomousExecutionEngine(ctrader_client=self.mock_ctrader)
         # Mock active market session timestamp (Wednesday 11:00 AM EST)
         self.active_dt = pd.Timestamp("2026-09-16 11:00:00", tz="America/New_York")
+
+    def tearDown(self):
+        self.patcher_broadcast.stop()
 
     def test_blocks_when_portfolio_at_max_capacity(self):
         """Verify that when 2 positions are active, no new trades are placed."""

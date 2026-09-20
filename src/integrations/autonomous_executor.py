@@ -223,7 +223,7 @@ def get_target_chat_ids() -> List[str]:
 
 
 def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None, reply_markup: Optional[dict] = None):
-    if not TELEGRAM_BOT_TOKEN:
+    if not TELEGRAM_BOT_TOKEN or os.getenv("PYTEST_CURRENT_TEST"):
         return
     for cid in get_target_chat_ids():
         sent_photo = False
