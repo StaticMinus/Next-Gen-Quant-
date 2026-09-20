@@ -199,16 +199,25 @@ def get_breadcrumb(cmd: str) -> str:
 def async_send_radar_chart(chat_id, ticker="SPY"):
     try:
         t = ticker.upper()
+        low_t = t.lower()
         csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
+        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+        p_val = _CACHE.get(f"{low_t}_price", default_prices.get(t, 500.0))
+        dip_val = _CACHE.get(f"{low_t}_lower_band", p_val * 0.995)
+        tp_val = round(dip_val * 1.0025, 2)
+        sl_val = round(dip_val * (1.0 - 0.0040), 2)
+
+        if p_val <= dip_val * 1.0005:
+            status_text = "Dipping now — waiting for entry"
+        else:
+            pct_to_dip = ((p_val - dip_val) / p_val) * 100.0
+            status_text = f"{pct_to_dip:.1f}% to dip trigger"
+
         buf = generate_radar_candlestick_chart(t)
         caption = (
-            f"🕯️ <b>{t} ({csym}) OPTION A SNIPER CANDLESTICK CARD</b>\n"
-            "• <b>Timeframe:</b> 1-Hour Intraday\n"
-            "• <b>Trigger Band:</b> 1.25σ Lower Band (Amber Line)\n"
-            "• <b>Target:</b> 20-Hour Moving Average (Cyan Line)\n"
-            "• <b>Universe:</b> Fab-4 US Index Universe (91.2% Overall Win Rate)\n"
-            "• <b>Risk:</b> 2.0% Hard Broker Stop (~$25 risk / $155 cushion)\n"
-            "• <b>Holding:</b> Overnight Hold Allowed with Server-Side SL/TP"
+            f"🕯️ <b>{t} ({csym}) • 15m Scalper</b>\n"
+            f"🎯 <b>Entry:</b> ${dip_val:,.2f} • <b>TP:</b> ${tp_val:,.2f} (+0.25%) • <b>SL:</b> ${sl_val:,.2f} (-0.40%)\n"
+            f"⚡ <b>Status:</b> {status_text} • 81.8% Win Rate"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -235,18 +244,16 @@ def async_send_ticket_card(chat_id, ticker="SPY"):
         t = ticker.upper()
         low_t = t.lower()
         csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
-        p_val = _CACHE.get(f"{low_t}_price", 754.0)
-        mean_target = _CACHE.get(f"{low_t}_mean_5d", p_val * 1.008)
+        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+        p_val = _CACHE.get(f"{low_t}_price", default_prices.get(t, 500.0))
         entry_limit = _CACHE.get(f"{low_t}_lower_band", p_val * 0.995)
-        stop_level = entry_limit * 0.98
-        buf = generate_trade_signal_card(t, entry_limit, mean_target, stop_level)
+        tp_target = round(entry_limit * 1.0025, 2)
+        stop_level = round(entry_limit * (1.0 - 0.0040), 2)
+        buf = generate_trade_signal_card(t, entry_limit, tp_target, stop_level)
         caption = (
-            f"🎫 <b>AgentQuant Trade Ticket // {t} ({csym})</b>\n"
-            f"• <b>Entry Trigger:</b> ${entry_limit:.2f} (1.25σ Dip)\n"
-            f"• <b>Take-Profit:</b> ${mean_target:.2f} (20H Mean Reversion)\n"
-            f"• <b>Stop-Loss:</b> ${stop_level:.2f} (-2.0% Hard Stop)\n"
-            f"• <b>Mode:</b> Overnight Hold Armed (Server-Side Hard Stop)\n"
-            f"• <b>Universe:</b> Fab-4 Quantitative Sniper"
+            f"🎫 <b>{t} ({csym}) • 15m Trade Ticket</b>\n"
+            f"🎯 <b>Entry:</b> ${entry_limit:,.2f} • <b>TP:</b> ${tp_target:,.2f} (+0.25%) • <b>SL:</b> ${stop_level:,.2f} (-0.40%)\n"
+            f"🛡️ <b>Risk:</b> 0.40% Hard Stop • 0% Overnight Risk"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -576,12 +583,10 @@ def check_and_dispatch_scheduled_briefings():
             for cid in get_broadcast_chat_ids():
                 try:
                     text = get_morning_briefing_for_user(cid)
-                    markup = get_menu_for_user(cid)
                     api_call("sendMessage", {
                         "chat_id": cid,
                         "text": text,
-                        "parse_mode": "HTML",
-                        "reply_markup": markup
+                        "parse_mode": "HTML"
                     })
                 except Exception as ex:
                     print(f"[!] Error dispatching morning briefing to {cid}: {ex}")
@@ -595,12 +600,10 @@ def check_and_dispatch_scheduled_briefings():
             for cid in get_broadcast_chat_ids():
                 try:
                     text = get_nightly_summary_for_user(cid)
-                    markup = get_menu_for_user(cid)
                     api_call("sendMessage", {
                         "chat_id": cid,
                         "text": text,
-                        "parse_mode": "HTML",
-                        "reply_markup": markup
+                        "parse_mode": "HTML"
                     })
                 except Exception as ex:
                     print(f"[!] Error dispatching nightly summary to {cid}: {ex}")
@@ -1340,14 +1343,15 @@ def render_overview_text():
     items = enriched if enriched else positions
     num_trades = len(items)
 
+    strat_tag = "<b>M15 Scalper (15m)</b>"
     if num_trades == 0:
-        return f"{status_icon} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)"
+        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)"
     else:
         total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
         total_naira = total_pnl * rate
         pnl_sign = "+" if total_pnl >= 0 else "-"
         pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
-        return f"{status_icon} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})"
+        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})"
 
 
 def render_balance_text():
@@ -1471,96 +1475,50 @@ def render_tracker_text():
 
 
 def render_morning_briefing_text():
-    now_str = datetime.now().strftime("%A, %b %d • %H:%M WAT")
+    capital = _CACHE.get("capital", 5993.38)
+    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
+    buffer_left = _CACHE.get("buffer", 360.0)
+    naira_cap = capital * rate
+    naira_buf = buffer_left * rate
+    naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
+    naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
+
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
-    active_pos = enriched if enriched else positions
+    items = enriched if enriched else positions
+    num_trades = len(items)
 
     lines = [
-        f"{get_breadcrumb('cmd_morning')}\n",
-        "────────────────────────────\n",
-        "🌅 <b>Good Morning David! // Getting Ready Briefing</b>\n",
-        "────────────────────────────\n",
-        f"📅 <code>{now_str}</code>\n",
-        "────────────────────────────\n",
-        "1. 🎯 <b>Active Strategy & Trades:</b>\n",
-        "   • <b>Active Model:</b> Option A (1-Hour Quant Sniper, 92.9% Win Rate)\n"
+        "🌅 <b>MORNING BRIEF • M15 SCALPER (15m)</b>\n",
+        f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} ({naira_buf_str})\n",
     ]
-    if active_pos:
-        for p in active_pos:
-            sym = p.get("symbol_name") or p.get("symbolName") or "Trade"
-            curr = p.get("current_price") or p.get("entry_price", 0.0)
-            pnl = p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0)
-            tp = p.get("take_profit") or p.get("takeProfit", 0.0)
-            pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-            lines.append(f"   • <b>{sym}:</b> Holding safely at <b>${curr:,.2f}</b> (Floating: {pnl_str})\n")
-            if tp:
-                lines.append(f"     Target TP: <b>${tp:,.2f}</b>\n")
+    if num_trades == 0:
+        lines.append("⚪ <b>Trades:</b> 0 Open (100% Cash • 0% Overnight Risk)\n")
     else:
-        lines.append("   • <b>Position Status:</b> 100% in Cash (Zero Overnight Risk)\n")
-        lines.append("   • <b>Execution Cadence:</b> 1–2 High-Conviction Trades/Week (~5 trades/month)\n")
+        total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
+        pnl_sign = "+" if total_pnl >= 0 else "-"
+        lines.append(f"🟢 <b>Trades:</b> {num_trades} Active ({pnl_sign}${abs(total_pnl):,.2f})\n")
 
-    lines.append("\n2. 📊 <b>Option A Focus Universe (SPY & QQQ):</b>\n")
-    spy_p = _CACHE.get("spy_price", 754.07)
-    spy_dip = _CACHE.get("spy_lower_band", 755.23)
-    lines.append(f"   • 🏛️ <b>SPY (S&P 500):</b> At <b>${spy_p:.2f}</b> (Dip Trigger: ${spy_dip:.2f})\n")
-
-    qqq_p = _CACHE.get("qqq_price", 704.75)
-    qqq_dip = _CACHE.get("qqq_lower_band", 704.01)
-    lines.append(f"   • 💻 <b>QQQ (Nasdaq 100):</b> At <b>${qqq_p:.2f}</b> (Dip Trigger: ${qqq_dip:.2f})\n")
-
-    cap = _CACHE.get("capital", 6000.0)
-    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
-    lines.append("\n3. 🛡️ <b>Account Safety & Peace of Mind:</b>\n")
-    lines.append(f"   • Account Balance: <b>${cap:,.2f} USD</b> (~₦{cap * rate:,.0f} NGN)\n")
-    lines.append("   • Daily Loss Barrier ($180.00): <b>100% INTACT & UNBREACHED</b>\n")
-    lines.append("   • Total Loss Barrier ($360.00): <b>100% SAFE</b>\n")
-    lines.append("   • US Market Session opens at <b>2:30 PM WAT</b>. The server algorithm scans automatically!\n")
-    lines.append("────────────────────────────\n")
-    lines.append("Have an amazing, productive, and stress-free day ahead, David!")
+    lines.append("📡 <b>Radar:</b> SPY, QQQ, DIA, IWM scanning for 15m dips\n")
+    lines.append("⚡ <b>Session:</b> US Market opens 2:30 PM WAT — Executor armed")
     return "".join(lines)
 
 
 def render_nightly_summary_text():
-    now_str = datetime.now().strftime("%A, %b %d • %H:%M WAT")
-    enriched = _CACHE.get("enriched_positions", [])
-    positions = _CACHE.get("positions", [])
-    active_pos = enriched if enriched else positions
+    capital = _CACHE.get("capital", 5993.38)
+    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
+    buffer_left = _CACHE.get("buffer", 360.0)
+    naira_cap = capital * rate
+    naira_buf = buffer_left * rate
+    naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
+    naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
 
     lines = [
-        f"{get_breadcrumb('cmd_nightly')}\n",
-        "────────────────────────────\n",
-        "🌙 <b>Nightly Market Summary // Day's Wrap-Up</b>\n",
-        "────────────────────────────\n",
-        f"📅 <code>{now_str}</code>\n",
-        "────────────────────────────\n",
-        "📊 <b>Today's Trades & Position Health:</b>\n"
+        "🌙 <b>NIGHT WRAP • M15 SCALPER (15m)</b>\n",
+        f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} (100% Safe)\n",
+        "⚪ <b>Positions:</b> All flat (100% Cash • 0% Overnight Risk)\n",
+        "🎯 <b>Strategy:</b> 81.8% Win Rate • Ready for tomorrow's 15m dips"
     ]
-    if active_pos:
-        for p in active_pos:
-            sym = p.get("symbol_name") or p.get("symbolName") or "Trade"
-            curr = p.get("current_price") or p.get("entry_price", 0.0)
-            pnl = p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0)
-            tp = p.get("take_profit") or p.get("takeProfit", 0.0)
-            pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-            lines.append(f"• <b>{sym}:</b> Holding safely at <b>${curr:,.2f}</b> (Floating: {pnl_str})\n")
-    else:
-        lines.append("• <b>Open Trades:</b> None right now. Account is 100% in cash.\n")
-        lines.append("• <b>Option A Discipline:</b> No forced trades. Patiently waiting for high-conviction 1H dips.\n")
-
-    cap = _CACHE.get("capital", 6000.0)
-    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
-    lines.append("\n🛡️ <b>Daily Risk Guardian Report:</b>\n")
-    lines.append(f"• Account Balance: <b>${cap:,.2f} USD</b> (~₦{cap * rate:,.0f} NGN)\n")
-    lines.append("• Daily Loss Barrier ($180.00): <b>100% SAFE & UNBREACHED</b>\n")
-    lines.append("• Total Loss Barrier ($360.00): <b>100% INTACT</b>\n")
-    lines.append("• FundedNext 5-Day Payout Cycle: Active and on track.\n")
-
-    lines.append("\n🔭 <b>Tomorrow's Strategy:</b>\n")
-    lines.append("• Option A algorithm continues monitoring SPY & QQQ for 1H mean-reversion dip entries.\n")
-    lines.append("• All hard stops and position sizing safeguards remain active on the server.\n")
-    lines.append("────────────────────────────\n")
-    lines.append("💤 Have a restful night, David! Your capital is 100% protected.")
     return "".join(lines)
 
 
@@ -1666,16 +1624,16 @@ def render_p2p_rate_text():
 
 def render_trade_logic_text():
     text = (
-        "🔍 <b>OPTION A: 1-HOUR SNIPER STRATEGY LOGIC</b>\n"
+        "🔍 <b>M15 RAPID SCALPER STRATEGY LOGIC</b>\n"
         "────────────────────────────\n"
-        "• <b>Universe:</b> Exclusively SPY (SPX500) & QQQ (NDX100) — zero single-stock risk\n"
-        "• <b>Timeframe:</b> 1-Hour candles (eliminates 100% of 1m/5m noise & spread friction)\n"
-        "• <b>Trade Frequency:</b> 1–2 high-conviction trades per week (~5 trades/month)\n"
-        "• <b>Entry Rule:</b> Buys oversold dip below 1.25 standard deviations of 20H mean in bull trend\n"
-        "• <b>Exit Rule:</b> Closes automatically when price snaps back to the mean (1–2 day hold)\n"
+        "• <b>Universe:</b> SPY, QQQ, DIA, IWM (Fab-4 US Index Universe)\n"
+        "• <b>Timeframe:</b> 15-Minute candles (rapid turnover, zero overnight hold)\n"
+        "• <b>Trade Frequency:</b> ~15 trades per week (~3 trades/day, 38m avg hold)\n"
+        "• <b>Entry Rule:</b> Buys oversold dip below 1.50σ of 8-bar (2H) rolling mean\n"
+        "• <b>Exit Rule:</b> Closes at +0.25% profit or touch of mean (max 90m hold)\n"
         "• <b>Position Sizing:</b> 0.10 lots per trade (~$10 per point movement)\n"
-        "• <b>Risk Limit:</b> -$25 max risk per trade (leaves $155 daily cushion intact)\n"
-        "• <b>Backtest Track Record:</b> 92.9% win rate over 5 years (275 wins / 21 losses)"
+        "• <b>Risk Limit:</b> 0.40% tight broker stop (~$25 max risk per trade)\n"
+        "• <b>Track Record:</b> 81.8% win rate (54 wins / 12 losses • 3.04 PF)"
     )
     return text
 
@@ -1707,7 +1665,7 @@ def render_history_7d_text():
         "• <b>Realized P&L:</b> $0.00 USD\n"
         "• <b>Balance:</b> $6,000.00 USD (cTrader #3028655)\n"
         "• <b>Safety Buffer:</b> $360.00 total / $180.00 daily (100% intact)\n"
-        "• <b>Strategy:</b> Option A (SPY & QQQ 1H Mean Reversion)"
+        "• <b>Strategy:</b> M15 Rapid Scalper (15m)"
     )
     return text
 
@@ -2071,10 +2029,10 @@ def handle_update(update: dict):
             return
         elif data == "cmd_morning":
             new_text = get_morning_briefing_for_user(user_id)
-            markup = get_menu_for_user(user_id)
+            markup = {"inline_keyboard": []}
         elif data == "cmd_nightly":
             new_text = get_nightly_summary_for_user(user_id)
-            markup = get_menu_for_user(user_id)
+            markup = {"inline_keyboard": []}
         elif data == "cmd_p2p_rate":
             new_text = render_p2p_rate_text()
             markup = {
@@ -2830,14 +2788,12 @@ def handle_update(update: dict):
                 "chat_id": chat_id,
                 "text": get_morning_briefing_for_user(user_id),
                 "parse_mode": "HTML",
-                "reply_markup": get_menu_for_user(user_id),
             })
         elif any(cmd in text for cmd in ["/nightly", "🌙 night wrap", "night wrap", "nightly summary", "nightly", "market summary", "good night"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": get_nightly_summary_for_user(user_id),
                 "parse_mode": "HTML",
-                "reply_markup": get_menu_for_user(user_id),
             })
         elif any(cmd in text for cmd in ["/logic", "logic"]):
             api_call("sendMessage", {

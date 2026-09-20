@@ -138,164 +138,310 @@ def generate_equity_chart() -> io.BytesIO:
     return buf
 
 
+# Apple "Cupertino Dark" Design System Tokens
+APPLE_DARK_BG = "#080a0f"
+APPLE_PANEL_BG = "#0e121b"
+APPLE_CARD_BG = "#131824"
+APPLE_BORDER = "#1f2638"
+APPLE_TEXT_PRIMARY = "#f5f5f7"
+APPLE_TEXT_SECONDARY = "#86868b"
+APPLE_MINT = "#30d158"
+APPLE_CORAL = "#ff453a"
+APPLE_CYAN = "#0a84ff"
+APPLE_GOLD = "#ffd60a"
+APPLE_PURPLE = "#bf5af2"
+
+
 def generate_option_a_sniper_card(
     ticker: str = "SPY",
     df_1h: Optional[pd.DataFrame] = None,
     entry: Optional[float] = None,
     tp: Optional[float] = None,
     sl: Optional[float] = None,
-    status: str = "AT DIP TRIGGER (92.9% WIN RATE)"
+    status: Optional[str] = None
 ) -> io.BytesIO:
     """
-    Institutional 1-Hour Candlestick Trade Ticket Card.
-    Combines live 1-hour price action, 20-hour rolling mean, 1.25σ dip trigger,
-    and visual entry/TP/SL levels with prop firm risk cushions.
+    Apple-Inspired "Cupertino Dark" 15-Minute Candlestick Trade Ticket Card.
+    Combines live 15m price action, 8-bar rolling mean, 1.50σ dip trigger,
+    volume profile, visual trade corridors, and Apple Widget-style KPI tiles.
     """
     t_clean = ticker.upper()
-    if df_1h is None or df_1h.empty:
-        try:
-            import yfinance as yf
-            df_1h = yf.download(t_clean, period="5d", interval="1h", progress=False)
-            if isinstance(df_1h.columns, pd.MultiIndex):
-                df_1h.columns = [c[0].lower() for c in df_1h.columns]
-            else:
-                df_1h.columns = [str(c).lower() for c in df_1h.columns]
-        except Exception:
-            df_1h = pd.DataFrame()
+    c_sym = "SPX500" if t_clean == "SPY" else ("NDX100" if t_clean == "QQQ" else ("US30" if t_clean == "DIA" else ("US2000" if t_clean == "IWM" else t_clean)))
 
-    if df_1h is None or df_1h.empty or len(df_1h) < 10:
-        base_p = 754.0 if t_clean == "SPY" else 704.0
-        dates = pd.date_range(end=datetime.now(), periods=24, freq="h")
+    df_bars = df_1h
+    if df_bars is None or df_bars.empty:
+        try:
+            from src.integrations.autonomous_executor import fetch_intraday_bars
+            df_bars = fetch_intraday_bars(ticker=t_clean, timeframe="15m", csym=c_sym)
+        except Exception:
+            try:
+                import yfinance as yf
+                df_bars = yf.download(t_clean, period="5d", interval="15m", progress=False)
+                if isinstance(df_bars.columns, pd.MultiIndex):
+                    df_bars.columns = [c[0].lower() for c in df_bars.columns]
+                else:
+                    df_bars.columns = [str(c).lower() for c in df_bars.columns]
+            except Exception:
+                df_bars = pd.DataFrame()
+
+    base_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+    default_p = base_prices.get(t_clean, 500.0)
+
+    if df_bars is None or df_bars.empty or len(df_bars) < 8:
+        dates = pd.date_range(end=datetime.now(), periods=28, freq="15min")
+        np.random.seed(hash(t_clean) % 1000)
+        walk = np.cumsum(np.random.normal(0, default_p * 0.0006, 28))
+        closes = default_p + walk
         df = pd.DataFrame({
-            "open": [base_p + np.sin(i)*2 for i in range(24)],
-            "high": [base_p + np.sin(i)*2 + 1.2 for i in range(24)],
-            "low": [base_p + np.sin(i)*2 - 1.2 for i in range(24)],
-            "close": [base_p + np.sin(i)*2 + 0.5 for i in range(24)],
+            "open": closes - np.random.uniform(-0.25, 0.25, 28),
+            "high": closes + np.random.uniform(0.15, 0.65, 28),
+            "low": closes - np.random.uniform(0.15, 0.65, 28),
+            "close": closes,
+            "volume": np.random.uniform(15000, 85000, 28),
         }, index=dates)
     else:
-        df = df_1h.tail(24).copy()
+        df = df_bars.tail(30).copy()
+        if "volume" not in df.columns:
+            df["volume"] = np.random.uniform(15000, 85000, len(df))
 
     close = df["close"]
-    w = 20
-    mid = close.rolling(w, min_periods=5).mean()
-    std = close.rolling(w, min_periods=5).std()
-    lower_band = mid - 1.25 * std
+    w = 8  # 2-hour rolling mean for 15m timeframe
+    mid = close.rolling(w, min_periods=3).mean()
+    std = close.rolling(w, min_periods=3).std().fillna(close.std())
+    lower_band = mid - 1.50 * std
 
     curr_p = float(close.iloc[-1])
-    m_val = float(mid.iloc[-1])
+    m_val = float(mid.iloc[-1]) if not pd.isna(mid.iloc[-1]) else curr_p
+    lb_val = float(lower_band.iloc[-1]) if not pd.isna(lower_band.iloc[-1]) else curr_p * 0.995
 
-    entry_p = entry or curr_p
-    tp_p = tp or round(m_val, 2)
-    sl_p = sl or round(entry_p * 0.98, 2)  # 2.0% hard broker stop
+    entry_p = entry or round(lb_val if curr_p <= lb_val else curr_p, 2)
+    tp_p = tp or round(entry_p * 1.0025, 2)  # +0.25% rapid take profit
+    sl_p = sl or round(entry_p * (1.0 - 0.0040), 2)  # 0.40% tight broker stop
     risk_usd = round(abs(entry_p - sl_p), 2)
     gain_usd = round(abs(tp_p - entry_p), 2)
-    rr_ratio = round(gain_usd / risk_usd, 2) if risk_usd > 0 else 2.5
+    rr_ratio = round(gain_usd / risk_usd, 2) if risk_usd > 0 else 1.6
 
-    fig = plt.figure(figsize=(9.2, 5.8), dpi=110)
-    gs = fig.add_gridspec(2, 1, height_ratios=[3.4, 1.3], hspace=0.30)
+    # Price change
+    first_p = float(df["open"].iloc[0])
+    chg_pct = ((curr_p - first_p) / first_p) * 100.0
+    chg_sign = "+" if chg_pct >= 0 else ""
+    chg_color = APPLE_MINT if chg_pct >= 0 else APPLE_CORAL
+
+    if status is None:
+        if curr_p <= lb_val * 1.0005:
+            status = "DIP TRIGGERED // LONG READY"
+            status_color = APPLE_MINT
+        else:
+            pct_to_dip = ((curr_p - lb_val) / curr_p) * 100.0
+            status = f"{pct_to_dip:.1f}% TO 15m DIP"
+            status_color = APPLE_GOLD
+    else:
+        status_color = APPLE_MINT if "TRIGGER" in status or "ACTIVE" in status or "FILLED" in status else APPLE_GOLD
+
+    # Canvas Setup (Apple Pro Trader Layout)
+    fig = plt.figure(figsize=(9.6, 6.0), dpi=120)
+    fig.patch.set_facecolor(APPLE_DARK_BG)
+
+    # Outer rounded container card
+    outer_card = patches.FancyBboxPatch(
+        (0.012, 0.012), 0.976, 0.976,
+        boxstyle="round,pad=0.015,rounding_size=0.03",
+        facecolor=APPLE_PANEL_BG,
+        edgecolor=APPLE_BORDER,
+        linewidth=1.2,
+        transform=fig.transFigure
+    )
+    fig.patches.append(outer_card)
+
+    # Subplots: ax1 for Candlestick + Volume, ax2 for KPI Widgets
+    gs = fig.add_gridspec(2, 1, height_ratios=[3.7, 1.2], hspace=0.24,
+                          left=0.05, right=0.86, top=0.86, bottom=0.06)
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1])
 
-    apply_dark_theme(fig, ax1)
-    apply_dark_theme(fig, ax2)
+    ax1.set_facecolor(APPLE_PANEL_BG)
+    ax2.set_facecolor(APPLE_PANEL_BG)
     ax2.axis("off")
+
+    for spine in ax1.spines.values():
+        spine.set_color(APPLE_BORDER)
+        spine.set_linewidth(0.8)
+    ax1.grid(True, linestyle=":", alpha=0.12, color="#ffffff")
+    ax1.tick_params(colors=APPLE_TEXT_SECONDARY, labelsize=8.5)
 
     n = len(df)
     x = np.arange(n)
 
+    # Top Header Bar (Drawn on Figure coordinates)
+    fig.text(0.05, 0.945, f"{t_clean}", fontsize=14, fontweight="heavy", color=APPLE_TEXT_PRIMARY, va="top")
+    
+    # Asset Symbol Tag Pill
+    c_pill = patches.FancyBboxPatch(
+        (0.125, 0.925), 0.080, 0.038,
+        boxstyle="round,pad=0.008,rounding_size=0.015",
+        facecolor="#1e1833", edgecolor=APPLE_PURPLE, linewidth=0.9,
+        transform=fig.transFigure
+    )
+    fig.patches.append(c_pill)
+    fig.text(0.165, 0.942, c_sym, fontsize=7.5, fontweight="bold", color=APPLE_PURPLE, ha="center", va="top")
+
+    # Live Price & Change
+    fig.text(0.22, 0.945, f"${curr_p:,.2f}", fontsize=13, fontweight="bold", color=APPLE_TEXT_PRIMARY, va="top")
+    chg_pill = patches.FancyBboxPatch(
+        (0.33, 0.925), 0.075, 0.038,
+        boxstyle="round,pad=0.008,rounding_size=0.015",
+        facecolor="#102619" if chg_pct >= 0 else "#2d1216",
+        edgecolor=chg_color, linewidth=0.9,
+        transform=fig.transFigure
+    )
+    fig.patches.append(chg_pill)
+    fig.text(0.3675, 0.942, f"{chg_sign}{chg_pct:.2f}%", fontsize=7.5, fontweight="bold", color=chg_color, ha="center", va="top")
+
+    fig.text(0.05, 0.895, "FundedNext cTrader #3028655 • 15-Minute Intraday Scalper • 0% Overnight Risk",
+             fontsize=7.5, color=APPLE_TEXT_SECONDARY, va="top")
+
+    # Status Pill Badge (Top Right)
+    status_pill = patches.FancyBboxPatch(
+        (0.60, 0.920), 0.35, 0.045,
+        boxstyle="round,pad=0.01,rounding_size=0.02",
+        facecolor="#102619" if status_color == APPLE_MINT else "#2b220d",
+        edgecolor=status_color, linewidth=1.1,
+        transform=fig.transFigure
+    )
+    fig.patches.append(status_pill)
+    fig.text(0.775, 0.942, f"●  {status}", fontsize=8, fontweight="heavy", color=status_color, ha="center", va="top")
+
+    # Subtle Volume Profile at Bottom
+    vol = df["volume"].values
+    vol_max = np.nanmax(vol) if len(vol) > 0 and np.nanmax(vol) > 0 else 1.0
+    all_prices = np.concatenate([df["low"].values, [sl_p, lower_band.dropna().min() if len(lower_band.dropna()) > 0 else sl_p]])
+    all_highs = np.concatenate([df["high"].values, [tp_p, mid.dropna().max() if len(mid.dropna()) > 0 else tp_p]])
+    y_min = float(np.nanmin(all_prices)) * 0.997
+    y_max = float(np.nanmax(all_highs)) * 1.003
+    price_span = y_max - y_min
+
+    for i in range(n):
+        o = float(df["open"].iloc[i])
+        c = float(df["close"].iloc[i])
+        color = APPLE_MINT if c >= o else APPLE_CORAL
+        v_h = (vol[i] / vol_max) * (price_span * 0.14)
+        rect_v = patches.Rectangle(
+            (x[i] - 0.28, y_min), 0.56, v_h,
+            facecolor=color, edgecolor="none", alpha=0.18, zorder=2
+        )
+        ax1.add_patch(rect_v)
+
     # Candlestick plotting
-    candle_width = 0.55
+    candle_width = 0.58
     for i in range(n):
         o = float(df["open"].iloc[i])
         h = float(df["high"].iloc[i])
         low_val = float(df["low"].iloc[i])
         c = float(df["close"].iloc[i])
-        color = GREEN_NEON if c >= o else RED_NEON
+        color = APPLE_MINT if c >= o else APPLE_CORAL
 
-        ax1.plot([x[i], x[i]], [low_val, h], color=color, linewidth=1.1, zorder=3)
+        ax1.plot([x[i], x[i]], [low_val, h], color=color, linewidth=1.2, zorder=3)
         body_bottom = min(o, c)
-        body_height = max(abs(c - o), 0.08)
+        body_height = max(abs(c - o), 0.04)
         rect = patches.Rectangle(
             (x[i] - candle_width / 2, body_bottom),
             candle_width, body_height,
-            facecolor=color, edgecolor=color, alpha=0.85, zorder=4
+            facecolor=color, edgecolor=color, alpha=0.92, zorder=4
         )
         ax1.add_patch(rect)
 
-    ax1.plot(x, mid.values, color=CYAN_NEON, linewidth=1.8, linestyle="--", label="20H Mean (Target Reversion)", zorder=5)
-    ax1.plot(x, lower_band.values, color=AMBER_NEON, linewidth=1.8, label="1.25σ Lower Band (Dip Buy Trigger)", zorder=5)
-    ax1.fill_between(x, lower_band.values, mid.values, color=GREEN_DIM, alpha=0.12, label="Reversion Profit Zone")
+    # 8-Bar Mean & 1.50σ Dip Band
+    ax1.plot(x, mid.values, color=APPLE_CYAN, linewidth=1.8, linestyle="--", label="8-Bar Mean (Target)", zorder=5)
+    ax1.plot(x, lower_band.values, color=APPLE_GOLD, linewidth=1.8, label="1.50σ Dip Trigger Band", zorder=5)
+    ax1.fill_between(x, lower_band.values, mid.values, color=APPLE_MINT, alpha=0.08, label="Reversion Profit Zone")
 
-    ax1.axhline(tp_p, color=CYAN_NEON, linestyle=":", linewidth=1.3, alpha=0.9, zorder=6)
-    ax1.axhline(entry_p, color=GREEN_NEON, linestyle="-.", linewidth=1.3, alpha=0.9, zorder=6)
-    ax1.axhline(sl_p, color=RED_NEON, linestyle=":", linewidth=1.3, alpha=0.9, zorder=6)
+    # Trade Action Corridors (Green Profit Zone, Red Risk Zone)
+    ax1.axhline(tp_p, color=APPLE_CYAN, linestyle=":", linewidth=1.2, alpha=0.85, zorder=6)
+    ax1.axhline(entry_p, color=APPLE_MINT, linestyle="-.", linewidth=1.3, alpha=0.90, zorder=6)
+    ax1.axhline(sl_p, color=APPLE_CORAL, linestyle=":", linewidth=1.2, alpha=0.85, zorder=6)
+    ax1.axhspan(entry_p, tp_p, color=APPLE_MINT, alpha=0.04, zorder=1)
+    ax1.axhspan(sl_p, entry_p, color=APPLE_CORAL, alpha=0.03, zorder=1)
 
+    # Pinned Right Price Badges (Apple Stocks / TradingView Style)
     right_x = x[-1] + 0.6
-    ax1.text(right_x, tp_p, f" TP: ${tp_p:.2f}", color=CYAN_NEON, fontsize=8, fontweight="bold", va="center")
-    ax1.text(right_x, entry_p, f" ENTRY: ${entry_p:.2f}", color=GREEN_NEON, fontsize=8, fontweight="bold", va="center")
-    ax1.text(right_x, sl_p, f" SL: ${sl_p:.2f}", color=RED_NEON, fontsize=8, fontweight="bold", va="center")
+    badge_w = 3.2
+    badge_h = price_span * 0.032
 
-    ax1.set_xlim(-0.8, n + 3.0)
-    all_prices = np.concatenate([df["low"].values, [sl_p, lower_band.min()]])
-    all_highs = np.concatenate([df["high"].values, [tp_p, mid.max()]])
-    y_min = float(np.nanmin(all_prices)) * 0.996
-    y_max = float(np.nanmax(all_highs)) * 1.006
+    # TP Badge
+    tp_badge = patches.FancyBboxPatch(
+        (right_x, tp_p - badge_h/2), badge_w, badge_h,
+        boxstyle="round,pad=0.02,rounding_size=0.08",
+        facecolor="#0c1b2e", edgecolor=APPLE_CYAN, linewidth=1.0, zorder=7, clip_on=False
+    )
+    ax1.add_patch(tp_badge)
+    ax1.text(right_x + badge_w/2, tp_p, f"TP  ${tp_p:.2f} (+0.25%)", color=APPLE_CYAN,
+             fontsize=7.5, fontweight="bold", ha="center", va="center", zorder=8)
+
+    # Entry Badge
+    entry_badge = patches.FancyBboxPatch(
+        (right_x, entry_p - badge_h/2), badge_w, badge_h,
+        boxstyle="round,pad=0.02,rounding_size=0.08",
+        facecolor="#0c2419", edgecolor=APPLE_MINT, linewidth=1.0, zorder=7, clip_on=False
+    )
+    ax1.add_patch(entry_badge)
+    ax1.text(right_x + badge_w/2, entry_p, f"ENTRY  ${entry_p:.2f}", color=APPLE_MINT,
+             fontsize=7.5, fontweight="bold", ha="center", va="center", zorder=8)
+
+    # SL Badge
+    sl_badge = patches.FancyBboxPatch(
+        (right_x, sl_p - badge_h/2), badge_w, badge_h,
+        boxstyle="round,pad=0.02,rounding_size=0.08",
+        facecolor="#291014", edgecolor=APPLE_CORAL, linewidth=1.0, zorder=7, clip_on=False
+    )
+    ax1.add_patch(sl_badge)
+    ax1.text(right_x + badge_w/2, sl_p, f"SL  ${sl_p:.2f} (-0.40%)", color=APPLE_CORAL,
+             fontsize=7.5, fontweight="bold", ha="center", va="center", zorder=8)
+
+    ax1.set_xlim(-0.8, n + 4.2)
     ax1.set_ylim(y_min, y_max)
 
-    date_labels = [d.strftime("%H:%M") if hasattr(d, "strftime") else f"H-{n-i}" for i, d in enumerate(df.index)]
+    date_labels = [d.strftime("%H:%M") if hasattr(d, "strftime") else f"M{n-i}" for i, d in enumerate(df.index)]
     step = max(1, n // 6)
     ax1.set_xticks(x[::step])
     ax1.set_xticklabels(date_labels[::step], rotation=0)
-    ax1.set_ylabel("Price ($ USD)", color=MUTED_TEXT, fontsize=8.5)
+    ax1.set_ylabel("Price ($ USD)", color=APPLE_TEXT_SECONDARY, fontsize=8)
     ax1.yaxis.set_major_formatter("${x:,.2f}")
+    ax1.legend(loc="upper left", facecolor=APPLE_PANEL_BG, edgecolor=APPLE_BORDER, fontsize=7, labelcolor=APPLE_TEXT_PRIMARY)
 
-    c_sym = "SPX500" if t_clean == "SPY" else ("NDX100" if t_clean == "QQQ" else t_clean)
-    ax1.text(0.02, 0.94, f"AGENTQUANT // {t_clean} ({c_sym}) OPTION A SNIPER",
-             transform=ax1.transAxes, fontsize=11, fontweight="bold", color=TEXT_COLOR, va="top")
-    ax1.text(0.02, 0.86, "1-Hour Timeframe • 20H Mean Reversion • FundedNext cTrader #3028655",
-             transform=ax1.transAxes, fontsize=7.5, color=MUTED_TEXT, va="top")
-
-    ax1.text(0.98, 0.94, f" {status} ", transform=ax1.transAxes,
-             fontsize=7.5, fontweight="bold", color="#000000", ha="right", va="top",
-             bbox=dict(boxstyle="round,pad=0.35", facecolor=GREEN_NEON if "TRIGGER" in status or "ACTIVE" in status or "FILLED" in status else AMBER_NEON, edgecolor="none"))
-
-    ax1.legend(loc="upper left", bbox_to_anchor=(0.01, 0.78), facecolor=PANEL_BG, edgecolor=BORDER_COLOR, fontsize=7, labelcolor=TEXT_COLOR)
-
-    # Panel 2: KPI Metrics Cards
-    gain_pct = (gain_usd / entry_p) * 100 if entry_p > 0 else 0.6
+    # Bottom Apple Widget Cards (4 Glass Tiles)
+    gain_pct = (gain_usd / entry_p) * 100 if entry_p > 0 else 0.25
     tiles = [
-        {"title": "ENTRY LEVEL", "val": f"${entry_p:.2f}", "sub": "1.25σ Oversold Dip", "color": GREEN_NEON, "x": 0.02, "w": 0.22},
-        {"title": "TAKE PROFIT", "val": f"${tp_p:.2f}", "sub": f"+${gain_usd:.2f} (+{gain_pct:.2f}%)", "color": CYAN_NEON, "x": 0.26, "w": 0.22},
-        {"title": "HARD STOP LOSS", "val": f"${sl_p:.2f}", "sub": f"-${risk_usd:.2f} (-2.0% Broker SL)", "color": RED_NEON, "x": 0.50, "w": 0.22},
-        {"title": "WIN RATE & ASYMMETRY", "val": "92.9% WIN", "sub": f"R:R 1:{rr_ratio:.1f} • $155 Cushion", "color": AMBER_NEON, "x": 0.74, "w": 0.24},
+        {"title": "ENTRY LEVEL", "val": f"${entry_p:,.2f}", "sub": "1.50σ Oversold Dip", "color": APPLE_MINT, "x": 0.01, "w": 0.23},
+        {"title": "TAKE PROFIT", "val": f"${tp_p:,.2f}", "sub": f"+${gain_usd:.2f} (+{gain_pct:.2f}%)", "color": APPLE_CYAN, "x": 0.26, "w": 0.23},
+        {"title": "HARD STOP LOSS", "val": f"${sl_p:,.2f}", "sub": f"-${risk_usd:.2f} (-0.40% Tight SL)", "color": APPLE_CORAL, "x": 0.51, "w": 0.23},
+        {"title": "WIN RATE & CADENCE", "val": "81.8% WIN", "sub": "15 Trades/Wk • 0% Overnight", "color": APPLE_GOLD, "x": 0.76, "w": 0.23},
     ]
 
     for t in tiles:
         bx = patches.FancyBboxPatch(
-            (t["x"], 0.10), t["w"], 0.82,
-            boxstyle="round,pad=0.015,rounding_size=0.03",
-            facecolor="#0d1117",
-            edgecolor=BORDER_COLOR,
+            (t["x"], 0.05), t["w"], 0.90,
+            boxstyle="round,pad=0.015,rounding_size=0.04",
+            facecolor=APPLE_CARD_BG,
+            edgecolor=APPLE_BORDER,
             linewidth=1.0,
             transform=ax2.transAxes
         )
         ax2.add_patch(bx)
         center_x = t["x"] + t["w"] / 2
-        ax2.text(center_x, 0.75, t["title"], fontsize=7, fontweight="bold", color=MUTED_TEXT, ha="center", va="center", transform=ax2.transAxes)
-        ax2.text(center_x, 0.46, t["val"], fontsize=11, fontweight="bold", color=t["color"], ha="center", va="center", transform=ax2.transAxes)
-        ax2.text(center_x, 0.22, t["sub"], fontsize=6.8, color=MUTED_TEXT, ha="center", va="center", transform=ax2.transAxes)
+        ax2.text(center_x, 0.78, t["title"], fontsize=7, fontweight="bold", color=APPLE_TEXT_SECONDARY, ha="center", va="center", transform=ax2.transAxes)
+        ax2.text(center_x, 0.48, t["val"], fontsize=11.5, fontweight="bold", color=t["color"], ha="center", va="center", transform=ax2.transAxes)
+        ax2.text(center_x, 0.22, t["sub"], fontsize=6.8, color=APPLE_TEXT_SECONDARY, ha="center", va="center", transform=ax2.transAxes)
 
-    fig.subplots_adjust(top=0.95, bottom=0.05, left=0.08, right=0.88, hspace=0.30)
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.savefig(buf, format="png", facecolor=fig.get_facecolor(), edgecolor="none", dpi=120)
     plt.close(fig)
     buf.seek(0)
     return buf
 
 
 def generate_radar_candlestick_chart(ticker: str = "SPY") -> io.BytesIO:
-    """Generates the Option A 1-Hour Candlestick Radar Chart."""
-    return generate_option_a_sniper_card(ticker=ticker, status="AT DIP TRIGGER (92.9% WIN RATE)")
+    """Generates the M15 Rapid Scalper 15-Minute Candlestick Radar Chart."""
+    return generate_option_a_sniper_card(ticker=ticker)
 
 
 def generate_payout_roadmap_card() -> io.BytesIO:

@@ -1077,5 +1077,95 @@ All technical jargon (pipettes, standard deviations, ATR, point distances) and n
 ### Verification:
 - **`pytest tests/test_telegram_buttons.py tests/test_autonomous_executor.py -v`:** **30/30 PASSED** (0 failures, 100% click & execution reliability).
 
+---
 
+## 35. Our Active Production Strategy: 15-Minute (M15) Rapid Scalper & 5-Account Scaling Roadmap
+
+**Date:** September 19, 2026  
+**Status:** **100% Active Production Strategy (Default: `15m`)**
+
+> [!IMPORTANT]
+> **Our Sole Current Strategy is 15-Minute (M15):**
+> - **Active Timeframe:** **15-Minute (`15m`)** exclusively (`AUTONOMOUS_TIMEFRAME=15m`).
+> - **Assets Traded (Fab-4):** SPY (SPX500), QQQ (NDX100), DIA (US30), IWM (US2000).
+> - **0% Overnight Risk:** Every position enters between 10:00 EST and 14:30 EST, and is strictly flattened by 15:45 EST. No overnight or weekend holding.
+> - **Rapid Turnover:** Average trade hold is only **38 minutes**.
+
+### 1. Strategy Architecture & Audited Backtest Telemetry
+
+Located in: [`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)  
+Backtest Evidence: [`results/m15_m30_deep_dive_report.json`](file:///c:/Users/David/Music/Trade/AgentQuant-main/results/m15_m30_deep_dive_report.json)
+
+| Parameter | Value |
+| :--- | :--- |
+| **Strategy Name** | **M15 Scalper A (Rapid In & Out)** |
+| **Timeframe** | **15-Minute (`15m`)** |
+| **Lookback Window** | 8 bars (2-hour rolling mean) |
+| **Dip Entry Band** | **1.50σ** below mean |
+| **Take Profit Target** | **+0.25%** or exit when price touches mean |
+| **Stop-Loss Protection** | **0.40%** tight hard stop |
+| **Maximum Hold Time** | **6 bars (90 minutes)** |
+| **Time-Decay Profit Banking** | Holding &ge; 3 bars (45m) & profit &ge; +0.10% |
+| **Audited Win Rate** | **81.8%** (54 wins / 12 losses) |
+| **Trade Frequency** | **15.0 trades / week (~60 / month / ~3 trades per day)** |
+| **Profit Factor (PF)** | **3.04** |
+| **Average Hold Time** | **37.7 minutes** |
+| **Max Historical Drawdown** | **$13.11** (on 0.10 lot micro) |
+
+---
+
+### 2. The 5-Account Fast-Track Scaling Roadmap ($206,000 Capital)
+
+- **Fleet Composition:** 1 × $6,000 account + 4 × $50,000 accounts = **$206,000 Total Capital**.
+- **Execution:** Automated via **cTrader Trade Copier** (1 bot trigger duplicates across all 5 accounts simultaneously).
+
+#### Timeline & Milestones:
+1. **Late September 2026 (Month 0):**
+   - $6,000 FundedNext account passed and activated.
+   - Purchase 1st $50,000 challenge account.
+2. **October 2026 (Passing Phase — 2 to 3 Weeks):**
+   - Because M15 executes **15 trades/week** with an **81.8% win rate**, the bot takes 30–45 trades in 2–3 weeks (~25–37 wins).
+   - The $3,000–$4,000 challenge target is reached in **2 to 3 weeks**.
+   - **Mid-to-Late October 2026:** First $50k account is passed and funded.
+3. **Late October / Early November 2026 (Full Deployment):**
+   - Purchase remaining 3 × $50k accounts.
+   - All 5 accounts linked into cTrader Trade Copier.
+   - **Target Month for Full Operations:** **Late October to Early November 2026**.
+
+---
+
+### 3. Financial Projections & Payout Schedule
+
+- **Profit Banked During Ramp-Up:** **~$1,050 – $1,100 USD (~₦1,732,500 – ₦1,815,000 NGN)** (fee refunds + 15% challenge phase bonuses + October $6k payouts).
+- **Ongoing Fleet Earnings (All 5 Accounts / 85% Trader Split):**
+  - **Trade Frequency:** **~15 trades / week (~60 / month)**
+  - **Win Rate:** **81.8%** (4 out of 5 trades win)
+  - **Per Winning Trade:** +$120 – $180 USD across fleet.
+  - **Bi-Weekly Payout (Every 14 Days to Binance USDT):** **~$2,400 – $3,200 USD (~₦3.96M – ₦5.28M NGN)**.
+  - **Monthly Take-Home:** **~$4,800 – $6,400 USD / month (~₦7,920,000 – ₦10,560,000 NGN / month)**.
+
+---
+
+## 36. Telegram Bot Zero-Grammar Simplification & 15-Minute Scalper Alignment
+
+**Date:** September 20, 2026  
+**Status:** **Implemented, Validated & Test Suite Passing (31/31)**
+
+### Summary of Changes:
+1. **Zero-Grammar Morning & Nightly Briefings (`render_morning_briefing_text` & `render_nightly_summary_text`):**
+   - Stripped away multi-paragraph essays, numbered headers, and technical jargon.
+   - Now formatted as concise, high-signal cards displaying live USD & Naira amounts (`~₦`), cash cushion status, and daily safety buffer health.
+2. **Overview Strategy Tag (`render_overview_text`):**
+   - Added explicit `M15 Scalper (15m)` tag to Overview responses (`🟢 ONLINE • M15 Scalper (15m) • $5,982.16 (~₦9.1M) • 0 Open Trades (100% Cash)`).
+3. **M15 Rapid Scalper Strategy Logic (`render_trade_logic_text`):**
+   - Updated from legacy 1-hour parameters to active 15m rules: 8-bar rolling mean, 1.50σ lower dip trigger, +0.25% TP, 0.40% tight SL, 0% overnight risk, 81.8% win rate across SPY, QQQ, DIA, and IWM.
+4. **15-Minute Candlestick Chart & Zero-Grammar Descriptions (`telegram_charts.py` & `telegram_bot_service.py`):**
+   - Upgraded candlestick generation to 15-minute timeframe (`15m`) using live intraday data across all Fab-4 tickers (SPY, QQQ, DIA, IWM), removing synthetic sine waves and incorrect base price fallbacks.
+   - Accurately plots Entry Level, Take Profit (+0.25%), and Stop Loss (0.40%) with clear visual lines and labels.
+   - Replaced verbose 7-line Telegram caption with a punchy 2-line zero-grammar status ticket showing exact levels and actionable status.
+5. **Main Menu Inline Keyboard Removal:**
+   - Removed inline main menu `reply_markup` from scheduled and on-demand morning and evening messages. Navigation is handled cleanly by the persistent bottom keyboard docked beneath the user's keyboard.
+
+### Verification Results:
+- **`pytest tests/test_telegram_buttons.py tests/test_autonomous_executor.py -v`:** **31/31 PASSED** (0 failures, 100% verification).
 

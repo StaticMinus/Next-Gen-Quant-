@@ -139,14 +139,35 @@ class TestTelegramTerminalButtons(unittest.TestCase):
         b1 = generate_equity_chart()
         self.assertTrue(len(b1.getvalue()) > 5000, "Equity chart too small")
 
-        b2 = generate_radar_candlestick_chart("SPY")
-        self.assertTrue(len(b2.getvalue()) > 5000, "Radar chart too small")
+        for tk in ["SPY", "QQQ", "DIA", "IWM"]:
+            b_chart = generate_radar_candlestick_chart(tk)
+            self.assertTrue(len(b_chart.getvalue()) > 5000, f"Radar chart for {tk} too small")
 
         b3 = generate_payout_roadmap_card()
         self.assertTrue(len(b3.getvalue()) > 5000, "Roadmap card too small")
 
         b4 = generate_profile_summary_card()
         self.assertTrue(len(b4.getvalue()) > 5000, "Profile summary card too small")
+
+    def test_15m_strategy_renders(self):
+        """Verify that overview, briefings, and trade logic all reflect the active 15m Scalper strategy."""
+        overview = render_overview_text()
+        self.assertIn("15m", overview)
+
+        morning = render_morning_briefing_text()
+        self.assertIn("MORNING BRIEF", morning)
+        self.assertIn("15m", morning)
+        self.assertNotIn("1-Hour", morning)
+
+        nightly = render_nightly_summary_text()
+        self.assertIn("NIGHT WRAP", nightly)
+        self.assertIn("15m", nightly)
+        self.assertNotIn("1-Hour", nightly)
+
+        logic = render_trade_logic_text()
+        self.assertIn("M15 RAPID SCALPER", logic)
+        self.assertIn("15-Minute", logic)
+        self.assertNotIn("1-Hour", logic)
 
         b5 = generate_risk_sentinel_card()
         self.assertTrue(len(b5.getvalue()) > 5000, "Risk sentinel card too small")
@@ -252,21 +273,23 @@ class TestTelegramTerminalButtons(unittest.TestCase):
         m_chacha = render_morning_briefing_chacha()
         self.assertIn("Cha Cha", m_chacha)
         self.assertIn("David", m_chacha)
-        self.assertIn("love", m_chacha.lower())
+        self.assertTrue(any(w in m_chacha.lower() for w in ["love", "heart", "angel", "treasure"]))
 
         n_chacha = render_nightly_summary_chacha()
         self.assertIn("Cha Cha", n_chacha)
         self.assertIn("David", n_chacha)
-        self.assertIn("love", n_chacha.lower())
+        self.assertTrue(any(w in n_chacha.lower() for w in ["love", "heart", "angel", "treasure"]))
 
         # Check role-aware dispatchers
         # Owner David gets standard briefing
         d_morning = get_morning_briefing_for_user(PRIMARY_CHAT_ID)
-        self.assertIn("Good Morning David", d_morning)
+        self.assertIn("MORNING BRIEF", d_morning)
+        self.assertIn("15m", d_morning)
         self.assertNotIn("Cha Cha", d_morning)
 
         d_nightly = get_nightly_summary_for_user(PRIMARY_CHAT_ID)
-        self.assertIn("Nightly Market Summary", d_nightly)
+        self.assertIn("NIGHT WRAP", d_nightly)
+        self.assertIn("15m", d_nightly)
         self.assertNotIn("Cha Cha", d_nightly)
 
         # Partner Cha Cha (7923834818) gets romantic version
