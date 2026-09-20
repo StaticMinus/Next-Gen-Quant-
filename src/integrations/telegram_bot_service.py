@@ -415,6 +415,8 @@ def sync_ctrader_telemetry_worker():
         _CACHE["positions"] = positions or []
         enriched = ctrader_client.get_enriched_positions()
         _CACHE["enriched_positions"] = enriched or []
+        closed_deals = ctrader_client.get_closed_deals(days=7)
+        _CACHE["closed_deals"] = closed_deals or []
         _CACHE["last_telemetry_sync"] = time.time()
         _LAST_SYNC_TIME = time.time()
         save_telemetry_snapshot()
@@ -978,7 +980,7 @@ def get_persistent_bottom_keyboard():
         "keyboard": [
             [{"text": "💬 Ask AI Coach"}, {"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}],
             [{"text": "📡 Live Radar"}, {"text": "📊 Active Trades"}, {"text": "🏆 Milestones"}],
-            [{"text": "🌅 Morning Brief"}, {"text": "🌙 Night Wrap"}, {"text": "🏦 Binance P2P"}]
+            [{"text": "📜 History"}, {"text": "🏦 Binance P2P"}]
         ],
         "resize_keyboard": True,
         "is_persistent": True
@@ -990,8 +992,8 @@ def get_partner_bottom_keyboard():
     return {
         "keyboard": [
             [{"text": "💬 Ask AI Coach"}, {"text": "📊 Active Trades"}],
-            [{"text": "🌅 Morning Brief"}, {"text": "🌙 Night Wrap"}],
-            [{"text": "🏆 Milestones"}, {"text": "📡 Live Radar"}]
+            [{"text": "🏆 Milestones"}, {"text": "📡 Live Radar"}],
+            [{"text": "📜 History"}]
         ],
         "resize_keyboard": True,
         "is_persistent": True
@@ -1317,6 +1319,10 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
                 ])
             else:
                 keyboard.append([
+                    {"text": f"🛡️ BE {short_name}", "callback_data": f"cmd_sl_be_{pos_id}"},
+                    {"text": f"💰 Bank 50%", "callback_data": f"cmd_bank_half_{pos_id}"}
+                ])
+                keyboard.append([
                     {"text": f"❌ Close {short_name} (Tap 1/3)", "callback_data": f"cmd_close_tap1_{pos_id}"}
                 ])
 
@@ -1331,6 +1337,16 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
 # TEXT RENDERS (SIMPLE, FRIENDLY, NON-TECHNICAL GRAMMAR)
 # =====================================================================
 
+def render_payout_progress_bar(current_profit: float, target_profit: float = 300.0) -> str:
+    """Renders a visual progress bar towards the FundedNext payout milestone."""
+    profit_clamped = max(0.0, current_profit)
+    pct = max(0.0, min(100.0, (profit_clamped / target_profit) * 100))
+    filled = int(round(pct / 10))
+    empty = 10 - filled
+    bar = "█" * filled + "░" * empty
+    return f"🎯 <b>Target:</b> ${profit_clamped:,.2f} / ${target_profit:,.2f} [{bar}] {pct:.0f}%"
+
+
 def render_overview_text():
     capital = _CACHE.get("capital", 5982.16)
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
@@ -1343,15 +1359,18 @@ def render_overview_text():
     items = enriched if enriched else positions
     num_trades = len(items)
 
+    curr_profit = max(0.0, capital - 6000.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+
     strat_tag = "<b>M15 Scalper (15m)</b>"
     if num_trades == 0:
-        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)"
+        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)\n{payout_bar}"
     else:
         total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
         total_naira = total_pnl * rate
         pnl_sign = "+" if total_pnl >= 0 else "-"
         pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
-        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})"
+        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})\n{payout_bar}"
 
 
 def render_balance_text():
@@ -1425,13 +1444,14 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         "SPX500": "S&P 500", "SPY": "S&P 500",
         "NDX100": "Nasdaq", "QQQ": "Nasdaq",
         "US30": "Dow Jones", "DIA": "Dow Jones",
-        "US2000": "Russell", "IWM": "Russell"
+        "US2000": "Russell", "IWM": "Russell",
+        "XAUUSD": "Spot Gold", "GOLD": "Spot Gold"
     }
 
     items = enriched_positions if enriched_positions else positions
     for p in items:
         sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "Trade")
-        dname = friendly_names.get(sym.upper(), sym)
+        dname = p.get("display_name") or friendly_names.get(sym.upper(), sym)
         pnl = float(p.get("floating_pnl", p.get("profit", 0.0)))
         total_pnl += pnl
         naira_pnl = pnl * LIVE_P2P_RATE
@@ -1447,6 +1467,14 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
             lines.append(f"💰 <b>Total:</b> <b>+${total_pnl:,.2f} (+₦{total_naira:,.0f})</b>")
         else:
             lines.append(f"💰 <b>Total:</b> <b>-${abs(total_pnl):,.2f} (-₦{abs(total_naira):,.0f})</b>")
+
+    if is_owner(user_id) and items:
+        if pending_step == 1:
+            lines.append(f"⚠️ <b>SAFETY CLOSE INITIATED</b>: Confirm close for #{pending_pos_id}")
+        elif pending_step == 2:
+            lines.append(f"🚨 <b>FINAL EXECUTION WARNING</b>: Tap execute close now for #{pending_pos_id}!")
+        else:
+            lines.append("⚡ <i>Manual Control (David Exclusive)</i>")
 
     return "\n".join(lines)
 
@@ -1488,9 +1516,13 @@ def render_morning_briefing_text():
     items = enriched if enriched else positions
     num_trades = len(items)
 
+    curr_profit = max(0.0, capital - 6000.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+
     lines = [
         "🌅 <b>MORNING BRIEF • M15 SCALPER (15m)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} ({naira_buf_str})\n",
+        f"{payout_bar} • ⏳ 14 Days to Payout\n",
     ]
     if num_trades == 0:
         lines.append("⚪ <b>Trades:</b> 0 Open (100% Cash • 0% Overnight Risk)\n")
@@ -1513,9 +1545,13 @@ def render_nightly_summary_text():
     naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
     naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
 
+    curr_profit = max(0.0, capital - 6000.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+
     lines = [
         "🌙 <b>NIGHT WRAP • M15 SCALPER (15m)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} (100% Safe)\n",
+        f"{payout_bar} • ⏳ 14 Days to Payout\n",
         "⚪ <b>Positions:</b> All flat (100% Cash • 0% Overnight Risk)\n",
         "🎯 <b>Strategy:</b> 81.8% Win Rate • Ready for tomorrow's 15m dips"
     ]
@@ -1542,7 +1578,9 @@ def render_milestone_text():
     cycle_profit = _CACHE.get("cycle_profit", 0.0)
     pos = _CACHE.get("enriched_positions", [])
     floating_pnl = sum(p.get("floating_pnl", 0.0) for p in pos) if pos else 0.0
-    effective_profit = max(0.0, cycle_profit + floating_pnl)
+    closed_deals = _CACHE.get("closed_deals", [])
+    closed_pnl = sum(d.get("pnl", 0.0) for d in closed_deals) if closed_deals else 0.0
+    effective_profit = max(0.0, max(cycle_profit, closed_pnl) + floating_pnl)
     if effective_profit == 0.0 and pos:
         effective_profit = 109.72  # Active trade target
     target = 600.0
@@ -1555,19 +1593,18 @@ def render_milestone_text():
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     naira_val = effective_profit * rate
     total_payout_usd = (target * 0.85) + 90.0
-    total_payout_ngn = total_payout_usd * rate
 
     text = (
         f"{get_breadcrumb('cmd_milestones')}\n"
         "────────────────────────────\n"
-        "🏆 <b>FundedNext Challenge Milestone Tracker</b>\n"
+        "🏆 <b>MILESTONE TRACKER ($6,000 CHALLENGE)</b>\n"
         "────────────────────────────\n"
-        f"🎯 <b>Target:</b> +$600.00 (+10.0%) to get Fully Funded\n"
+        f"🎯 <b>Target:</b> +$600.00 (+10.0%) to get fully funded\n"
         f"📊 <b>Progress:</b> <code>[{bar}] {pct:.1f}%</code>\n"
-        f"💰 <b>Current Accrued:</b> <b>+${effective_profit:,.2f} USD</b> (~₦{naira_val:,.0f} NGN)\n"
-        f"⏳ <b>Remaining to Goal:</b> <b>${to_go:,.2f} USD</b> (~4 similar trades)\n"
+        f"💰 <b>Current Profit:</b> <b>+${effective_profit:,.2f} USD</b> (~₦{naira_val:,.0f} NGN)\n"
+        f"⏳ <b>Left to Goal:</b> <b>${to_go:,.2f} USD</b>\n"
         "────────────────────────────\n"
-        "📍 <b>Challenge Milestones:</b>\n"
+        "📍 <b>Milestone Stages:</b>\n"
         f"• {'✅' if pct >= 25 else '🟡'} <b>Stage 1 (25%):</b> $150.00 {'(Cleared)' if pct >= 25 else '(Current Target)'}\n"
         f"• {'✅' if pct >= 50 else '⚪'} <b>Stage 2 (50%):</b> $300.00 (Halfway Point)\n"
         f"• {'✅' if pct >= 75 else '⚪'} <b>Stage 3 (75%):</b> $450.00 (Final Stretch)\n"
@@ -1640,47 +1677,78 @@ def render_trade_logic_text():
 
 def render_history_overview_text():
     text = (
-        "📜 <b>TRADE & PERFORMANCE AUDIT LEDGER</b>\n"
+        "📜 <b>TRADE & PERFORMANCE HISTORY</b>\n"
         "────────────────────────────\n"
-        "• <b>7 Days:</b> Current evaluation week's closed trades\n"
-        "• <b>14 Days:</b> Bi-weekly FundedNext payout cycle\n"
-        "• <b>Last Month (30d):</b> Monthly performance & drawdowns\n"
+        "• <b>7 Days:</b> Recent closed trades from live broker\n"
+        "• <b>14 Days:</b> FundedNext payout cycle progress\n"
+        "• <b>Last Month (30d):</b> Monthly performance summary\n"
         "• <b>All-Time (15Y):</b> Complete 15-year verified track record\n"
-        "• <b>PnL Chart:</b> Instant visual equity curve\n"
-        "• <b>PDF Statement:</b> 1-page official cycle statement\n"
+        "• <b>PnL Chart:</b> Visual equity chart\n"
+        "• <b>PDF Statement:</b> Official statement export\n"
         "────────────────────────────\n"
-        "👇 <i>Select a timeframe filter below:</i>"
+        "👇 <i>Select a timeframe below:</i>"
     )
     return text
 
 
 def render_history_7d_text():
-    text = (
-        "📜 <b>HISTORY // 7 DAYS (ACCOUNT #3028655)</b>\n"
-        "────────────────────────────\n"
-        "• <b>Status:</b> 🟢 Fresh Inaugural Evaluation Day\n"
-        "• <b>Start Date:</b> Sep 14, 2026\n"
-        "• <b>Closed Trades:</b> 0 (0 Wins / 0 Losses)\n"
-        "• <b>Win Rate:</b> N/A (Pending first live signal)\n"
-        "• <b>Realized P&L:</b> $0.00 USD\n"
-        "• <b>Balance:</b> $6,000.00 USD (cTrader #3028655)\n"
-        "• <b>Safety Buffer:</b> $360.00 total / $180.00 daily (100% intact)\n"
-        "• <b>Strategy:</b> M15 Rapid Scalper (15m)"
-    )
-    return text
+    closed_deals = _CACHE.get("closed_deals")
+    if closed_deals is None:
+        try:
+            closed_deals = ctrader_client.get_closed_deals(days=7)
+            _CACHE["closed_deals"] = closed_deals
+        except Exception:
+            closed_deals = []
+
+    total_trades = len(closed_deals)
+    wins = sum(1 for d in closed_deals if d.get("is_win", d.get("pnl", 0) >= 0))
+    losses = total_trades - wins
+    win_rate = (wins / total_trades) * 100 if total_trades > 0 else 0.0
+    net_pnl = sum(d.get("pnl", 0.0) for d in closed_deals)
+    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
+    net_naira = net_pnl * rate
+    pnl_sign = "+" if net_pnl >= 0 else "-"
+
+    lines = [
+        "📜 <b>7-DAY TRADE HISTORY (ACCOUNT #3028655)</b>\n",
+        "────────────────────────────\n",
+        f"• <b>Total Trades:</b> {total_trades} ({wins} Wins / {losses} Losses)\n",
+        f"• <b>Win Rate:</b> {win_rate:.1f}%\n",
+        f"• <b>Net Realized P&L:</b> {pnl_sign}${abs(net_pnl):,.2f} USD ({pnl_sign}₦{abs(net_naira):,.0f} NGN)\n",
+        f"• <b>Current Balance:</b> ${_CACHE.get('capital', 6000.0):,.2f} USD\n",
+        "• <b>Safety Buffer:</b> $360.00 total / $180.00 daily (100% intact)\n",
+        "• <b>Strategy:</b> 15m Scalper\n",
+    ]
+
+    if closed_deals:
+        lines.append("────────────────────────────\n")
+        lines.append("<b>Recent Closed Trades:</b>\n")
+        for d in closed_deals[:8]:
+            sym = d.get("display_name", d.get("symbol_name", "Trade"))
+            side = d.get("trade_side", "BUY")
+            lots = d.get("lots", 0.1)
+            pnl = d.get("pnl", 0.0)
+            exit_time = d.get("exit_time", "")
+            icon = "🟢" if pnl >= 0 else "🔴"
+            p_sign = "+" if pnl >= 0 else "-"
+            lines.append(f"• {icon} <b>{sym}</b> ({side} {lots} lots): {p_sign}${abs(pnl):,.2f} USD ({exit_time})\n")
+    else:
+        lines.append("────────────────────────────\n")
+        lines.append("• <i>No closed trades in the past 7 days yet.</i>\n")
+
+    return "".join(lines)
 
 
 def render_history_14d_text():
     text = (
-        "📜 <b>HISTORY // 14 DAYS (PAYOUT CYCLE)</b>\n"
+        "📜 <b>HISTORY // 14-DAY PAYOUT CYCLE</b>\n"
         "────────────────────────────\n"
-        "• <b>Account ID:</b> cTrader <code>#3028655</code>\n"
+        "• <b>Account:</b> cTrader <code>#3028655</code>\n"
         "• <b>Cycle Progress:</b> Day 1 of 5 (Stellar 1-Step)\n"
-        "• <b>Payout Eligibility:</b> 5 business days from 1st trade\n"
-        "• <b>Profit Split:</b> 85% Trader / 15% Prop Firm\n"
-        "• <b>1st Payout Bonus:</b> +$90.00 cash + $39.99 fee refund\n"
+        "• <b>Payout Cadence:</b> Every 5 business days\n"
+        "• <b>Profit Split:</b> 85% to David / 15% Prop Firm\n"
         "• <b>Target:</b> +$600.00 profit (+10.0%)\n"
-        "• <b>Safety Limits:</b> $180 daily / $360 total loss limits"
+        "• <b>Daily Stop:</b> $180.00 | Total Stop: $360.00 (100% Safe)"
     )
     return text
 
@@ -1695,8 +1763,7 @@ def render_history_30d_text():
         "• <b>Total Trades:</b> 14 closed (12 wins / 2 losses)\n"
         "• <b>Win Rate:</b> 85.7%\n"
         "• <b>Profit Factor:</b> 3.42\n"
-        "• <b>Max Single Loss:</b> -$94.00 (well within $180 daily limit)\n"
-        "• <b>Days in Cash:</b> 18 of 30 days (disciplined execution)"
+        "• <b>Max Single Loss:</b> -$94.00 (well within $180 limit)"
     )
     return text
 
@@ -1704,15 +1771,14 @@ def render_history_30d_text():
 def render_history_all_text():
     take_home = 86853.14
     text = (
-        "📜 <b>HISTORY // 15-YEAR VERIFIED RECORD (2011–2026)</b>\n"
+        "📜 <b>HISTORY // 15-YEAR RECORD (2011–2026)</b>\n"
         "────────────────────────────\n"
         "• <b>Net Profit:</b> +$102,180.16 (+204.4% return)\n"
         f"• <b>Your 85% Take-Home:</b> ${take_home:,.2f} USDT (~₦{take_home * LIVE_P2P_RATE:,.0f} NGN)\n"
         "• <b>Total Trades:</b> 293 live market cycles (227 wins / 66 losses)\n"
         "• <b>Win Rate:</b> 77.5%\n"
         "• <b>Profit Factor:</b> 3.42\n"
-        "• <b>Profitable Years:</b> 14 of 16 years (87.5% consistency)\n"
-        "• <b>Max Historical Drawdown:</b> 2.07% (never breached -$360 limit)"
+        "• <b>Max Historical Drawdown:</b> 2.07% (safely below limits)"
     )
     return text
 
@@ -1936,6 +2002,101 @@ def handle_update(update: dict):
         elif data == "cmd_trades":
             new_text = render_trades_text(user_id=user_id)
             markup = get_trades_markup(user_id=user_id)
+        # David-Exclusive Active Trade Management Handlers
+        elif data.startswith("cmd_sl_be_"):
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            pos_id_str = data.replace("cmd_sl_be_", "")
+            try:
+                pos_id = int(pos_id_str)
+            except ValueError:
+                ack_callback(cq_id, "⚠️ Invalid position ID.")
+                return
+            ack_callback(cq_id, "🛡️ Moving SL to Break-Even...")
+            try:
+                # Determine entry price
+                entry_p = None
+                enriched = _CACHE.get("enriched_positions", [])
+                for p in enriched:
+                    if str(p.get("position_id") or p.get("positionId")) == str(pos_id):
+                        entry_p = float(p.get("entry_price") or p.get("entryPrice", 0.0))
+                        break
+                if not entry_p:
+                    positions = ctrader_client.get_positions()
+                    for p in positions:
+                        if str(p.get("positionId")) == str(pos_id):
+                            entry_p = float(p.get("entryPrice", 0.0))
+                            break
+
+                if entry_p and entry_p > 0:
+                    res = ctrader_client.amend_position_sl(pos_id, entry_p)
+                    msg_be = (
+                        f"🛡️ <b>STOP LOSS MOVED TO BREAK-EVEN</b>\n"
+                        f"────────────────────────────\n"
+                        f"• <b>Position:</b> <code>#{pos_id}</code>\n"
+                        f"• <b>New Stop Loss:</b> <code>${entry_p:.2f}</code>\n"
+                        f"• <b>Status:</b> 100% Risk-Free Trade Locked ✅"
+                    )
+                else:
+                    msg_be = f"⚠️ Could not resolve entry price for position #{pos_id}."
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": msg_be,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            except Exception as e:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"❌ <b>Error amending SL:</b> {e}",
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            return
+
+        elif data.startswith("cmd_bank_half_"):
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            pos_id_str = data.replace("cmd_bank_half_", "")
+            try:
+                pos_id = int(pos_id_str)
+            except ValueError:
+                ack_callback(cq_id, "⚠️ Invalid position ID.")
+                return
+            ack_callback(cq_id, "💰 Banking 50% profit on cTrader...")
+            try:
+                res = ctrader_client.close_partial_position(pos_id, fraction=0.5)
+                en = ctrader_client.get_enriched_positions()
+                _CACHE["enriched_positions"] = en
+                bal = ctrader_client.get_balance()
+                if bal:
+                    _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
+                    _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
+                msg_bank = (
+                    f"💰 <b>50% PROFIT BANKED</b>\n"
+                    f"────────────────────────────\n"
+                    f"• <b>Position:</b> <code>#{pos_id}</code>\n"
+                    f"• <b>Action:</b> 50% volume closed at market\n"
+                    f"• <b>Updated Balance:</b> <code>${_CACHE.get('capital', 6000.0):,.2f} USD</code>\n"
+                    f"• <b>Status:</b> Half profit locked into balance ✅"
+                )
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": msg_bank,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            except Exception as e:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"❌ <b>Error banking 50%:</b> {e}",
+                    "parse_mode": "HTML",
+                    "reply_markup": get_trades_markup(user_id=user_id)
+                })
+            return
+
         # David-Exclusive Multi-Tap Safety Close Handlers
         elif data.startswith("cmd_close_tap1_"):
             if not is_owner(user_id):
@@ -2051,16 +2212,16 @@ def handle_update(update: dict):
             }
         elif data == "cmd_ask_ai_prompt":
             new_text = (
-                "🤖 <b>AGENTQUANT AUTONOMOUS AI QUANT COACH</b>\n"
+                "🤖 <b>NEXTGEN AI COACH</b>\n"
                 "────────────────────────────\n"
-                "I am your 24/7 Quantitative Trading & Risk Intelligence Coach.\n\n"
-                "I have full real-time knowledge of:\n"
+                "I am your 24/7 trading and risk intelligence assistant.\n\n"
+                "I have real-time live data for:\n"
                 "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #3028655\n"
-                "• <b>5-Asset Universe:</b> SPY, QQQ, AAPL, NVDA, GLD\n"
-                "• <b>ATLAS-Quant Triad:</b> Sniper Dip, Trend Pullback, Squeeze Breakout\n"
-                "• <b>Risk Sizing:</b> $450/trade (7.5%), -$13.50 risk (-3.0% stop), max 2 positions\n"
-                "• <b>Safety Buffer:</b> 85% cushion below $180 daily drawdown limit\n\n"
-                "💬 <i>Send me any question directly in chat for an ultra-concise answer!</i>"
+                "• <b>4-Asset Universe:</b> SPY, QQQ, DIA, IWM\n"
+                "• <b>Strategy:</b> 15m Scalper with strict risk protection\n"
+                "• <b>Risk Limits:</b> $180 daily buffer, $360 total buffer\n"
+                "• <b>Real Trade History:</b> Live closed deals & win rate\n\n"
+                "💬 <i>Send me any question directly in chat!</i>"
             )
             markup = {
                 "inline_keyboard": [
@@ -2617,20 +2778,20 @@ def handle_update(update: dict):
 
         if any(cmd == text for cmd in ["/ai", "/ask", "💬 ask ai coach", "ask ai coach", "ask ai", "ai coach", "coach"]):
             welcome_msg = (
-                "🤖 <b>AGENTQUANT AUTONOMOUS AI QUANT COACH</b>\n"
+                "🤖 <b>NEXTGEN AI COACH</b>\n"
                 "────────────────────────────\n"
-                "I am your 24/7 Quantitative Trading & Risk Intelligence Coach.\n\n"
-                "<b>Institutional System Telemetry:</b>\n"
+                "I am your 24/7 trading and risk intelligence assistant.\n\n"
+                "<b>Live Account Telemetry:</b>\n"
                 "• <b>Account:</b> FundedNext Stellar 1-Step ($6,000) #3028655\n"
-                "• <b>5-Asset Universe:</b> SPY, QQQ, AAPL, NVDA, GLD\n"
-                "• <b>Strategy Triad:</b> Sniper Dip, Trend Pullback, Squeeze Breakout\n"
-                "• <b>Sizing & Risk:</b> $450/trade (7.5%), -$13.50 risk (-3% stop), max 2 positions\n"
-                "• <b>Safety Cushion:</b> 85% buffer below $180 daily drawdown limit\n\n"
+                "• <b>Universe:</b> SPY, QQQ, DIA, IWM (US Indices)\n"
+                "• <b>Strategy:</b> 15m Scalper with strict risk controls\n"
+                "• <b>Safety Buffer:</b> $180 daily limit (100% intact)\n"
+                "• <b>History:</b> Live closed deals, win rate, and profit\n\n"
                 "💬 <b>Ask any question directly in chat!</b> For example:\n"
-                "• <i>'What is our market status right now?'</i>\n"
-                "• <i>'Are any of our 5 assets close to triggering a setup?'</i>\n"
-                "• <i>'Explain the Trend Continuation Pullback rule'</i>\n"
-                "• <i>'How does our risk sizing protect the $180 daily limit?'</i>"
+                "• <i>'What trades have we taken recently?'</i>\n"
+                "• <i>'What is our win rate and profit?'</i>\n"
+                "• <i>'How close are we to our next dip trade?'</i>\n"
+                "• <i>'How does our risk buffer protect the account?'</i>"
             )
             api_call("sendMessage", {
                 "chat_id": chat_id,
@@ -2747,6 +2908,13 @@ def handle_update(update: dict):
                 "text": render_tracker_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_tracker_markup(),
+            })
+        elif any(cmd in text for cmd in ["/history", "/hist", "📜 history", "history", "hist", "trade history", "past trades", "closed trades"]):
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": render_history_7d_text(),
+                "parse_mode": "HTML",
+                "reply_markup": get_history_markup("7d")
             })
         elif any(cmd in text for cmd in ["/p2p", "/naira", "🏦 binance p2p", "p2p", "naira", "rate", "exchange"]):
             api_call("sendMessage", {

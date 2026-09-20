@@ -222,7 +222,7 @@ def get_target_chat_ids() -> List[str]:
     return cids
 
 
-def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None):
+def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None, reply_markup: Optional[dict] = None):
     if not TELEGRAM_BOT_TOKEN:
         return
     for cid in get_target_chat_ids():
@@ -233,6 +233,8 @@ def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None):
                 raw_bytes = photo_buf.getvalue()
                 files = {"photo": ("trade_ticket.png", raw_bytes, "image/png")}
                 data = {"chat_id": cid, "caption": msg, "parse_mode": "HTML"}
+                if reply_markup:
+                    data["reply_markup"] = json.dumps(reply_markup)
                 resp = requests.post(f"{API_BASE}/sendPhoto", files=files, data=data, timeout=25)
                 if resp.status_code == 200:
                     sent_photo = True
@@ -241,9 +243,12 @@ def broadcast_telegram_ticket(msg: str, photo_buf: Optional[io.BytesIO] = None):
 
         if not sent_photo:
             try:
+                payload = {"chat_id": cid, "text": msg, "parse_mode": "HTML"}
+                if reply_markup:
+                    payload["reply_markup"] = reply_markup
                 requests.post(
                     f"{API_BASE}/sendMessage",
-                    json={"chat_id": cid, "text": msg, "parse_mode": "HTML"},
+                    json=payload,
                     timeout=10
                 )
             except Exception as e:
@@ -289,6 +294,66 @@ class AutonomousExecutionEngine:
         except Exception as e:
             logger.warning(f"Error checking microstructure rejection for {csym}: {e}")
         return True, 0.0, "BYPASS"
+
+    def check_spread_shield(self, csym: str, spot_info: Optional[dict], max_spread_pct: float = 0.0003) -> Tuple[bool, float, str]:
+        """
+        Spread & Slippage Shield Guard:
+        Verifies broker spread does not exceed max_spread_pct (default: 0.03% = 3 basis points).
+        Prevents entry when broker spread would eat > 15-20% of the scalper's net target profit.
+        """
+        try:
+            if spot_info and "ask" in spot_info and "bid" in spot_info:
+                ask = float(spot_info["ask"])
+                bid = float(spot_info["bid"])
+                if ask > 0 and bid > 0 and ask >= bid:
+                    mid = (ask + bid) / 2.0
+                    spread_pct = (ask - bid) / mid
+                    if spread_pct > max_spread_pct:
+                        return False, spread_pct, f"SPREAD_TOO_WIDE ({spread_pct*100:.3f}% > {max_spread_pct*100:.3f}%)"
+                    return True, spread_pct, "SPREAD_OPTIMAL"
+        except Exception as e:
+            logger.warning(f"Error evaluating spread shield for {csym}: {e}")
+        return True, 0.0, "BYPASS_NO_SPOT"
+
+    def compute_dynamic_atr_target(self, df: Optional[pd.DataFrame], period: int = 14) -> float:
+        """
+        Take-Profit (TP) Sizing Upgrade:
+        Computes a 14-period Average True Range (ATR) scaled target profit.
+        Scales target from +0.20% (tight consolidation) up to +0.40% (high volatility).
+        """
+        fallback_target = self.cfg.get("target_profit_pct", 0.0025)
+        try:
+            if df is not None and len(df) >= period and all(col in df.columns for col in ["high", "low", "close"]):
+                high = df["high"].astype(float)
+                low = df["low"].astype(float)
+                close = df["close"].astype(float)
+                prev_close = close.shift(1)
+                tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+                atr = tr.rolling(period, min_periods=period).mean()
+                if not atr.empty and not pd.isna(atr.iloc[-1]) and close.iloc[-1] > 0:
+                    atr_pct = float(atr.iloc[-1] / close.iloc[-1])
+                    return max(0.0020, min(0.0040, 0.75 * atr_pct))
+        except Exception as e:
+            logger.debug(f"ATR target computation fallback: {e}")
+        return fallback_target
+
+    def check_macro_trend_regime(self, df: Optional[pd.DataFrame]) -> Tuple[bool, str]:
+        """
+        Macro Trend Regime Filter:
+        Inspects higher-timeframe trend structure to prevent dip-buying during waterfall dumps.
+        If price is > 1.0% below the 50-period EMA on intraday bars, suppresses long entries.
+        """
+        try:
+            if df is not None and len(df) >= 30 and "close" in df.columns:
+                close = df["close"].astype(float)
+                ema50 = close.ewm(span=min(50, len(close)), adjust=False).mean()
+                c_last = float(close.iloc[-1])
+                ema_last = float(ema50.iloc[-1])
+                if ema_last > 0 and c_last < ema_last * 0.990:
+                    return False, f"WATERFALL_DOWNTREND (Price {((c_last - ema_last)/ema_last)*100:.2f}% below EMA50)"
+        except Exception as e:
+            logger.debug(f"Trend regime check exception: {e}")
+        return True, "HEALTHY_REGIME"
 
     def is_market_session(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
         """Returns True if current time is Monday-Friday regular US market hours."""
@@ -391,6 +456,7 @@ class AutonomousExecutionEngine:
                 dname = friendly_names.get(sym_name.upper(), sym_name)
                 pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
                 naira_pnl = pnl_usd * LIVE_P2P_RATE
+                guardian.record_trade_result(is_loss=(pnl_usd < 0), pnl_usd=pnl_usd)
 
                 if pnl_usd >= 0:
                     msg = f"💰 <b>SOLD:</b> <b>{dname} (+${pnl_usd:.2f} / +₦{naira_pnl:,.0f})</b>"
@@ -494,6 +560,7 @@ class AutonomousExecutionEngine:
                     dname = friendly_names.get(sym_name.upper(), sym_name)
                     pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
                     naira_pnl = pnl_usd * LIVE_P2P_RATE
+                    guardian.record_trade_result(is_loss=(pnl_usd < 0), pnl_usd=pnl_usd)
 
                     if pnl_usd >= 0:
                         msg = f"💰 <b>SOLD:</b> <b>{dname} (+${pnl_usd:.2f} / +₦{naira_pnl:,.0f})</b>"
@@ -554,6 +621,13 @@ class AutonomousExecutionEngine:
         risk_status = guardian.evaluate_risk(equity, balance, open_positions_count=len(open_positions))
         if guardian.state.get("trading_halted") or risk_status.get("buffer_left", 360.0) <= 0:
             logger.warning("[!] Risk Guardian HALTED trading. No autonomous orders allowed.")
+            return []
+
+        # 2-Strike Daily Circuit Breaker Guard
+        if guardian.state.get("daily_losses_count", 0) >= guardian.state.get("max_daily_losses", 2):
+            logger.warning(
+                f"[!] 2-Strike Daily Circuit Breaker ACTIVE ({guardian.state.get('daily_losses_count')} losses today). Pausing entries."
+            )
             return []
 
         daily_loss = max(0.0, balance - equity)
@@ -640,6 +714,12 @@ class AutonomousExecutionEngine:
                 logger.warning(f"Could not load intraday data for {ticker}: {e}")
                 continue
 
+            # Macro Trend Regime Filter (suppress dip-buying during waterfall dumps)
+            is_regime_ok, regime_reason = self.check_macro_trend_regime(df)
+            if not is_regime_ok:
+                logger.info(f"🚫 [TREND REGIME GUARD] Skipping {ticker}: {regime_reason}")
+                continue
+
             # Compute Indicators
             w = cfg["window"]
             num_std = cfg["num_std"]
@@ -686,6 +766,12 @@ class AutonomousExecutionEngine:
             scaled_l_band = l_band * scale_multiplier
             scaled_mean = m * scale_multiplier
 
+            # ── SPREAD & SLIPPAGE SHIELD GUARD (MAX 0.03% / 3 BPS) ──
+            is_spread_ok, spread_pct, spread_reason = self.check_spread_shield(csym, spot_info)
+            if not is_spread_ok:
+                logger.info(f"🚫 [SPREAD SHIELD] Rejecting {csym} entry: {spread_reason}")
+                continue
+
             # If spot price has already bounced above tolerance, ABORT (never chase a missed dip)
             tol_pct = cfg["price_tolerance_pct"]
             max_tolerated_price = scaled_l_band * (1.0 + tol_pct)
@@ -706,11 +792,11 @@ class AutonomousExecutionEngine:
                 )
                 continue
 
-            # Compute Take Profit & Stop Loss
+            # Compute Take Profit & Stop Loss (Dynamic ATR-Scaled)
             stop_pct = cfg["stop_loss_pct"]
-            max_target = cfg.get("target_profit_pct", 0.0025)
-            mean_dist = (scaled_mean - exec_price) / exec_price if scaled_mean > exec_price else max_target
-            target_pct = min(max_target, max(0.0018, mean_dist))
+            dynamic_target = self.compute_dynamic_atr_target(df)
+            mean_dist = (scaled_mean - exec_price) / exec_price if scaled_mean > exec_price else dynamic_target
+            target_pct = min(dynamic_target, max(0.0018, mean_dist))
 
             tp_price = round(exec_price * (1.0 + target_pct), 2)
             sl_price = round(exec_price * (1.0 - stop_pct), 2)
@@ -773,6 +859,12 @@ class AutonomousExecutionEngine:
                 if isinstance(res, dict):
                     order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId", "ACTIVE")
 
+                # Verify Order ACK via cTrader
+                if hasattr(self.ctrader, "verify_order_ack"):
+                    is_acked = self.ctrader.verify_order_ack(order_id, timeout_sec=2.0)
+                    if not is_acked:
+                        logger.warning(f"⚠️ [ORDER ACK] Order #{order_id} pending broker acknowledgment.")
+
                 # Record State
                 self.state["last_trades"][ticker] = now
                 self.state["execution_history"].append({
@@ -791,8 +883,17 @@ class AutonomousExecutionEngine:
                 executed_trades.append({**trade_payload, "status": "FILLED", "order_id": order_id})
                 available_slots -= 1
 
-                # Send Instant Telegram Execution Ticket
+                # Send Instant Telegram Execution Ticket with 1-Tap Active Trade Controls
                 ticket_msg = f"🟢 <b>BUY:</b> <b>{dname}</b>"
+                ticket_markup = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🛡️ Move SL to BE", "callback_data": f"cmd_sl_be_{order_id}"},
+                            {"text": "💰 Bank 50%", "callback_data": f"cmd_bank_half_{order_id}"}
+                        ],
+                        [{"text": "🛑 Close Trade", "callback_data": f"cmd_close_tap1_{order_id}"}]
+                    ]
+                }
                 # Generate Institutional Candlestick Trade Card
                 card_buf = None
                 try:
@@ -808,8 +909,8 @@ class AutonomousExecutionEngine:
                 except Exception as ce:
                     logger.warning(f"Could not generate visual trade card: {ce}")
 
-                broadcast_telegram_ticket(ticket_msg, photo_buf=card_buf)
-                logger.info(f"[+] Autonomous order filled with visual trade card: {csym} #{order_id}")
+                broadcast_telegram_ticket(ticket_msg, photo_buf=card_buf, reply_markup=ticket_markup)
+                logger.info(f"[+] Autonomous order filled with visual trade card & 1-tap controls: {csym} #{order_id}")
 
             except RiskViolationError as rve:
                 logger.warning(f"🛡️ [RISK BLOCK] Order for {csym} blocked: {rve}")

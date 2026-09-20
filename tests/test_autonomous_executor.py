@@ -312,6 +312,99 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.assertAlmostEqual(df.iloc[0]["close"], 7657.10, places=2)
         self.assertEqual(df.iloc[0]["volume"], 616)
 
+    def test_spread_shield_blocks_wide_spread(self):
+        """Verify that when spread > 0.03% (3 bps), order entry is blocked."""
+        # Bid = 5000.0, Ask = 5002.5 -> Spread = 2.5 / 5001.25 = 0.05% (> 0.03%)
+        spot_wide = {"bid": 5000.0, "ask": 5002.5}
+        is_ok, spread_pct, reason = self.engine.check_spread_shield("SPX500", spot_wide)
+        self.assertFalse(is_ok)
+        self.assertIn("SPREAD_TOO_WIDE", reason)
+
+        # Bid = 5000.0, Ask = 5000.5 -> Spread = 0.5 / 5000.25 = 0.01% (< 0.03%)
+        spot_tight = {"bid": 5000.0, "ask": 5000.5}
+        is_ok2, spread_pct2, reason2 = self.engine.check_spread_shield("SPX500", spot_tight)
+        self.assertTrue(is_ok2)
+        self.assertEqual(reason2, "SPREAD_OPTIMAL")
+
+    def test_dynamic_atr_tp_sizing(self):
+        """Verify that take-profit scales dynamically between 0.20% and 0.40% based on ATR."""
+        idx = pd.date_range("2026-09-16 09:30", periods=20, freq="15min")
+        # Low volatility: range = 1.0 on price 5000 (~0.02% ATR)
+        low_vol_df = pd.DataFrame({
+            "high": [5001.0] * 20,
+            "low": [5000.0] * 20,
+            "close": [5000.5] * 20,
+            "open": [5000.2] * 20,
+        }, index=idx)
+        tp_low = self.engine.compute_dynamic_atr_target(low_vol_df)
+        self.assertAlmostEqual(tp_low, 0.0020, places=4, msg="Low volatility should hit min 0.20% TP")
+
+        # High volatility: range = 50.0 on price 5000 (~1.0% ATR)
+        high_vol_df = pd.DataFrame({
+            "high": [5050.0] * 20,
+            "low": [5000.0] * 20,
+            "close": [5025.0] * 20,
+            "open": [5010.0] * 20,
+        }, index=idx)
+        tp_high = self.engine.compute_dynamic_atr_target(high_vol_df)
+        self.assertAlmostEqual(tp_high, 0.0040, places=4, msg="High volatility should clamp to max 0.40% TP")
+
+    def test_macro_trend_regime_blocks_downtrend(self):
+        """Verify that if price is significantly below EMA50, long entry is rejected."""
+        idx = pd.date_range("2026-09-16 09:30", periods=40, freq="15min")
+        # Waterfall dump: prices dropping from 500 to 450
+        prices = [500.0 - i * 1.5 for i in range(40)]
+        downtrend_df = pd.DataFrame({"close": prices}, index=idx)
+        is_ok, reason = self.engine.check_macro_trend_regime(downtrend_df)
+        self.assertFalse(is_ok)
+        self.assertIn("WATERFALL_DOWNTREND", reason)
+
+    def test_two_strike_daily_circuit_breaker(self):
+        """Verify that 2 losses in a single day halt trading and block execution."""
+        from src.integrations.risk_guardian import guardian
+        guardian.resume_trading()
+        guardian.state["daily_losses_count"] = 0
+        guardian.state["daily_loss_total"] = 0.0
+
+        # Loss 1
+        res1 = guardian.record_trade_result(is_loss=True, pnl_usd=-25.0)
+        self.assertEqual(res1["daily_losses_count"], 1)
+        self.assertFalse(res1["trading_halted"])
+
+        # Loss 2 -> should trigger circuit breaker halt
+        res2 = guardian.record_trade_result(is_loss=True, pnl_usd=-25.0)
+        self.assertEqual(res2["status"], "HALTED")
+        self.assertTrue(guardian.state["trading_halted"])
+        self.assertIn("Daily 2-Strike", guardian.state["halt_reason"])
+
+        # Reset guardian state after test
+        guardian.resume_trading()
+        guardian.state["daily_losses_count"] = 0
+        guardian.state["daily_loss_total"] = 0.0
+        guardian.save_state()
+
+    def test_ctrader_client_amend_and_partial_close(self):
+        """Verify amend_position_sl and close_partial_position helper methods."""
+        from src.integrations.ctrader_mcp_client import CTraderMCPClient
+        client = CTraderMCPClient()
+        client.call_tool = MagicMock(return_value={"result": {"content": [{"type": "text", "text": "{\"positionId\": 101}"}]}})
+        client.get_positions = MagicMock(return_value=[{"positionId": 101, "volume": 1000}])
+        client.get_positions_strict = MagicMock(return_value=[{"positionId": 101, "volume": 1000}])
+
+        # Amend SL to BE
+        res = client.amend_position_sl(101, 5020.50)
+        self.assertIsNotNone(res)
+        client.call_tool.assert_called_with("amend_position", {"positionId": 101, "stopLoss": 5020.50})
+
+        # Close 50%
+        res_close = client.close_partial_position(101, fraction=0.5)
+        self.assertIsNotNone(res_close)
+        client.call_tool.assert_called_with("close_position", {"positionId": 101, "volume": 500})
+
+        # Verify order ACK
+        self.assertTrue(client.verify_order_ack("ACTIVE"))
+        self.assertTrue(client.verify_order_ack(101))
+
 if __name__ == "__main__":
     unittest.main()
 

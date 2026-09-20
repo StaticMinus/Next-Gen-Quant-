@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -73,9 +74,10 @@ class CTraderMCPClient:
                                 return json.loads(data_str)
             except Exception as e:
                 if attempt < retries - 1:
-                    time.sleep(1.0)
+                    backoff_delay = 1.0 * (2 ** attempt)
+                    time.sleep(backoff_delay)
                     continue
-                print(f"[!] cTrader MCP Connection Exception: {e}")
+                print(f"[!] cTrader MCP Connection Exception (after {retries} attempts): {e}")
                 return None
         return None
 
@@ -643,6 +645,152 @@ class CTraderMCPClient:
         args = {"positionId": position_id, "volume": volume if volume is not None else 100}
         raw = self.call_tool("close_position", args)
         return self._parse_content_json(raw)
+
+    def amend_position_sl(self, position_id: int, stop_loss: float) -> Optional[dict]:
+        """
+        Amends the stop loss of an active position (e.g., Move SL to Break-Even).
+        """
+        args = {
+            "positionId": position_id,
+            "stopLoss": round(float(stop_loss), 2)
+        }
+        raw = self.call_tool("amend_position", args)
+        return self._parse_content_json(raw)
+
+    def close_partial_position(self, position_id: int, fraction: float = 0.5) -> Optional[dict]:
+        """
+        Partially closes an open position (e.g. Bank 50% profit).
+        """
+        positions = self.get_positions()
+        volume = None
+        for p in positions:
+            if p.get("positionId") == position_id:
+                volume = p.get("volume")
+                break
+        if volume is None:
+            raw_det = self.call_tool("get_position_details", {"positionId": position_id})
+            data_det = self._parse_content_json(raw_det)
+            if data_det and isinstance(data_det, dict):
+                pos_obj = data_det.get("position", data_det)
+                volume = pos_obj.get("volume")
+
+        if volume:
+            close_vol = max(1, int(round(volume * fraction)))
+            return self.close_position(position_id, volume=close_vol)
+        return None
+
+    def verify_order_ack(self, order_id: Any, timeout_sec: float = 3.0) -> bool:
+        """
+        Order ACK Resilience: Verifies broker has received and recorded the order/position.
+        Checks positions and pending orders within timeout_sec window.
+        """
+        if not order_id or order_id in ("ACTIVE", "SIM_123"):
+            return True
+        start_t = time.time()
+        while time.time() - start_t < timeout_sec:
+            positions = self.get_positions_strict()
+            if positions is None:
+                positions = self.get_positions()
+            if positions:
+                for p in positions:
+                    if str(p.get("positionId")) == str(order_id):
+                        return True
+            pending = self.get_pending_orders()
+            if pending:
+                for o in pending:
+                    if str(o.get("orderId")) == str(order_id):
+                        return True
+            time.sleep(0.5)
+        return False
+
+    def get_closed_deals(self, days: int = 7) -> List[Dict[str, Any]]:
+        """
+        Fetches and pairs closed deals over the last `days` from cTrader MCP get_deals.
+        Groups by positionId, pairs entry and exit deals, and calculates realized USD PnL.
+        """
+        try:
+            now_ms = int(time.time() * 1000)
+            past_ms = now_ms - (days * 86400 * 1000)
+            raw = self.call_tool("get_deals", {"fromTimestamp": str(past_ms), "toTimestamp": str(now_ms)})
+            data = self._parse_content_json(raw)
+            deals = data.get("deals", []) if isinstance(data, dict) else []
+            if not deals:
+                return []
+
+            s_map = self.get_symbol_map()
+            id_to_sym = {v: k for k, v in s_map.items()}
+
+            friendly_names = {
+                "XAUUSD": "Gold",
+                "SPX500": "S&P 500",
+                "NDX100": "Nasdaq 100",
+                "US30": "Dow Jones",
+                "US2000": "Russell 2000",
+                "NVDA": "Nvidia",
+                "AAPL": "Apple",
+                "MSFT": "Microsoft",
+                "META": "Meta"
+            }
+
+            from collections import defaultdict
+            grouped = defaultdict(list)
+            for deal in deals:
+                pid = deal.get("positionId")
+                if pid:
+                    grouped[pid].append(deal)
+
+            closed = []
+            for pid, p_deals in grouped.items():
+                p_deals.sort(key=lambda x: int(x.get("executionTimestamp", 0)))
+                if len(p_deals) < 2:
+                    continue
+                entry = p_deals[0]
+                exit_deal = p_deals[-1]
+                sym_id = entry.get("symbolId")
+                sym_name = id_to_sym.get(sym_id, f"SYM_{sym_id}").upper()
+                dname = friendly_names.get(sym_name, sym_name)
+                side = entry.get("tradeSide", "BUY").upper()
+                raw_vol = entry.get("volume", 0)
+                entry_p = float(entry.get("executionPrice", 0.0))
+                exit_p = float(exit_deal.get("executionPrice", 0.0))
+
+                if "XAU" in sym_name or "GOLD" in sym_name:
+                    lots = raw_vol / 10000.0
+                    mult = 100.0
+                elif any(k in sym_name for k in ["SPX", "NDX", "US30", "US2000"]):
+                    lots = raw_vol / 100.0
+                    mult = 1.0
+                else:
+                    lots = raw_vol / 100.0
+                    mult = 1.0
+
+                if side == "BUY":
+                    pnl = (exit_p - entry_p) * lots * mult
+                else:
+                    pnl = (entry_p - exit_p) * lots * mult
+
+                exit_ts = int(exit_deal.get("executionTimestamp", 0)) / 1000.0
+                exit_time_str = datetime.fromtimestamp(exit_ts).strftime("%b %d, %H:%M")
+
+                closed.append({
+                    "position_id": pid,
+                    "symbol_name": sym_name,
+                    "display_name": dname,
+                    "trade_side": side,
+                    "lots": round(lots, 2),
+                    "entry_price": entry_p,
+                    "exit_price": exit_p,
+                    "pnl": round(pnl, 2),
+                    "is_win": pnl >= 0,
+                    "exit_time": exit_time_str,
+                    "exit_timestamp": exit_ts,
+                })
+
+            closed.sort(key=lambda x: x["exit_timestamp"], reverse=True)
+            return closed
+        except Exception as e:
+            print(f"[!] Error fetching closed deals: {e}")
+            return []
 
 ctrader_client = CTraderMCPClient()
 

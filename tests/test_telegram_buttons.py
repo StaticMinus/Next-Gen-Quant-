@@ -346,6 +346,44 @@ class TestTelegramTerminalButtons(unittest.TestCase):
             # api_call should NEVER be called for GLD because it is in held_tickers!
             mock_api.assert_not_called()
 
+    def test_trades_markup_includes_be_and_bank_half(self):
+        """Verify get_trades_markup renders 1-tap BE and Bank 50% buttons for David."""
+        from src.integrations.telegram_bot_service import _CACHE, get_trades_markup, PRIMARY_CHAT_ID
+        _CACHE["enriched_positions"] = [{
+            "position_id": 9999,
+            "symbol_name": "SPX500",
+            "trade_side": "BUY"
+        }]
+        markup = get_trades_markup(user_id=PRIMARY_CHAT_ID)
+        all_cbs = [btn["callback_data"] for row in markup["inline_keyboard"] for btn in row if "callback_data" in btn]
+        self.assertIn("cmd_sl_be_9999", all_cbs)
+        self.assertIn("cmd_bank_half_9999", all_cbs)
+        self.assertIn("cmd_close_tap1_9999", all_cbs)
+
+    def test_payout_progress_bar_render(self):
+        """Verify render_payout_progress_bar and briefings integration."""
+        from src.integrations.telegram_bot_service import (
+            render_payout_progress_bar,
+            render_overview_text,
+            render_morning_briefing_text,
+            render_nightly_summary_text
+        )
+        bar_text = render_payout_progress_bar(150.0, 300.0)
+        self.assertIn("Target:", bar_text)
+        self.assertIn("50%", bar_text)
+        self.assertIn("█", bar_text)
+
+        overview = render_overview_text()
+        self.assertIn("Target:", overview)
+
+        morning = render_morning_briefing_text()
+        self.assertIn("Target:", morning)
+        self.assertIn("Payout", morning)
+
+        nightly = render_nightly_summary_text()
+        self.assertIn("Target:", nightly)
+        self.assertIn("Payout", nightly)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -222,39 +222,82 @@ def get_account_safety_telemetry(account_telemetry: Optional[dict] = None) -> st
 • Payout Cadence: Every 5 Business Days (85% profit split to David)"""
 
 
+def get_recent_trades_telemetry(account_telemetry: Optional[dict] = None) -> str:
+    """
+    Returns verified broker trade history for the last 7 days so NextGen AI is 100% up to date.
+    """
+    closed_deals = None
+    if account_telemetry and "closed_deals" in account_telemetry:
+        closed_deals = account_telemetry["closed_deals"]
+    if not closed_deals:
+        try:
+            from src.integrations.ctrader_mcp_client import ctrader_client
+            closed_deals = ctrader_client.get_closed_deals(days=7)
+        except Exception:
+            closed_deals = []
+
+    if not closed_deals:
+        return "RECENT CLOSED TRADES (LAST 7 DAYS):\n• No closed trades recorded in the last 7 days."
+
+    total = len(closed_deals)
+    wins = sum(1 for d in closed_deals if d.get("is_win", d.get("pnl", 0) >= 0))
+    losses = total - wins
+    win_rate = (wins / total) * 100 if total > 0 else 0.0
+    net_pnl = sum(d.get("pnl", 0.0) for d in closed_deals)
+
+    lines = [
+        f"RECENT CLOSED TRADES (LAST 7 DAYS - {total} REAL TRADES EXECUTED):",
+        f"• Total Closed Trades: {total} ({wins} Wins / {losses} Losses • {win_rate:.1f}% Win Rate)",
+        f"• Net Realized Profit: ${net_pnl:+,.2f} USD",
+        "• Recent Executed Deals:"
+    ]
+    for d in closed_deals[:6]:
+        sym = d.get("display_name", d.get("symbol_name", "Trade"))
+        pnl = d.get("pnl", 0.0)
+        pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
+        lines.append(f"  - {sym} ({d.get('trade_side', 'BUY')} {d.get('lots', 0.1)} lots): {pnl_str} USD on {d.get('exit_time', '')}")
+
+    return "\n".join(lines)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. MULTI-AGENT QUANT COUNCIL SYSTEM PROMPT & REASONING ARCHITECTURE
+# 2. NEXTGEN AI SYSTEM PROMPT & REASONING ARCHITECTURE
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_quant_council_prompt(account_telemetry: Optional[dict] = None) -> str:
     market_data = get_fab4_live_telemetry()
     account_safety = get_account_safety_telemetry(account_telemetry)
+    recent_trades = get_recent_trades_telemetry(account_telemetry)
     macro_calendar = get_macro_calendar_summary()
     memory_context = get_memory_prompt_context()
     backtest_edge = get_backtest_edge_telemetry()
 
-    return f"""You are the AgentQuant Autonomous AI Quant Council for David and his trading partner Cha Cha.
+    return f"""You are NextGen AI, an intelligent trading and risk assistant for David and his trading partner Cha Cha.
 
-INTERNAL MULTI-AGENT COUNCIL PERSONAS:
-When addressing any user query, synthesize insights across three internal quantitative council angles:
-1. RISK SENTINEL: Obsessed with capital preservation, zero account violations, the $180 daily stop, and -$25 max stop loss per trade.
-2. MACRO STRUCTURE SPECIALIST: Evaluates economic releases (FOMC, CPI, NFP), macro regime, and overnight holding stability.
-3. MEAN-REVERSION QUANT: Evaluates 1.25σ dip probability, RSI oversold status (<36), and the 10-year backtest edge across SPY, QQQ, DIA, IWM.
+CORE ROLE:
+You help David and Cha Cha track trading performance, market conditions, and risk in simple, plain, friendly language.
 
 CRITICAL SAFETY DIRECTIVE (READ-ONLY):
-• You are STRICTLY a read-only market intelligence and quant advisory system.
+• You are STRICTLY a read-only market intelligence and advisory assistant.
 • You have ZERO capability to execute trades, place orders, modify stops, or close positions.
-• All trade execution is 100% algorithmic with server-side hard stop loss (-$25) and take profit.
-• Reassure David and Cha Cha that the algorithmic risk controls are active and the account is completely safe.
+• All trade execution is 100% automated with server-side hard stop loss (-$25) and take profit.
+• Reassure David and Cha Cha that risk controls are active and capital is protected.
+
+LANGUAGE & GRAMMAR RULES:
+• Use plain, simple, clean text without complicated technical jargon.
+• Keep explanations concise, clear, and direct.
 
 STRICT TELEGRAM OUTPUT FORMATTING MANDATE:
-• LINE 1: Exactly ONE single bold header line (e.g. <b>🏛️ QUANT COUNCIL // MARKET & RISK CONSENSUS</b>).
+• LINE 1: Exactly ONE single bold header line (e.g. <b>🤖 NEXTGEN AI // STATUS & INTELLIGENCE</b>).
 • ALL REMAINING LINES: MUST be bullet points starting with '• ' only.
 • NO conversational introductory phrases (do not say "Hello David!", "Here is your update:", "Sure thing!").
 • NO trailing conversational remarks or essays.
 • Keep the entire response to 3 to 5 high-signal bullet points.
 
-ACTIVE TELEMETRY TOOLS CONTEXT:
+RECENT BROKER TRADE HISTORY:
+{recent_trades}
+
+ACTIVE TELEMETRY CONTEXT:
 {account_safety}
 
 FAB-4 REAL-TIME SPOT & DIP TELEMETRY:
@@ -291,7 +334,7 @@ def enforce_bullet_formatting(raw_text: str) -> str:
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
-        return "<b>🏛️ QUANT COUNCIL // STATUS REPORT</b>\n• All systems nominal. 100% capital safe."
+        return "<b>🤖 NEXTGEN AI // STATUS REPORT</b>\n• All systems nominal. 100% capital safe."
 
     first_line = lines[0]
     # Remove markdown # headers
@@ -307,7 +350,7 @@ def enforce_bullet_formatting(raw_text: str) -> str:
             body_bullets.append(f"• {cleaned}")
 
     if not body_bullets:
-        body_bullets.append("• Council consensus confirms capital preservation and strategy integrity.")
+        body_bullets.append("• NextGen AI confirms capital preservation and strategy integrity.")
 
     return f"{first_line}\n" + "\n".join(body_bullets)
 

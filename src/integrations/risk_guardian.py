@@ -24,6 +24,10 @@ DEFAULT_STATE = {
     "daily_loss_cap": 1000.0,
     "max_concurrent_positions": 2,
     "total_capital": 50000.0,
+    "daily_losses_count": 0,
+    "daily_loss_date": None,
+    "daily_loss_total": 0.0,
+    "max_daily_losses": 2,
 }
 
 STRATEGY_MODES = {
@@ -54,6 +58,7 @@ STRATEGY_MODES = {
 class RiskGuardian:
     def __init__(self):
         self.state = self.load_state()
+        self.check_daily_reset()
 
     def load_state(self) -> dict:
         if STATE_FILE.exists():
@@ -68,6 +73,43 @@ class RiskGuardian:
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(self.state, f, indent=2)
+
+    def check_daily_reset(self) -> bool:
+        """Resets daily loss counter on date rollover."""
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        if self.state.get("daily_loss_date") != today_str:
+            self.state["daily_loss_date"] = today_str
+            self.state["daily_losses_count"] = 0
+            self.state["daily_loss_total"] = 0.0
+            # If halted purely for yesterday's 2-strike rule, automatically resume today
+            if self.state.get("trading_halted") and "Daily 2-Strike" in str(self.state.get("halt_reason", "")):
+                self.resume_trading()
+            else:
+                self.save_state()
+            return True
+        return False
+
+    def record_trade_result(self, is_loss: bool, pnl_usd: float = 0.0) -> dict:
+        """
+        Records a completed trade result.
+        If 2 losses hit in a single calendar day, triggers 2-strike circuit breaker halt.
+        """
+        self.check_daily_reset()
+        if is_loss:
+            self.state["daily_losses_count"] = self.state.get("daily_losses_count", 0) + 1
+            self.state["daily_loss_total"] = self.state.get("daily_loss_total", 0.0) + abs(pnl_usd)
+            self.save_state()
+
+            max_losses = self.state.get("max_daily_losses", 2)
+            if self.state["daily_losses_count"] >= max_losses:
+                return self.trigger_kill_switch(
+                    reason=f"Daily 2-Strike Stop-Loss Limit Hit ({self.state['daily_losses_count']} losses today, -${self.state['daily_loss_total']:.2f})"
+                )
+        return {
+            "daily_losses_count": self.state.get("daily_losses_count", 0),
+            "daily_loss_total": self.state.get("daily_loss_total", 0.0),
+            "trading_halted": self.state.get("trading_halted", False)
+        }
 
     def trigger_kill_switch(self, reason: str = "Manual User Trigger via Telegram") -> dict:
         """Immediately halts all automated trading and flattens positions."""
@@ -102,6 +144,7 @@ class RiskGuardian:
         return STRATEGY_MODES["balanced"]
 
     def evaluate_risk(self, equity: float, balance: float, open_positions_count: Optional[int] = None) -> dict:
+        self.check_daily_reset()
         dd_dollars = max(0.0, balance - equity)
         buffer_left = self.state["trailing_max_drawdown"] - dd_dollars
         is_warning = dd_dollars >= self.state["warning_threshold"]
@@ -122,6 +165,8 @@ class RiskGuardian:
             "concurrency_breach": concurrency_breach,
             "open_positions_count": open_positions_count,
             "max_concurrent_positions": max_pos,
+            "daily_losses_count": self.state.get("daily_losses_count", 0),
+            "daily_loss_total": self.state.get("daily_loss_total", 0.0),
             "is_halted": self.state["trading_halted"],
             "active_mode": self.state["active_mode"],
         }
