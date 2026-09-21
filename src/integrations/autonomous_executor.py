@@ -59,10 +59,10 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
 ]
 
 # Active timeframe: "15m" (Default M15 Rapid Scalper), "30m", "5m", or "1h"
