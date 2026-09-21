@@ -23,6 +23,6 @@ services:
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: AUTONOMOUS_TIMEFRAME
-        value: "1h"
+        value: "15m"
       - key: TRADING_MODE
         value: "LIVE"

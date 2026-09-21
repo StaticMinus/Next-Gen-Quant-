@@ -9,7 +9,7 @@ Features:
 - Strict Anti-Late-Trade Guard:
     * Bar Freshness: Rejects signals older than 2.5 minutes (M5) / 5 minutes (H1)
     * Price Tolerance: Rejects entry if live price has bounced > 0.05% above trigger (Zero Chasing)
-    * Session Lock: Only enters between 10:00 AM and 3:30 PM EST (3:00 PM – 8:30 PM WAT)
+    * Session Lock: Only enters between 9:30 AM and 2:30 PM EST (2:30 PM – 7:30 PM WAT)
 - Same-Day Flat Routine: Closes all positions at 15:50 EST (8:50 PM WAT) for 0% overnight risk
 - Strict 2-Position Concurrency Ceiling (Never exceeds 2 open trades)
 - Broker-Level Hard Stop Loss & Take Profit (Mean Reversion) attached immediately
@@ -366,13 +366,14 @@ class AutonomousExecutionEngine:
         return market_open <= dt_ny <= market_close
 
     def is_active_entry_window(self, dt_ny: Optional[pd.Timestamp] = None) -> bool:
-        """Returns True if within the 10:00 to 14:30 EST (3:00 PM – 7:30 PM WAT) active entry window.
+        """Returns True if within the 9:30 to 14:30 EST (2:30 PM – 7:30 PM WAT) active entry window.
+        Starts at market open (9:30 AM EST) to capture early-session mean-reversion dips.
         Cutting entries off at 14:30 EST guarantees 35+ minutes for all scalps to finish naturally before 15:50 EST."""
         if dt_ny is None:
             dt_ny = pd.Timestamp.now(tz="America/New_York")
         if dt_ny.weekday() >= 5:
             return False
-        entry_start = dt_ny.replace(hour=10, minute=0, second=0, microsecond=0)
+        entry_start = dt_ny.replace(hour=9, minute=30, second=0, microsecond=0)
         entry_end = dt_ny.replace(hour=14, minute=30, second=0, microsecond=0)
         return entry_start <= dt_ny <= entry_end
 
