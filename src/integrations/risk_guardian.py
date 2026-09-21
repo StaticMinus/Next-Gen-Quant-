@@ -1,7 +1,7 @@
 """
 AgentQuant Autonomous Risk Guardian & Emergency Kill Switch
 ===========================================================
-- Protects prop firm drawdown barrier ($2,000 limit on $50,000 capital)
+- Protects FundedNext Stellar prop firm drawdown limits ($180 daily / $360 max on $6,000 capital)
 - Proactive warning notifications when floating drawdown crosses $750
 - Instant 2-tap Emergency Kill Switch (flattens positions, locks 100% cash)
 - Dynamic Strategy Tuning (Conservative / Balanced / Aggressive)
@@ -19,11 +19,11 @@ DEFAULT_STATE = {
     "halt_reason": None,
     "halt_time": None,
     "active_mode": "balanced",  # "conservative", "balanced", "aggressive"
-    "trailing_max_drawdown": 2000.0,
-    "warning_threshold": 750.0,
-    "daily_loss_cap": 1000.0,
+    "trailing_max_drawdown": 360.0,   # FundedNext Stellar: 6% of $6K = $360
+    "warning_threshold": 200.0,       # Telegram warning at $200 drawdown
+    "daily_loss_cap": 180.0,          # FundedNext Stellar: 3% of $6K = $180
     "max_concurrent_positions": 2,
-    "total_capital": 50000.0,
+    "total_capital": 6000.0,
     "daily_losses_count": 0,
     "daily_loss_date": None,
     "daily_loss_total": 0.0,
