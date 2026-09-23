@@ -1169,3 +1169,87 @@ Backtest Evidence: [`results/m15_m30_deep_dive_report.json`](file:///c:/Users/Da
 ### Verification Results:
 - **`pytest tests/test_telegram_buttons.py tests/test_autonomous_executor.py -v`:** **31/31 PASSED** (0 failures, 100% verification).
 
+---
+
+## 37. Root-Cause Signal Investigation & Engine Hardening (Bar Freshness Fix, 15m Radar Alignment & Safe Lot Sizing)
+
+**Date:** September 23, 2026  
+**Status:** **Diagnosed, Resolved, Tested (56/56 Passed) & Deployed to Main (`d54e181`)**
+
+### 1. Investigation of Telegram Signals (September 22, 2026)
+
+#### A. Dow Jones (DIA / US30) at 09:30–10:15 EDT — False / Waterfall Drop
+- **Market Action:** Dow Jones plummeted -320 points immediately at the open without buyers absorbing liquidity.
+- **Filter Action:** The Microstructure Rejection Filter evaluated the lower wick ratio on consecutive 15m candles:
+  - 09:30 candle: 5.2% wick (< 15% threshold) &rarr; **ABORT**
+  - 09:45 candle: 11.2% wick (< 15% threshold) &rarr; **ABORT**
+  - 10:00 candle: 2.9% wick (< 15% threshold) &rarr; **ABORT**
+- **Verdict:** **Dangerous falling knife**. The executor correctly refused to enter, saving the account from an immediate -0.40% Stop Loss.
+
+#### B. S&P 500 (SPY / SPX500) & Nasdaq (QQQ / NDX100) at 11:30 EDT — High-Quality Winning Dips
+- **Market Action:** At 11:30 EDT (16:30 WAT), SPY dipped to $659.18 (below the $659.73 lower band) with an 18.2% lower wick. QQQ dipped to $593.42 with a 38.6% lower wick. Both cleanly achieved their +0.25% Take Profit targets.
+- **Verdict:** **Valid, winning trade setups**.
+
+---
+
+### 2. Root Cause: Why Zero Trades Were Taken on September 22
+
+1. **The Bar Freshness Calculation Bug:**
+   - In `src/integrations/autonomous_executor.py`, bar freshness was calculated as:
+     ```python
+     bar_age_seconds = (dt_ny - last_bar_time).total_seconds()
+     ```
+   - In financial dataframes, `last_bar_time` is the **open / start** of the candle (e.g., 11:30:00).
+   - A 15-minute candle closes at 11:45:00 (900 seconds after open). When the bot evaluated at 11:45:30, `bar_age_seconds` was 930 seconds.
+   - Because `max_allowed_age` was 300 seconds, the engine rejected **100% of closed 15m bars as expired**.
+2. **Telegram Radar & AI Coach Timeframe Disconnect:**
+   - `sync_market_radar_worker` in `telegram_bot_service.py` was computing dip levels on **1-Hour** bars (`interval="1h"`, 20-period mean, 1.25σ band).
+   - `evaluate_market_signals` in `telegram_ai_coach.py` was evaluating **Daily** bars (`interval="1d"`).
+   - `autonomous_executor.py` was running on **15-Minute** bars (`interval="15m"`, 8-period mean, 1.50σ band).
+   - Consequently, Telegram was broadcasting alerts for macro/1H moves that the 15m executor was never configured to trade.
+3. **Lot Sizing Risk Discovered in `7fe66f4`:**
+   - Commit `7fe66f4` had changed `target_lots` to 1.00.
+   - On US30 at ~51,900, 1.00 lot risked ~$207.60 on a 0.40% SL, exceeding FundedNext's $180 daily drawdown limit.
+
+---
+
+### 3. Code Modifications & System Hardening
+
+1. **Bar Freshness Measured from Candle Close ([`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)):**
+   - Added `TIMEFRAME_DURATION_SECONDS` mapping (`15m` &rarr; 900s).
+   - Updated formula:
+     ```python
+     bar_dur_sec = TIMEFRAME_DURATION_SECONDS.get(self.timeframe, 900)
+     bar_close_time = last_bar_time + pd.Timedelta(seconds=bar_dur_sec)
+     bar_age_from_close = (dt_ny - bar_close_time).total_seconds()
+     ```
+   - A 15m bar evaluated within 300s of close now passes cleanly.
+2. **Anti-Chase Price Tolerance Guard Hardening:**
+   - Ensured `scale_multiplier` evaluates to 1.0 when index and ETF spot prices are the same unit, preventing unintended rejections or division by zero.
+3. **Restored Safe Lot Sizing with Dynamic Max-Risk Cap:**
+   - Reset `target_lots = 0.10` in `TARGET_UNIVERSE`.
+   - Added dynamic formula:
+     ```python
+     max_safe_lots = max_risk_usd / (exec_price * stop_pct)
+     lots_to_trade = max(0.01, round(min(lots, max_safe_lots), 2))
+     ```
+   - Guarantees risk on any trade never exceeds **$25.00** (~₦38,000), protecting the $180 FundedNext daily limit.
+4. **Harmonized Telegram Radar & AI Coach ([`src/integrations/telegram_bot_service.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_bot_service.py) & [`src/integrations/telegram_ai_coach.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_ai_coach.py)):**
+   - `sync_market_radar_worker()` now reads `ACTIVE_TIMEFRAME` (`15m`, 8-period window, 1.50σ band).
+   - Telegram radar and AI Coach scans now mirror the exact 15m levels watched by the executor.
+   - Added explicit indicator tags: `[⚠️ Falling Knife Filtered]` and `[✅ Rejection Wick Confirmed]`.
+   - Removed misleading text claiming read-only scans were verified by the algorithmic executor.
+5. **Git Hygiene:**
+   - Added `scratch/` to [`.gitignore`](file:///c:/Users/David/Music/Trade/AgentQuant-main/.gitignore) to keep diagnostic scripts local and untracked.
+
+---
+
+### 4. Verification & Testing
+
+- **New Test Added:** `test_bar_freshness_from_candle_close` in [`tests/test_autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/tests/test_autonomous_executor.py).
+- **Test Suite Results:**
+  - `pytest tests/test_autonomous_executor.py tests/test_telegram_buttons.py tests/test_strategies.py -v`: **56/56 PASSED (100%)**.
+  - All 22 executor tests passed including microstructure rejection, bar freshness, dynamic ATR, smart EOD, time-decay banking, and daily circuit breaker.
+- **Git Deployment:**
+  - Pushed to `origin/main` (`d54e181`), automatically triggering continuous deployment on Render.
+
