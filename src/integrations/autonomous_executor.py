@@ -59,10 +59,10 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
-    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
-    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 1.00, "max_risk_usd": 25.0},
+    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
 ]
 
 # Active timeframe: "15m" (Default M15 Rapid Scalper), "30m", "5m", or "1h"
@@ -137,6 +137,15 @@ TIMEFRAME_CONFIGS = {
         "cooldown_seconds": 7200,      # 2 hours cooldown per ticker
         "label": "1-Hour Quantitative Sniper (Option A: SPY & QQQ)"
     }
+}
+
+TIMEFRAME_DURATION_SECONDS = {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "1d": 86400,
 }
 
 # Execution Mode: "SNIPER_MARKET" (Atomic Market with Micro-Rejection) or "SNIPER_LIMIT" (Resting Limit at Dip Band)
@@ -744,12 +753,14 @@ class AutonomousExecutionEngine:
                 continue
 
             # ── ANTI-LATE-TRADE GUARD 1: BAR FRESHNESS ──
-            bar_age_seconds = (dt_ny - last_bar_time).total_seconds()
+            bar_dur_sec = TIMEFRAME_DURATION_SECONDS.get(self.timeframe, 900)
+            bar_close_time = last_bar_time + pd.Timedelta(seconds=bar_dur_sec)
+            bar_age_from_close = (dt_ny - bar_close_time).total_seconds()
             max_allowed_age = cfg["bar_freshness_seconds"]
-            if bar_age_seconds > max_allowed_age:
+            if bar_age_from_close > max_allowed_age:
                 logger.info(
-                    f"⏳ [ANTI-LATE-TRADE] Rejecting {ticker} signal: Bar timestamp {last_bar_time} is "
-                    f"{bar_age_seconds/60:.1f}m old (> {max_allowed_age/60:.1f}m max allowed)."
+                    f"⏳ [ANTI-LATE-TRADE] Rejecting {ticker} signal: Bar closed at {bar_close_time} is "
+                    f"{bar_age_from_close/60:.1f}m past close (> {max_allowed_age/60:.1f}m max allowed)."
                 )
                 continue
 
@@ -763,7 +774,15 @@ class AutonomousExecutionEngine:
                 exec_price = c
 
             # Scale multiplier between ETF and cTrader index (e.g. DIA $516 -> US30 $51,600, SPY $580 -> SPX $5,800)
-            scale_multiplier = exec_price / c if c > 0 else 1.0
+            if c > 0:
+                raw_ratio = exec_price / c
+                if abs(raw_ratio - 1.0) < 0.20:
+                    scale_multiplier = 1.0
+                else:
+                    scale_multiplier = round(raw_ratio)
+            else:
+                scale_multiplier = 1.0
+
             scaled_l_band = l_band * scale_multiplier
             scaled_mean = m * scale_multiplier
 
@@ -776,7 +795,7 @@ class AutonomousExecutionEngine:
             # If spot price has already bounced above tolerance, ABORT (never chase a missed dip)
             tol_pct = cfg["price_tolerance_pct"]
             max_tolerated_price = scaled_l_band * (1.0 + tol_pct)
-            if exec_price > max_tolerated_price:
+            if scaled_l_band > 0 and exec_price > max_tolerated_price:
                 pct_away = ((exec_price - scaled_l_band) / scaled_l_band) * 100.0
                 logger.info(
                     f"🚫 [ANTI-LATE-TRADE] Rejecting {csym} late entry: Price ${exec_price:.2f} has bounced "
@@ -806,12 +825,21 @@ class AutonomousExecutionEngine:
 
             strat_name = cfg["label"]
 
+            # Dynamic max-risk safe lot sizing: bounds dollar loss to max_risk_usd ($25.00)
+            max_risk_usd = item.get("max_risk_usd", 25.0)
+            if exec_price > 0 and stop_pct > 0:
+                max_safe_lots = max_risk_usd / (exec_price * stop_pct)
+                safe_lots = round(min(lots, max_safe_lots), 2)
+                lots_to_trade = max(0.01, safe_lots)
+            else:
+                lots_to_trade = lots
+
             trade_payload = {
                 "action": "BUY",
                 "ticker": ticker,
                 "symbol": csym,
                 "name": dname,
-                "lots": lots,
+                "lots": lots_to_trade,
                 "price": exec_price,
                 "tp": tp_price,
                 "sl": sl_price,
@@ -823,7 +851,7 @@ class AutonomousExecutionEngine:
             }
 
             if dry_run:
-                logger.info(f"[DRY-RUN] Would auto-execute: BUY {lots} lots {csym} @ ${exec_price:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})")
+                logger.info(f"[DRY-RUN] Would auto-execute: BUY {lots_to_trade} lots {csym} @ ${exec_price:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})")
                 executed_trades.append({**trade_payload, "status": "SIMULATED", "order_id": "SIM_123"})
                 available_slots -= 1
                 continue
@@ -833,11 +861,11 @@ class AutonomousExecutionEngine:
                 if EXECUTION_MODE == "SNIPER_LIMIT":
                     bar_mins = 15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else (5 if "5m" in self.timeframe else 60))
                     expiry_sec = int(bar_mins * 60 * 2)
-                    logger.info(f"🎯 [SNIPER LIMIT]: Submitting resting BUY LIMIT {lots} lots {csym} @ ${scaled_l_band:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})...")
+                    logger.info(f"🎯 [SNIPER LIMIT]: Submitting resting BUY LIMIT {lots_to_trade} lots {csym} @ ${scaled_l_band:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})...")
                     res = self.ctrader.place_limit_order(
                         symbol=csym,
                         side="BUY",
-                        volume_lots=lots,
+                        volume_lots=lots_to_trade,
                         limit_price=scaled_l_band,
                         stop_loss_price=sl_price,
                         take_profit_price=tp_price,
@@ -845,11 +873,11 @@ class AutonomousExecutionEngine:
                         comment=f"AgentQuant: {strat_name} Limit"
                     )
                 else:
-                    logger.info(f"🚨 [ATOMIC MARKET]: Transmitting BUY {lots} lots {csym} to cTrader ({self.timeframe}) with atomic SL/TP...")
+                    logger.info(f"🚨 [ATOMIC MARKET]: Transmitting BUY {lots_to_trade} lots {csym} to cTrader ({self.timeframe}) with atomic SL/TP...")
                     res = self.ctrader.place_market_order(
                         symbol=csym,
                         side="BUY",
-                        volume_lots=lots,
+                        volume_lots=lots_to_trade,
                         relative_sl_points=rel_sl_points,
                         relative_tp_points=rel_tp_points,
                         stop_loss_price=sl_price,

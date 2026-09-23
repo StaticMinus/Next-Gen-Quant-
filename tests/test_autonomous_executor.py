@@ -410,6 +410,31 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.assertTrue(client.verify_order_ack("ACTIVE"))
         self.assertTrue(client.verify_order_ack(101))
 
+    def test_bar_freshness_from_candle_close(self):
+        """Verify that a 15m bar evaluated 30s after close passes freshness check, while a bar > 5m after close is rejected."""
+        self.mock_ctrader.session_id = "test_session"
+        self.mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+        self.mock_ctrader.get_positions.return_value = []
+        self.mock_ctrader.get_symbol_map.return_value = {"SPX500": 113}
+
+        # 15m candle indexed at 11:30 closes at 11:45
+        idx = pd.date_range("2026-09-16 09:30", periods=9, freq="15min", tz="America/New_York")
+        prices = [500.0] * 8 + [490.0] # Dip on 11:30 bar
+        mock_df = pd.DataFrame({"close": prices, "open": prices, "high": prices, "low": prices}, index=idx)
+        self.mock_ctrader.get_spot_price.return_value = {"ask": 490.00, "bid": 489.90}
+
+        with patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
+            # Evaluated at 11:45:30 (30 seconds after close -> Fresh!)
+            fresh_eval_time = idx[-1] + pd.Timedelta(minutes=15, seconds=30)
+            trades_fresh = self.engine.run_cycle(dry_run=True, dt_override=fresh_eval_time)
+            self.assertGreater(len(trades_fresh), 0, "15m candle evaluated 30s after close must PASS freshness check")
+
+            # Evaluated at 11:51:00 (6 minutes after close -> Stale! max_allowed = 300s)
+            stale_eval_time = idx[-1] + pd.Timedelta(minutes=21)
+            trades_stale = self.engine.run_cycle(dry_run=True, dt_override=stale_eval_time)
+            self.assertEqual(len(trades_stale), 0, "15m candle evaluated 6m after close must be REJECTED as stale")
+
 if __name__ == "__main__":
     unittest.main()
+
 

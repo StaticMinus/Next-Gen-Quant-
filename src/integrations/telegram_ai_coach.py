@@ -450,43 +450,62 @@ def ask_ai_coach(chat_id: str | int, user_message: str, account_telemetry: Optio
 
 def evaluate_market_signals() -> List[Dict]:
     """
-    Evaluates the Fab-4 universe across the ATLAS-Quant Strategy Triad.
-    STRICTLY READ-ONLY: Identifies setups forming without taking any trade actions.
+    Evaluates the Fab-4 universe across the active 15-Minute Scalper parameters.
+    STRICTLY READ-ONLY: Identifies intraday setups forming without taking trade actions.
     """
     import yfinance as yf
+    from src.integrations.autonomous_executor import ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS
+    cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["15m"])
+    tf_interval = cfg.get("interval", "15m")
+    w = cfg.get("window", 8)
+    num_std = cfg.get("num_std", 1.50)
+    stop_pct = cfg.get("stop_loss_pct", 0.0040)
+    tp_pct = cfg.get("target_profit_pct", 0.0025)
+
     signals = []
     for ticker in FAB4_UNIVERSE:
         try:
-            tk = yf.Ticker(ticker)
-            df = tk.history(period="3mo", interval="1d")
-            if len(df) < 25:
+            df = yf.download(ticker, period="5d", interval=tf_interval, progress=False)
+            if df.empty or len(df) < w + 2:
                 continue
 
-            c = float(df["Close"].iloc[-1])
-            prev_c = float(df["Close"].iloc[-2])
-            low = float(df["Low"].iloc[-1])
+            if hasattr(df.columns, 'levels'):
+                df.columns = [c[0].lower() for c in df.columns]
+            else:
+                df.columns = [str(c).lower() for c in df.columns]
 
-            mean_5d = float(df["Close"].tail(5).mean())
-            std_5d = float(df["Close"].tail(5).std())
-            dip_band = mean_5d - (1.25 * std_5d)
+            close = df["close"]
+            c = float(close.iloc[-1])
+            prev_c = float(close.iloc[-2])
+            low = float(df["low"].iloc[-1])
+            high = float(df["high"].iloc[-1])
+            open_p = float(df["open"].iloc[-1])
 
-            # RSI 14
-            delta = df["Close"].diff()
-            gain = delta.clip(lower=0).tail(14).mean()
-            loss = (-delta.clip(upper=0)).tail(14).mean()
-            rsi = float(100 - (100 / (1 + (gain / (loss + 1e-9)))))
+            mean_val = float(close.rolling(w).mean().iloc[-1])
+            std_val = float(close.rolling(w).std().iloc[-1])
+            dip_band = mean_val - (num_std * std_val)
 
-            # Check Sniper Dip Trigger
-            if (rsi < 36 or low <= dip_band) and (c > prev_c):
+            # Microstructure lower wick check
+            rng = high - low
+            lower_wick = min(open_p, c) - low
+            wick_ratio = (lower_wick / rng) if rng > 0 else 0.0
+            is_falling_knife = (c < open_p) and (wick_ratio < 0.15)
+
+            # Dip condition: price dipping below band
+            if c <= dip_band or low <= dip_band:
+                tp_target = round(c * (1.0 + tp_pct), 2)
+                sl_target = round(c * (1.0 - stop_pct), 2)
                 signals.append({
                     "ticker": ticker,
                     "name": FAB4_NAMES.get(ticker, ticker),
-                    "strategy": "Sniper Dip-Buy",
+                    "strategy": "M15 Rapid Scalper",
                     "price": c,
-                    "target": mean_5d,
-                    "stop": c * 0.97,
-                    "rsi": rsi,
-                    "summary": f"Capitulation dip at ${c:.2f} (RSI {rsi:.1f}). Target: ${mean_5d:.2f}, Stop: ${c * 0.97:.2f}."
+                    "target": tp_target,
+                    "stop": sl_target,
+                    "dip_band": dip_band,
+                    "wick_ratio": wick_ratio,
+                    "is_falling_knife": is_falling_knife,
+                    "summary": f"15m Dip at ${c:.2f} (Band: ${dip_band:.2f}, Wick: {wick_ratio*100:.1f}%)."
                 })
         except Exception as e:
             logger.warning(f"Signal evaluation error for {ticker}: {e}")
@@ -504,19 +523,21 @@ def run_autonomous_ai_scan() -> str:
     now_str = datetime.now().strftime("%H:%M:%S WAT")
 
     if signals:
-        bullets = [f"<b>🚨 AUTONOMOUS RADAR SCAN // HIGH-PROBABILITY DIP ACTIVE [{now_str}]</b>"]
+        bullets = [f"<b>🚨 AUTONOMOUS RADAR SCAN // 15M INTRADAY DIP ACTIVE [{now_str}]</b>"]
         for s in signals:
+            knife_tag = " [⚠️ Falling Knife Filtered]" if s.get("is_falling_knife") else " [✅ Rejection Wick Confirmed]"
             bullets.append(
-                f"• <b>{s['ticker']} ({s['name']}):</b> {s['strategy']} | Spot ${s['price']:.2f} | RSI {s['rsi']:.1f} | Target ${s['target']:.2f} | Stop -$25.00"
+                f"• <b>{s['ticker']} ({s['name']}):</b> Spot ${s['price']:.2f} | Dip Band ${s['dip_band']:.2f} | "
+                f"Target ${s['target']:.2f} (+0.25%) | Stop ${s['stop']:.2f} (-0.40%){knife_tag}"
             )
-        bullets.append("• <b>Council Protocol:</b> Algorithmic executor verified for 0.10 lot sizing and -$25 server stop.")
+        bullets.append("• <b>Execution Guard:</b> Autonomous engine verifies wick absorption (>=15%) and anti-chase price tolerance before order entry.")
         return "\n".join(bullets)
     else:
         return (
             f"<b>📡 AUTONOMOUS RADAR SCAN // FAB-4 INDICES [{now_str}]</b>\n"
-            "• <b>SPY (SPX500):</b> Dip Scanner Active — Spot above lower band, waiting for capitulation.\n"
-            "• <b>QQQ (NDX100):</b> Dip Scanner Active — Momentum healthy, awaiting 1.25σ discount.\n"
-            "• <b>DIA (US30):</b> Dip Scanner Active — Industrial structure stable, no oversold trigger.\n"
-            "• <b>IWM (US2000):</b> Dip Scanner Active — Small-cap volatility contained, monitoring support.\n"
+            "• <b>SPY (SPX500):</b> 15m Scalper Active — Price above lower band, awaiting 1.50σ dip.\n"
+            "• <b>QQQ (NDX100):</b> 15m Scalper Active — Momentum healthy, monitoring 15m dip support.\n"
+            "• <b>DIA (US30):</b> 15m Scalper Active — Industrial structure stable, no oversold trigger.\n"
+            "• <b>IWM (US2000):</b> 15m Scalper Active — Small-cap volatility contained, monitoring support.\n"
             "• <b>Risk Posture:</b> 0 positions active. 100% cash cushion preserved in bank."
         )

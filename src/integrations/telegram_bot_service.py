@@ -472,13 +472,19 @@ def save_telemetry_snapshot():
 
 
 def sync_market_radar_worker():
-    """Executed in background worker thread to fetch live prices and compute Option A 1H dip levels for SPY & QQQ."""
+    """Executed in background worker thread to fetch live prices and compute active 15m Scalper dip levels for Fab-4."""
     try:
         import yfinance as yf
+        from src.integrations.autonomous_executor import ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS
+        cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["15m"])
+        tf_interval = cfg.get("interval", "15m")
+        w = cfg.get("window", 8)
+        num_std = cfg.get("num_std", 1.50)
+
         for t in CORE_UNIVERSE:
             low_t = t.lower()
             try:
-                df = yf.download(t, period="5d", interval="1h", progress=False)
+                df = yf.download(t, period="5d", interval=tf_interval, progress=False)
                 if not df.empty:
                     if hasattr(df.columns, 'levels'):
                         df.columns = [c[0].lower() for c in df.columns]
@@ -486,15 +492,15 @@ def sync_market_radar_worker():
                         df.columns = [str(c).lower() for c in df.columns]
                     close = df["close"]
                     p_curr = float(close.iloc[-1])
-                    m20 = float(close.rolling(20).mean().iloc[-1])
-                    s20 = float(close.rolling(20).std().iloc[-1])
-                    l_band = m20 - 1.25 * s20
-                    u_band = m20 + 1.25 * s20
+                    m_val = float(close.rolling(w).mean().iloc[-1])
+                    s_val = float(close.rolling(w).std().iloc[-1])
+                    l_band = m_val - num_std * s_val
+                    u_band = m_val + num_std * s_val
                     dist = p_curr - l_band
                     dist_pct = (dist / p_curr) * 100
 
                     _CACHE[f"{low_t}_price"] = p_curr
-                    _CACHE[f"{low_t}_mean_5d"] = m20
+                    _CACHE[f"{low_t}_mean_5d"] = m_val
                     _CACHE[f"{low_t}_lower_band"] = l_band
                     _CACHE[f"{low_t}_upper_band"] = u_band
                     _CACHE[f"{low_t}_dist"] = dist
@@ -502,7 +508,7 @@ def sync_market_radar_worker():
 
                     if p_curr <= l_band:
                         _CACHE[f"{low_t}_signal"] = "🚨 <b>DIP TRIGGERED</b>"
-                    elif dist <= 2.0:
+                    elif dist_pct <= 0.20:
                         _CACHE[f"{low_t}_signal"] = f"🟡 <b>NEAR DIP (+${dist:.2f})</b>"
                     else:
                         _CACHE[f"{low_t}_signal"] = f"🟢 <b>SCANNING (+${dist:.2f})</b>"
