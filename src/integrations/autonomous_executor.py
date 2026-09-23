@@ -82,7 +82,7 @@ TIMEFRAME_CONFIGS = {
         "time_decay_bars": 3,    # Bank profit if holding >= 45 mins and green
         "time_decay_min_profit": 0.0010, # +0.10% profit triggers early close
         "bar_freshness_seconds": 300,  # 5 minutes max age from bar close
-        "price_tolerance_pct": 0.0005, # Max 0.05% bounce above trigger (anti-chase)
+        "price_tolerance_pct": 0.0015, # Max 0.15% bounce above trigger (anti-chase)
         "cooldown_seconds": 900,       # 15 min cooldown per ticker
         "label": "Option A 15-Minute Sharp Scalper (Rapid In & Out)"
     },
@@ -304,12 +304,14 @@ class AutonomousExecutionEngine:
             logger.warning(f"Error checking microstructure rejection for {csym}: {e}")
         return True, 0.0, "BYPASS"
 
-    def check_spread_shield(self, csym: str, spot_info: Optional[dict], max_spread_pct: float = 0.0003) -> Tuple[bool, float, str]:
+    def check_spread_shield(self, csym: str, spot_info: Optional[dict], max_spread_pct: Optional[float] = None) -> Tuple[bool, float, str]:
         """
         Spread & Slippage Shield Guard:
-        Verifies broker spread does not exceed max_spread_pct (default: 0.03% = 3 basis points).
+        Verifies broker spread does not exceed max_spread_pct (default: 0.03% for majors, 0.04% for US2000 small-caps).
         Prevents entry when broker spread would eat > 15-20% of the scalper's net target profit.
         """
+        if max_spread_pct is None:
+            max_spread_pct = 0.0004 if ("2000" in csym.upper() or "IWM" in csym.upper()) else 0.0003
         try:
             if spot_info and "ask" in spot_info and "bid" in spot_info:
                 ask = float(spot_info["ask"])
@@ -776,10 +778,10 @@ class AutonomousExecutionEngine:
             # Scale multiplier between ETF and cTrader index (e.g. DIA $516 -> US30 $51,600, SPY $580 -> SPX $5,800)
             if c > 0:
                 raw_ratio = exec_price / c
-                if abs(raw_ratio - 1.0) < 0.20:
+                if abs(raw_ratio - 1.0) < 0.05:
                     scale_multiplier = 1.0
                 else:
-                    scale_multiplier = round(raw_ratio)
+                    scale_multiplier = raw_ratio
             else:
                 scale_multiplier = 1.0
 

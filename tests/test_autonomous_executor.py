@@ -128,6 +128,33 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
             trades = self.engine.run_cycle(dry_run=True, dt_override=idx[-1] + pd.Timedelta(minutes=1))
             self.assertEqual(len(trades), 0, "Should reject trade when price is chased above tolerance")
 
+    def test_float_scale_multiplier_avoids_rounding_error_rejection(self):
+        """Verify that exact float scale multiplier (e.g. SPX/SPY ~10.035) allows valid dips without integer rounding error."""
+        self.mock_ctrader.session_id = "test_session"
+        self.mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+        self.mock_ctrader.get_positions.return_value = []
+        self.mock_ctrader.get_symbol_map.return_value = {"SPX500": 113}
+
+        # 15m candle indexed at 11:30 closes at 11:45
+        idx = pd.date_range("2026-09-16 09:30", periods=9, freq="15min", tz="America/New_York")
+        # 8 baseline bars at 580, then a dip bar with open 580, high 580, low 568, close 570
+        prices_close = [580.0] * 8 + [570.0]
+        prices_open = [580.0] * 8 + [579.0]
+        prices_high = [581.0] * 8 + [580.0]
+        prices_low = [579.0] * 8 + [568.0] # wick = (570 - 568) / (580 - 568) = 2/12 = 16.7% (>15% microstructure)
+        mock_df = pd.DataFrame({
+            "close": prices_close, "open": prices_open, "high": prices_high, "low": prices_low, "volume": [1000]*9
+        }, index=idx)
+
+        # Real index ratio is ~10.035: SPY is 570.0 -> SPX500 ask is 5720.0
+        self.mock_ctrader.get_spot_price.return_value = {"ask": 5720.0, "bid": 5719.5}
+
+        with patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
+            eval_time = idx[-1] + pd.Timedelta(minutes=15, seconds=30)
+            trades = self.engine.run_cycle(dry_run=True, dt_override=eval_time)
+            self.assertGreater(len(trades), 0, "Valid dip on SPX500 must NOT be blocked by integer scale rounding")
+            self.assertEqual(trades[0]["symbol"], "SPX500")
+
     def test_m15_timeframe_config(self):
         """Verify M15 Scalper A configuration settings."""
         self.assertIn("15m", TIMEFRAME_CONFIGS)
