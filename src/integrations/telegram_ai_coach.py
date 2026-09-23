@@ -517,27 +517,47 @@ def run_autonomous_ai_scan() -> str:
     """
     Executes autonomous scan across Fab-4 indices and formats output strictly as:
     1-line bold header and bullet points only.
+    Prevents false buy expectations by suppressing Target/Stop levels on rejected falling knives.
     """
     from datetime import datetime
     signals = evaluate_market_signals()
     now_str = datetime.now().strftime("%H:%M:%S WAT")
 
-    if signals:
-        bullets = [f"<b>🚨 AUTONOMOUS RADAR SCAN // 15M INTRADAY DIP ACTIVE [{now_str}]</b>"]
-        for s in signals:
-            knife_tag = " [⚠️ Falling Knife Filtered]" if s.get("is_falling_knife") else " [✅ Rejection Wick Confirmed]"
+    valid_signals = [s for s in signals if not s.get("is_falling_knife")]
+    rejected_signals = [s for s in signals if s.get("is_falling_knife")]
+
+    if valid_signals:
+        bullets = [f"<b>🎯 RADAR // BUY SETUP CONFIRMED [{now_str}]</b>"]
+        for s in valid_signals:
             bullets.append(
-                f"• <b>{s['ticker']} ({s['name']}):</b> Spot ${s['price']:.2f} | Dip Band ${s['dip_band']:.2f} | "
-                f"Target ${s['target']:.2f} (+0.25%) | Stop ${s['stop']:.2f} (-0.40%){knife_tag}"
+                f"• <b>{s['ticker']} ({s['name']}):</b> 🟢 <b>BUY SETUP CONFIRMED</b> — "
+                f"Spot ${s['price']:.2f} | Target ${s['target']:.2f} (+0.25%) | Stop ${s['stop']:.2f} (-0.40%)"
             )
-        bullets.append("• <b>Execution Guard:</b> Autonomous engine verifies wick absorption (>=15%) and anti-chase price tolerance before order entry.")
+        for s in rejected_signals:
+            bullets.append(
+                f"• <b>{s['ticker']} ({s['name']}):</b> 🚫 <b>NO TRADE</b> (Falling Knife: Wick {s['wick_ratio']*100:.1f}% < 15% • Holding Cash)"
+            )
+        bullets.append("• <b>Execution:</b> Sniper is actively transmitting orders to cTrader.")
+        return "\n".join(bullets)
+    elif rejected_signals:
+        bullets = [f"<b>📡 RADAR // ALL CLEAR (100% CASH PROTECTED) [{now_str}]</b>"]
+        for s in rejected_signals:
+            bullets.append(
+                f"• <b>{s['ticker']} ({s['name']}):</b> 🚫 <b>NO TRADE</b> — Falling Knife Dump (Wick {s['wick_ratio']*100:.1f}% < 15% absorption • Bot in Cash)"
+            )
+        handled = {s['ticker'] for s in rejected_signals}
+        for t in ["SPY", "QQQ", "DIA", "IWM"]:
+            if t not in handled:
+                dname = FAB4_NAMES.get(t, t)
+                bullets.append(f"• <b>{t} ({dname}):</b> ⚪ <b>Calm</b> — Price above dip band (Holding Cash)")
+        bullets.append("• <b>Protection:</b> Falling knife filters active. Bot will ONLY notify when a live order fills on cTrader.")
         return "\n".join(bullets)
     else:
         return (
-            f"<b>📡 AUTONOMOUS RADAR SCAN // FAB-4 INDICES [{now_str}]</b>\n"
-            "• <b>SPY (SPX500):</b> 15m Scalper Active — Price above lower band, awaiting 1.50σ dip.\n"
-            "• <b>QQQ (NDX100):</b> 15m Scalper Active — Momentum healthy, monitoring 15m dip support.\n"
-            "• <b>DIA (US30):</b> 15m Scalper Active — Industrial structure stable, no oversold trigger.\n"
-            "• <b>IWM (US2000):</b> 15m Scalper Active — Small-cap volatility contained, monitoring support.\n"
-            "• <b>Risk Posture:</b> 0 positions active. 100% cash cushion preserved in bank."
+            f"<b>📡 RADAR // ALL CLEAR (100% CASH) [{now_str}]</b>\n"
+            "• <b>SPY (S&P 500):</b> ⚪ <b>Calm</b> — Awaiting 1.50σ dip\n"
+            "• <b>QQQ (Nasdaq):</b> ⚪ <b>Calm</b> — Monitoring support\n"
+            "• <b>DIA (Dow Jones):</b> ⚪ <b>Calm</b> — No oversold trigger\n"
+            "• <b>IWM (Russell):</b> ⚪ <b>Calm</b> — Monitoring support\n"
+            "• <b>Status:</b> 0 positions active. 100% cash cushion preserved in bank."
         )

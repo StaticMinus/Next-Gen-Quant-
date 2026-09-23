@@ -1408,9 +1408,9 @@ def render_signals_text():
 
         if p > 0:
             if p <= l_band or dist <= 0:
-                parts.append(f"<b>{name}:</b> 🚨 Dipping now!")
+                parts.append(f"<b>{name}:</b> 🚫 Filtered (Cash)")
             elif dist_pct <= 0.5:
-                parts.append(f"<b>{name}:</b> 🟡 Close ({dist_pct:.1f}%)")
+                parts.append(f"<b>{name}:</b> 🟡 Near ({dist_pct:.1f}%)")
             elif dist_pct <= 1.0:
                 parts.append(f"<b>{name}:</b> 🟢 {dist_pct:.1f}% to dip")
             else:

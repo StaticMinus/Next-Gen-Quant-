@@ -888,9 +888,14 @@ class AutonomousExecutionEngine:
                         take_profit_price=tp_price,
                         comment=f"AgentQuant: {strat_name}"
                     )
-                order_id = "ACTIVE"
-                if isinstance(res, dict):
-                    order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId", "ACTIVE")
+                if not res or not isinstance(res, dict) or res.get("isError") or "error" in res or "errorCode" in res:
+                    logger.error(f"[!] cTrader order submission failed or rejected for {csym}: {res}")
+                    continue
+
+                order_id = res.get("orderId") or res.get("positionId") or res.get("position", {}).get("positionId")
+                if not order_id:
+                    logger.error(f"[!] cTrader order returned no confirmed orderId for {csym}: {res}")
+                    continue
 
                 # Verify Order ACK via cTrader
                 if hasattr(self.ctrader, "verify_order_ack"):
