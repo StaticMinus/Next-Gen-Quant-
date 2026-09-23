@@ -1278,4 +1278,52 @@ Backtest Evidence: [`results/m15_m30_deep_dive_report.json`](file:///c:/Users/Da
 3. **Calm Radar Status in Terminal ([`src/integrations/telegram_bot_service.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_bot_service.py)):**
    - Replaced alarming `🚨 Dipping now!` in `render_signals_text()` with `🚫 Filtered (Cash)`.
 
+---
+
+## 39. Zero-Trade Diagnostic & Execution Unblocking: Integer Rounding Bug & 15M Tolerance Calibration
+
+**Date:** September 23, 2026 (17:15 WAT / 12:15 PM EDT)  
+**Status:** **Diagnosed, Resolved, Unit Tested (40/40 Passed) & Deployed to Main (`caafa91`)**
+
+### 1. Root Cause Analysis — Why Zero Trades Executed Between 14:30 and 17:00 WAT:
+Across the first 2.5 hours of the US session, three distinct technical bottlenecks prevented trades from executing:
+
+1. **The Integer Rounding Error in `scale_multiplier` (Mathematical Smoking Gun):**
+   - ETF prices (SPY, QQQ, DIA, IWM) were translated to cTrader index spot levels (SPX500, NDX100, US30, US2000) using:
+     `scale_multiplier = round(raw_ratio)`
+   - Because ETF/Index ratios are non-integers (SPX/SPY = ~10.035, NDX/QQQ = ~41.117, US30/DIA = ~100.152, US2000/IWM = ~10.069), `round()` introduced an artificial price distortion:
+     - SPX500: deflated trigger by -0.34% (-34 bps)
+     - NDX100: deflated trigger by -0.29% (-29 bps)
+     - US30: deflated trigger by -0.15% (-15 bps)
+     - US2000: deflated trigger by -0.69% (-69 bps)
+   - Because `price_tolerance_pct` was set to `0.0005` (0.05% / 5 bps), the trigger level was artificially deflated far below spot, causing `ANTI-LATE-TRADE` to reject 100% of signals as "bounced above tolerance" even when spot was sitting precisely at the dip band!
+
+2. **Ultra-Tight 15M Price Tolerance (0.05% vs 0.15%):**
+   - The Microstructure Absorption Filter requires a lower wick >= 15% of the candle range.
+   - On a typical 0.50% range index candle, a 15% bounce off the low closes 0.07% to 0.12% above the absolute bottom.
+   - A 0.05% tolerance ceiling was structurally incompatible with confirmed buyer absorption wicks.
+
+3. **US2000 Spread Shield Ceiling:**
+   - Broker spread on US2000 fluctuates between 0.031% and 0.035%, which previously breached the hard-coded 0.030% ceiling.
+
+### 2. Implemented Resolutions:
+1. **Exact Float Scale Multiplier ([`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)):**
+   - Replaced `round(raw_ratio)` with exact float:
+     ```python
+     if c > 0:
+         raw_ratio = exec_price / c
+         if abs(raw_ratio - 1.0) < 0.05:
+             scale_multiplier = 1.0
+         else:
+             scale_multiplier = raw_ratio
+     ```
+   - Mathematical error eliminated from -0.34% to **0.000000%**.
+2. **Calibrated 15M Price Tolerance ([`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)):**
+   - Updated `TIMEFRAME_CONFIGS["15m"]["price_tolerance_pct"] = 0.0015` (0.15% / 15 bps), perfectly accommodating absorption wicks without chasing runaway breakouts.
+3. **Calibrated US2000 Spread Shield ([`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)):**
+   - Raised ceiling to `0.0004` (4 bps) for small-caps while maintaining `0.0003` (3 bps) for majors.
+4. **Added Regression Test ([`tests/test_autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/tests/test_autonomous_executor.py)):**
+   - Added `test_float_scale_multiplier_avoids_rounding_error_rejection` to ensure index scaling never blocks valid dips. All 40 tests passing.
+
+
 
