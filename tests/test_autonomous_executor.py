@@ -56,7 +56,7 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
             self.assertNotEqual(t["symbol"], "SPX500")
 
     def test_outside_active_entry_window_skips_entries(self):
-        """Verify that outside 10:00 - 14:30 EST, no new trades are placed."""
+        """Verify that outside 10:00 - 14:30 EST, no stock index trades are placed."""
         self.mock_ctrader.session_id = "test_session"
         self.mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
         self.mock_ctrader.get_positions.return_value = []
@@ -64,12 +64,14 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         # 04:00 AM EST (Pre-market)
         early_dt = pd.Timestamp("2026-09-16 04:00:00", tz="America/New_York")
         trades = self.engine.run_cycle(dry_run=True, dt_override=early_dt)
-        self.assertEqual(len(trades), 0, "Must not trade in pre-market")
+        equity_trades = [t for t in trades if t["symbol"] in ("SPX500", "NDX100", "US30", "US2000")]
+        self.assertEqual(len(equity_trades), 0, "Must not trade stock indices in pre-market")
 
         # 02:45 PM EST (After 2:30 PM cutoff)
         late_dt = pd.Timestamp("2026-09-16 14:45:00", tz="America/New_York")
         trades_late = self.engine.run_cycle(dry_run=True, dt_override=late_dt)
-        self.assertEqual(len(trades_late), 0, "Must not enter trades after 2:30 PM cutoff")
+        equity_trades_late = [t for t in trades_late if t["symbol"] in ("SPX500", "NDX100", "US30", "US2000")]
+        self.assertEqual(len(equity_trades_late), 0, "Must not enter stock index trades after 2:30 PM cutoff")
 
     def test_smart_eod_banks_profitable_trades(self):
         """Verify that at 15:50 EST, positions in profit are closed to bank cash."""
@@ -149,11 +151,11 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         # Real index ratio is ~10.035: SPY is 570.0 -> SPX500 ask is 5720.0
         self.mock_ctrader.get_spot_price.return_value = {"ask": 5720.0, "bid": 5719.5}
 
-        with patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
+        test_univ = [{"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0}]
+        with patch("src.integrations.autonomous_executor.TARGET_UNIVERSE", test_univ), patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
             eval_time = idx[-1] + pd.Timedelta(minutes=15, seconds=30)
             trades = self.engine.run_cycle(dry_run=True, dt_override=eval_time)
-            self.assertGreater(len(trades), 0, "Valid dip on SPX500 must NOT be blocked by integer scale rounding")
-            self.assertEqual(trades[0]["symbol"], "SPX500")
+            self.assertTrue(any(t["symbol"] == "SPX500" for t in trades), "SPX500 trade should be generated")
 
     def test_m15_timeframe_config(self):
         """Verify M15 Scalper A configuration settings."""

@@ -59,16 +59,36 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
+    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.02, "max_risk_usd": 30.0, "is_crypto": True},
+    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 0.50, "max_risk_usd": 30.0, "is_crypto": True},
+    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 1000.0, "max_risk_usd": 30.0, "is_crypto": True},
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0},
     {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 25.0},
     {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 25.0},
     {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 25.0},
 ]
 
-# Active timeframe: "15m" (Default M15 Rapid Scalper), "30m", "5m", or "1h"
-ACTIVE_TIMEFRAME = os.getenv("AUTONOMOUS_TIMEFRAME", "15m")
+# Active timeframe: "1m" (Default M1 Microstructure Sniper), "15m", "30m", "5m", or "1h"
+ACTIVE_TIMEFRAME = os.getenv("AUTONOMOUS_TIMEFRAME", "1m")
 
 TIMEFRAME_CONFIGS = {
+    "1m": {
+        "interval": "1m",
+        "period": "1d",
+        "window": 20,            # 20-minute rolling mean
+        "num_std": 1.50,         # 1.50 sigma dip band (M1 Microstructure Sniper)
+        "exit_at_mean": True,    # Take profit at mean or target
+        "allow_short": False,    # Long-Only on dip snipes
+        "stop_loss_pct": 0.0050, # 0.50% tight hard stop
+        "target_profit_pct": 0.0060, # +0.60% rapid take profit
+        "max_hold_bars": 12,     # 12 minutes max hold (Strict in-and-out!)
+        "time_decay_bars": 5,    # Bank profit if holding >= 5 mins and green
+        "time_decay_min_profit": 0.0015, # +0.15% profit triggers early close
+        "bar_freshness_seconds": 60,   # 1 minute max age from bar close
+        "price_tolerance_pct": 0.0010, # Max 0.10% bounce above trigger (anti-chase)
+        "cooldown_seconds": 180,       # 3 min cooldown per ticker
+        "label": "1-Minute Real-Tick Microstructure Sniper (24/7)"
+    },
     "15m": {
         "interval": "15m",
         "period": "5d",
@@ -463,7 +483,8 @@ class AutonomousExecutionEngine:
                     "SPX500": "S&P 500", "SPY": "S&P 500",
                     "NDX100": "Nasdaq", "QQQ": "Nasdaq",
                     "US30": "Dow Jones", "DIA": "Dow Jones",
-                    "US2000": "Russell", "IWM": "Russell"
+                    "US2000": "Russell", "IWM": "Russell",
+                    "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin"
                 }
                 dname = friendly_names.get(sym_name.upper(), sym_name)
                 pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
@@ -492,7 +513,7 @@ class AutonomousExecutionEngine:
 
         now = time.time()
         cfg = self.cfg
-        bar_mins = 15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else (5 if "5m" in self.timeframe else 60))
+        bar_mins = 1 if "1m" in self.timeframe else (5 if "5m" in self.timeframe else (15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else 60)))
         max_hold_seconds = cfg.get("max_hold_bars", 6) * bar_mins * 60
         time_decay_seconds = cfg.get("time_decay_bars", 3) * bar_mins * 60
         min_profit_pct = cfg.get("time_decay_min_profit", 0.0010)
@@ -567,7 +588,8 @@ class AutonomousExecutionEngine:
                         "SPX500": "S&P 500", "SPY": "S&P 500",
                         "NDX100": "Nasdaq", "QQQ": "Nasdaq",
                         "US30": "Dow Jones", "DIA": "Dow Jones",
-                        "US2000": "Russell", "IWM": "Russell"
+                        "US2000": "Russell", "IWM": "Russell",
+                        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin"
                     }
                     dname = friendly_names.get(sym_name.upper(), sym_name)
                     pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
@@ -665,10 +687,8 @@ class AutonomousExecutionEngine:
 
         available_slots = MAX_CONCURRENT_POSITIONS - active_count
 
-        # 5. Check Active Entry Window (10:00 - 15:30 EST)
-        if not self.is_active_entry_window(dt_ny):
-            logger.debug(f"[*] Outside active US entry window (current NY: {dt_ny.strftime('%H:%M')}). No new entries.")
-            return []
+        # 5. Check Active Entry Window (US Stock Equities require 9:30-14:30 EST; Crypto trades 24/7)
+        is_us_equity_open = self.is_active_entry_window(dt_ny)
 
         # 6. Map currently held tickers (Zero Duplicate Asset Rule)
         held_symbol_ids = set()
@@ -696,7 +716,7 @@ class AutonomousExecutionEngine:
             "max_hold_bars": cfg["max_hold_bars"],
         }
 
-        # 7. Scan Core Universe: SPY & QQQ
+        # 7. Scan Core Universe: Indices (SPY, QQQ, DIA, IWM) & Crypto (BTCUSD)
         for item in TARGET_UNIVERSE:
             if available_slots <= 0:
                 break
@@ -705,6 +725,11 @@ class AutonomousExecutionEngine:
             csym = item["ctrader_symbol"]
             lots = item.get("target_lots")
             dname = item["name"]
+            is_crypto = item.get("is_crypto", False)
+
+            # Session check: If stock index ETF, verify regular US market hours
+            if not is_crypto and not is_us_equity_open:
+                continue
 
             # Check duplicate
             sym_id = symbol_map.get(csym.upper())
@@ -865,7 +890,7 @@ class AutonomousExecutionEngine:
             # ── LIVE ORDER SUBMISSION VIA cTrader MCP (UPGRADES 1 & 3) ──
             try:
                 if EXECUTION_MODE == "SNIPER_LIMIT":
-                    bar_mins = 15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else (5 if "5m" in self.timeframe else 60))
+                    bar_mins = 1 if "1m" in self.timeframe else (5 if "5m" in self.timeframe else (15 if "15m" in self.timeframe else (30 if "30m" in self.timeframe else 60)))
                     expiry_sec = int(bar_mins * 60 * 2)
                     logger.info(f"🎯 [SNIPER LIMIT]: Submitting resting BUY LIMIT {lots_to_trade} lots {csym} @ ${scaled_l_band:.2f} (SL: ${sl_price:.2f}, TP: ${tp_price:.2f})...")
                     res = self.ctrader.place_limit_order(

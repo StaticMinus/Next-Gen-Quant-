@@ -7,8 +7,12 @@ from src.agent.proposal_generator import Proposal, ProposalGenerator
 
 def test_fallback_without_api_key(monkeypatch):
     """Without an API key, generator should use grid search."""
-    monkeypatch.setenv("GOOGLE_API_KEY", "")
-    gen = ProposalGenerator()
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from src.agent.base_planner import FallbackPlanner
+    gen = ProposalGenerator(planner=FallbackPlanner())
     ctx = RegimeContext(regime_label="LowVol-Bull")
     proposals = gen.generate(ctx, n_proposals=3, strategy_type="momentum")
     assert len(proposals) > 0

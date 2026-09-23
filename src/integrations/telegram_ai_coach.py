@@ -450,22 +450,22 @@ def ask_ai_coach(chat_id: str | int, user_message: str, account_telemetry: Optio
 
 def evaluate_market_signals() -> List[Dict]:
     """
-    Evaluates the Fab-4 universe across the active 15-Minute Scalper parameters.
+    Evaluates the Fab-4 universe across the active 1-Minute Scalper parameters.
     STRICTLY READ-ONLY: Identifies intraday setups forming without taking trade actions.
     """
     import yfinance as yf
     from src.integrations.autonomous_executor import ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS
-    cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["15m"])
-    tf_interval = cfg.get("interval", "15m")
-    w = cfg.get("window", 8)
+    cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["1m"])
+    tf_interval = cfg.get("interval", "1m")
+    w = cfg.get("window", 20)
     num_std = cfg.get("num_std", 1.50)
-    stop_pct = cfg.get("stop_loss_pct", 0.0040)
-    tp_pct = cfg.get("target_profit_pct", 0.0025)
+    stop_pct = cfg.get("stop_loss_pct", 0.0050)
+    tp_pct = cfg.get("target_profit_pct", 0.0060)
 
     signals = []
     for ticker in FAB4_UNIVERSE:
         try:
-            df = yf.download(ticker, period="5d", interval=tf_interval, progress=False)
+            df = yf.download(ticker, period="1d", interval=tf_interval, progress=False)
             if df.empty or len(df) < w + 2:
                 continue
 
@@ -498,14 +498,14 @@ def evaluate_market_signals() -> List[Dict]:
                 signals.append({
                     "ticker": ticker,
                     "name": FAB4_NAMES.get(ticker, ticker),
-                    "strategy": "M15 Rapid Scalper",
+                    "strategy": "M1 Rapid Scalper",
                     "price": c,
                     "target": tp_target,
                     "stop": sl_target,
                     "dip_band": dip_band,
                     "wick_ratio": wick_ratio,
                     "is_falling_knife": is_falling_knife,
-                    "summary": f"15m Dip at ${c:.2f} (Band: ${dip_band:.2f}, Wick: {wick_ratio*100:.1f}%)."
+                    "summary": f"1m Dip at ${c:.2f} (Band: ${dip_band:.2f}, Wick: {wick_ratio*100:.1f}%)."
                 })
         except Exception as e:
             logger.warning(f"Signal evaluation error for {ticker}: {e}")

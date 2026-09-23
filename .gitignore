@@ -42,3 +42,7 @@ config.json
 new_env.ini
 experiments/run_manifests/
 scratch/
+
+# External cloned models & engines
+jev-trader-main/
+laya-main_2/

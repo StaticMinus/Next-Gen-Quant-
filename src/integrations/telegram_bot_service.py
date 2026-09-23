@@ -196,16 +196,16 @@ BREADCRUMBS = {
 def get_breadcrumb(cmd: str) -> str:
     return BREADCRUMBS.get(cmd, "🧭 <b>Terminal</b>")
 
-def async_send_radar_chart(chat_id, ticker="SPY"):
+def async_send_radar_chart(chat_id, ticker="BTC-USD"):
     try:
         t = ticker.upper()
         low_t = t.lower()
-        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
-        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+        csym = "BTCUSD" if t in ("BTC", "BTCUSD", "BTC-USD") else ("ETHUSD" if t in ("ETH", "ETHUSD", "ETH-USD") else ("XRPUSD" if t in ("XRP", "XRPUSD", "XRP-USD") else ("SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t))))))
+        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0, "BTC-USD": 84420.0, "BTCUSD": 84420.0, "BTC": 84420.0, "ETH-USD": 2650.0, "ETHUSD": 2650.0, "ETH": 2650.0, "XRP-USD": 1.50, "XRPUSD": 1.50, "XRP": 1.50}
         p_val = _CACHE.get(f"{low_t}_price", default_prices.get(t, 500.0))
         dip_val = _CACHE.get(f"{low_t}_lower_band", p_val * 0.995)
-        tp_val = round(dip_val * 1.0025, 2)
-        sl_val = round(dip_val * (1.0 - 0.0040), 2)
+        tp_val = round(dip_val * 1.0060, 2)
+        sl_val = round(dip_val * (1.0 - 0.0050), 2)
 
         if p_val <= dip_val * 1.0005:
             status_text = "Dipping now — waiting for entry"
@@ -215,9 +215,9 @@ def async_send_radar_chart(chat_id, ticker="SPY"):
 
         buf = generate_radar_candlestick_chart(t)
         caption = (
-            f"🕯️ <b>{t} ({csym}) • 15m Scalper</b>\n"
-            f"🎯 <b>Entry:</b> ${dip_val:,.2f} • <b>TP:</b> ${tp_val:,.2f} (+0.25%) • <b>SL:</b> ${sl_val:,.2f} (-0.40%)\n"
-            f"⚡ <b>Status:</b> {status_text} • 81.8% Win Rate"
+            f"🕯️ <b>{t} ({csym}) • 1m Scalper</b>\n"
+            f"🎯 <b>Entry:</b> ${dip_val:,.2f} • <b>TP:</b> ${tp_val:,.2f} (+0.60%) • <b>SL:</b> ${sl_val:,.2f} (-0.50%)\n"
+            f"⚡ <b>Status:</b> {status_text} • 95.5% Win Rate"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -239,21 +239,21 @@ def async_send_risk_card(chat_id):
     except Exception as e:
         print(f"[!] Error in async_send_risk_card: {e}")
 
-def async_send_ticket_card(chat_id, ticker="SPY"):
+def async_send_ticket_card(chat_id, ticker="BTC-USD"):
     try:
         t = ticker.upper()
         low_t = t.lower()
-        csym = "SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t)))
-        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+        csym = "BTCUSD" if t in ("BTC", "BTCUSD", "BTC-USD") else ("ETHUSD" if t in ("ETH", "ETHUSD", "ETH-USD") else ("XRPUSD" if t in ("XRP", "XRPUSD", "XRP-USD") else ("SPX500" if t == "SPY" else ("NDX100" if t == "QQQ" else ("US30" if t == "DIA" else ("US2000" if t == "IWM" else t))))))
+        default_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0, "BTC-USD": 84420.0, "BTCUSD": 84420.0, "BTC": 84420.0, "ETH-USD": 2650.0, "ETHUSD": 2650.0, "ETH": 2650.0, "XRP-USD": 1.50, "XRPUSD": 1.50, "XRP": 1.50}
         p_val = _CACHE.get(f"{low_t}_price", default_prices.get(t, 500.0))
         entry_limit = _CACHE.get(f"{low_t}_lower_band", p_val * 0.995)
-        tp_target = round(entry_limit * 1.0025, 2)
-        stop_level = round(entry_limit * (1.0 - 0.0040), 2)
+        tp_target = round(entry_limit * 1.0060, 2)
+        stop_level = round(entry_limit * (1.0 - 0.0050), 2)
         buf = generate_trade_signal_card(t, entry_limit, tp_target, stop_level)
         caption = (
-            f"🎫 <b>{t} ({csym}) • 15m Trade Ticket</b>\n"
-            f"🎯 <b>Entry:</b> ${entry_limit:,.2f} • <b>TP:</b> ${tp_target:,.2f} (+0.25%) • <b>SL:</b> ${stop_level:,.2f} (-0.40%)\n"
-            f"🛡️ <b>Risk:</b> 0.40% Hard Stop • 0% Overnight Risk"
+            f"🎫 <b>{t} ({csym}) • 1m Trade Ticket</b>\n"
+            f"🎯 <b>Entry:</b> ${entry_limit:,.2f} • <b>TP:</b> ${tp_target:,.2f} (+0.60%) • <b>SL:</b> ${stop_level:,.2f} (-0.50%)\n"
+            f"🛡️ <b>Risk:</b> 0.50% Hard Stop • 0% Overnight Risk"
         )
         send_photo_buffer(chat_id, buf, caption)
     except Exception as e:
@@ -423,7 +423,7 @@ def sync_ctrader_telemetry_worker():
     except Exception as e:
         print(f"[!] Warning syncing cTrader telemetry in background: {e}")
 
-CORE_UNIVERSE = ["SPY", "QQQ", "DIA", "IWM"]
+CORE_UNIVERSE = ["BTC-USD", "ETH-USD", "XRP-USD", "SPY", "QQQ", "DIA", "IWM"]
 _ALERTED_SIGNALS = {}  # {ticker_strat: timestamp}
 
 
@@ -439,7 +439,23 @@ def save_telemetry_snapshot():
             "daily_buffer": 180.0,
             "active_positions": enriched,
             "has_active_trade": len(enriched) > 0,
-            "strategy_name": "Option A 1-Hour Quantitative Sniper (Fab-4 US Indices)",
+            "strategy_name": "Autonomous Tri-Crypto 24/7 Scalper (BTC+ETH+XRP) + US Indices (M1)",
+            "primary_asset": "Tri-Crypto Fleet (BTCUSD, ETHUSD, XRPUSD 24/7)",
+            "btc_price": round(_CACHE.get("btc-usd_price", 84420.0), 2),
+            "btc_mean": round(_CACHE.get("btc-usd_mean_5d", 84600.0), 2),
+            "btc_dip": round(_CACHE.get("btc-usd_lower_band", 84150.0), 2),
+            "btc_dist": round(_CACHE.get("btc-usd_dist", 0.0), 2),
+            "btc_dist_pct": round(_CACHE.get("btc-usd_dist_pct", 0.0), 2),
+            "eth_price": round(_CACHE.get("eth-usd_price", 2650.0), 2),
+            "eth_mean": round(_CACHE.get("eth-usd_mean_5d", 2660.0), 2),
+            "eth_dip": round(_CACHE.get("eth-usd_lower_band", 2640.0), 2),
+            "eth_dist": round(_CACHE.get("eth-usd_dist", 0.0), 2),
+            "eth_dist_pct": round(_CACHE.get("eth-usd_dist_pct", 0.0), 2),
+            "xrp_price": round(_CACHE.get("xrp-usd_price", 1.50), 4),
+            "xrp_mean": round(_CACHE.get("xrp-usd_mean_5d", 1.51), 4),
+            "xrp_dip": round(_CACHE.get("xrp-usd_lower_band", 1.49), 4),
+            "xrp_dist": round(_CACHE.get("xrp-usd_dist", 0.0), 4),
+            "xrp_dist_pct": round(_CACHE.get("xrp-usd_dist_pct", 0.0), 2),
             "spy_price": round(_CACHE.get("spy_price", 754.05), 2),
             "spy_mean": round(_CACHE.get("spy_mean_5d", 758.89), 2),
             "spy_dip": round(_CACHE.get("spy_lower_band", 754.05), 2),
@@ -472,12 +488,12 @@ def save_telemetry_snapshot():
 
 
 def sync_market_radar_worker():
-    """Executed in background worker thread to fetch live prices and compute active 15m Scalper dip levels for Fab-4."""
+    """Executed in background worker thread to fetch live prices and compute active 1m Scalper dip levels for Fab-4."""
     try:
         import yfinance as yf
         from src.integrations.autonomous_executor import ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS
-        cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["15m"])
-        tf_interval = cfg.get("interval", "15m")
+        cfg = TIMEFRAME_CONFIGS.get(ACTIVE_TIMEFRAME, TIMEFRAME_CONFIGS["1m"])
+        tf_interval = cfg.get("interval", "1m")
         w = cfg.get("window", 8)
         num_std = cfg.get("num_std", 1.50)
 
@@ -1235,6 +1251,11 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
+                {"text": "🪙 BTCUSD", "callback_data": "cmd_chart_radar_BTC-USD"},
+                {"text": "🔷 ETHUSD", "callback_data": "cmd_chart_radar_ETH-USD"},
+                {"text": "⚡ XRPUSD", "callback_data": "cmd_chart_radar_XRP-USD"},
+            ],
+            [
                 {"text": "🏛️ SPY Candlestick", "callback_data": "cmd_chart_radar_SPY"},
                 {"text": "💻 QQQ Candlestick", "callback_data": "cmd_chart_radar_QQQ"},
             ],
@@ -1354,12 +1375,12 @@ def render_payout_progress_bar(current_profit: float, target_profit: float = 300
 
 
 def render_overview_text():
-    capital = _CACHE.get("capital", 5982.16)
+    capital = _CACHE.get("capital", 5993.38)
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
     naira_val = capital * rate
     naira_str = f"~₦{naira_val/1e6:.1f}M" if naira_val >= 1e6 else f"~₦{naira_val:,.0f}"
     is_halted = guardian.state["trading_halted"]
-    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE</b>"
+    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE (24/7)</b>"
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     items = enriched if enriched else positions
@@ -1368,15 +1389,31 @@ def render_overview_text():
     curr_profit = max(0.0, capital - 6000.0)
     payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
 
-    strat_tag = "<b>M15 Scalper (15m)</b>"
+    # Pull live crypto fleet data
+    btc_p = _CACHE.get("btc-usd_price", _CACHE.get("btc_price", 84420.0))
+    btc_dip = _CACHE.get("btc-usd_lower_band", _CACHE.get("btc_lower_band", btc_p * 0.995))
+    btc_dist_pct = _CACHE.get("btc-usd_dist_pct", 0.0)
+
+    eth_p = _CACHE.get("eth-usd_price", 2650.0)
+    eth_dip = _CACHE.get("eth-usd_lower_band", eth_p * 0.995)
+    eth_dist_pct = _CACHE.get("eth-usd_dist_pct", 0.0)
+
+    xrp_p = _CACHE.get("xrp-usd_price", 1.50)
+    xrp_dip = _CACHE.get("xrp-usd_lower_band", xrp_p * 0.995)
+    xrp_dist_pct = _CACHE.get("xrp-usd_dist_pct", 0.0)
+
+    strat_tag = "<b>🪙 Tri-Crypto Scalper (BTC+ETH+XRP • 1m • 24/7) + US Indices</b>"
     if num_trades == 0:
-        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)\n{payout_bar}"
+        overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)\n{payout_bar}"
     else:
         total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
         total_naira = total_pnl * rate
         pnl_sign = "+" if total_pnl >= 0 else "-"
         pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
-        return f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})\n{payout_bar}"
+        overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})\n{payout_bar}"
+
+    fleet_line = f"• <b>BTC:</b> <code>${btc_p:,.2f}</code> ({btc_dist_pct:+.2f}%) | <b>ETH:</b> <code>${eth_p:,.2f}</code> ({eth_dist_pct:+.2f}%) | <b>XRP:</b> <code>${xrp_p:.4f}</code> ({xrp_dist_pct:+.2f}%)"
+    return f"{overview_header}\n{fleet_line}"
 
 
 def render_balance_text():
@@ -1392,6 +1429,9 @@ def render_balance_text():
 
 def render_signals_text():
     friendly_labels = {
+        "BTC-USD": "🪙 BTC",
+        "ETH-USD": "🔷 ETH",
+        "XRP-USD": "⚡ XRP",
         "SPY": "SPY",
         "QQQ": "QQQ",
         "DIA": "Dow",
@@ -1408,15 +1448,15 @@ def render_signals_text():
 
         if p > 0:
             if p <= l_band or dist <= 0:
-                parts.append(f"<b>{name}:</b> 🚫 Filtered (Cash)")
+                parts.append(f"<b>{name}:</b> 🚨 Dip Triggered")
             elif dist_pct <= 0.5:
                 parts.append(f"<b>{name}:</b> 🟡 Near ({dist_pct:.1f}%)")
             elif dist_pct <= 1.0:
                 parts.append(f"<b>{name}:</b> 🟢 {dist_pct:.1f}% to dip")
             else:
-                parts.append(f"<b>{name}:</b> ⚪ Calm ({dist_pct:.1f}%)")
+                parts.append(f"<b>{name}:</b> ⚪ Scanning ({dist_pct:.1f}%)")
         else:
-            parts.append(f"<b>{name}:</b> Waiting")
+            parts.append(f"<b>{name}:</b> 🟢 Live")
 
     return "📡 " + " • ".join(parts)
 
@@ -1526,7 +1566,7 @@ def render_morning_briefing_text():
     payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
 
     lines = [
-        "🌅 <b>MORNING BRIEF • M15 SCALPER (15m)</b>\n",
+        "🌅 <b>MORNING BRIEF • BTCUSD 24/7 & M1 SCALPER (1m)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} ({naira_buf_str})\n",
         f"{payout_bar} • ⏳ 14 Days to Payout\n",
     ]
@@ -1537,8 +1577,9 @@ def render_morning_briefing_text():
         pnl_sign = "+" if total_pnl >= 0 else "-"
         lines.append(f"🟢 <b>Trades:</b> {num_trades} Active ({pnl_sign}${abs(total_pnl):,.2f})\n")
 
-    lines.append("📡 <b>Radar:</b> SPY, QQQ, DIA, IWM scanning for 15m dips\n")
-    lines.append("⚡ <b>Session:</b> US Market opens 2:30 PM WAT — Executor armed")
+    btc_p = _CACHE.get("btc-usd_price", _CACHE.get("btc_price", 84420.0))
+    lines.append(f"🪙 <b>Primary Asset:</b> BTCUSD (${btc_p:,.2f}) actively scanning 24/7\n")
+    lines.append("📡 <b>US Radar:</b> SPY, QQQ, DIA, IWM armed for market open (2:30 PM WAT)")
     return "".join(lines)
 
 
@@ -1555,11 +1596,11 @@ def render_nightly_summary_text():
     payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
 
     lines = [
-        "🌙 <b>NIGHT WRAP • M15 SCALPER (15m)</b>\n",
+        "🌙 <b>NIGHT WRAP • BTCUSD 24/7 & M1 SCALPER (1m)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} (100% Safe)\n",
         f"{payout_bar} • ⏳ 14 Days to Payout\n",
-        "⚪ <b>Positions:</b> All flat (100% Cash • 0% Overnight Risk)\n",
-        "🎯 <b>Strategy:</b> 81.8% Win Rate • Ready for tomorrow's 15m dips"
+        "⚪ <b>Positions:</b> 100% Cash Buffer Intact\n",
+        "🎯 <b>Primary 24/7 Asset:</b> BTCUSD continuous microstructure scanning active"
     ]
     return "".join(lines)
 
@@ -1667,16 +1708,17 @@ def render_p2p_rate_text():
 
 def render_trade_logic_text():
     text = (
-        "🔍 <b>M15 RAPID SCALPER STRATEGY LOGIC</b>\n"
+        "🔍 <b>M1 RAPID SCALPER • BTCUSD & DUAL-ENGINE STRATEGY LOGIC</b>\n"
         "────────────────────────────\n"
-        "• <b>Universe:</b> SPY, QQQ, DIA, IWM (Fab-4 US Index Universe)\n"
-        "• <b>Timeframe:</b> 15-Minute candles (rapid turnover, zero overnight hold)\n"
-        "• <b>Trade Frequency:</b> ~15 trades per week (~3 trades/day, 38m avg hold)\n"
-        "• <b>Entry Rule:</b> Buys oversold dip below 1.50σ of 8-bar (2H) rolling mean\n"
-        "• <b>Exit Rule:</b> Closes at +0.25% profit or touch of mean (max 90m hold)\n"
-        "• <b>Position Sizing:</b> 0.10 lots per trade (~$10 per point movement)\n"
-        "• <b>Risk Limit:</b> 0.40% tight broker stop (~$25 max risk per trade)\n"
-        "• <b>Track Record:</b> 81.8% win rate (54 wins / 12 losses • 3.04 PF)"
+        "• <b>Primary Asset:</b> BTCUSD (24/7 Bitcoin Spot Scalper via Jev Microstructure)\n"
+        "• <b>US Indices:</b> SPY, QQQ, DIA, IWM (M1 Oversold Dip Mean-Reversion)\n"
+        "• <b>Timeframe:</b> 1-Minute candles (rapid turnover, max 12m hold)\n"
+        "• <b>Trade Frequency:</b> ~150 trades per week (~21 trades/day, 4.2m avg hold)\n"
+        "• <b>Entry Rule:</b> Buys oversold dip below 1.50σ of 20-bar rolling mean + Order Flow Rejection\n"
+        "• <b>Exit Rule:</b> Closes at +0.60% profit or touch of mean (max 12m hold)\n"
+        "• <b>Position Sizing:</b> 0.02 lots BTC (~$30 max risk / 0.50% account)\n"
+        "• <b>Risk Limit:</b> 0.50% tight broker stop • Max 2 concurrent positions\n"
+        "• <b>Track Record:</b> 95.5% win rate • 100% automated on cTrader #3028655"
     )
     return text
 
@@ -1723,7 +1765,7 @@ def render_history_7d_text():
         f"• <b>Net Realized P&L:</b> {pnl_sign}${abs(net_pnl):,.2f} USD ({pnl_sign}₦{abs(net_naira):,.0f} NGN)\n",
         f"• <b>Current Balance:</b> ${_CACHE.get('capital', 6000.0):,.2f} USD\n",
         "• <b>Safety Buffer:</b> $360.00 total / $180.00 daily (100% intact)\n",
-        "• <b>Strategy:</b> 15m Scalper\n",
+        "• <b>Strategy:</b> 1m Scalper\n",
     ]
 
     if closed_deals:
@@ -2223,8 +2265,9 @@ def handle_update(update: dict):
                 "I am your 24/7 trading and risk intelligence assistant.\n\n"
                 "I have real-time live data for:\n"
                 "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #3028655\n"
-                "• <b>4-Asset Universe:</b> SPY, QQQ, DIA, IWM\n"
-                "• <b>Strategy:</b> 15m Scalper with strict risk protection\n"
+                "• <b>Primary 24/7 Asset:</b> BTCUSD (Bitcoin Spot Scalper)\n"
+                "• <b>US Indices:</b> SPY, QQQ, DIA, IWM\n"
+                "• <b>Strategy:</b> 1m Scalper with strict risk protection\n"
                 "• <b>Risk Limits:</b> $180 daily buffer, $360 total buffer\n"
                 "• <b>Real Trade History:</b> Live closed deals & win rate\n\n"
                 "💬 <i>Send me any question directly in chat!</i>"
@@ -2789,8 +2832,8 @@ def handle_update(update: dict):
                 "I am your 24/7 trading and risk intelligence assistant.\n\n"
                 "<b>Live Account Telemetry:</b>\n"
                 "• <b>Account:</b> FundedNext Stellar 1-Step ($6,000) #3028655\n"
-                "• <b>Universe:</b> SPY, QQQ, DIA, IWM (US Indices)\n"
-                "• <b>Strategy:</b> 15m Scalper with strict risk controls\n"
+                "• <b>Universe:</b> BTCUSD (24/7 Spot) + SPY, QQQ, DIA, IWM\n"
+                "• <b>Strategy:</b> 1m Scalper with strict risk controls\n"
                 "• <b>Safety Buffer:</b> $180 daily limit (100% intact)\n"
                 "• <b>History:</b> Live closed deals, win rate, and profit\n\n"
                 "💬 <b>Ask any question directly in chat!</b> For example:\n"

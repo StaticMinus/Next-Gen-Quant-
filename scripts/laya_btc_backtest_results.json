@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-09-23T20:50:46.264434+00:00",
+  "hardware_specs": {
+    "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU (8GB)",
+    "cpu_fallback": "Available",
+    "model_backbone": "convaiinnovations/laya (ModernBERT-large, 421M params)"
+  },
+  "latency_profile": {
+    "avg_ms": 1530.0232599999617,
+    "avg_us": 1530023.2599999618,
+    "p50_ms": 1541.0109499999862,
+    "p50_us": 1541010.9499999862,
+    "p95_ms": 1576.4011649999134,
+    "p95_us": 1576401.1649999134,
+    "p99_ms": 1577.792312999925,
+    "p99_us": 1577792.3129999249,
+    "max_throughput_decisions_per_sec": 0.6535848350436352,
+    "hft_microsecond_deficit_factor": 153002.3259999962
+  },
+  "backtest_1m": {
+    "cadence": "1-Minute Bars",
+    "evaluated_bars": 100,
+    "initial_capital": 100000.0,
+    "final_capital": 100000.0,
+    "gross_pnl": 0.0,
+    "net_pnl": 0.0,
+    "total_fee_paid": 0.0,
+    "total_return_pct": 0.0,
+    "total_orders": 0,
+    "closed_trades": 0,
+    "win_rate_pct": 0.0,
+    "max_drawdown_pct": 0.0,
+    "sharpe_ratio": 0.0,
+    "avg_latency_ms": 1760.3928819999899,
+    "avg_latency_us": 1760392.88199999
+  },
+  "backtest_5s": {
+    "cadence": "Simulated 5-Second Cadence",
+    "evaluated_bars": 50,
+    "initial_capital": 100000.0,
+    "final_capital": 100000.0,
+    "gross_pnl": 0.0,
+    "net_pnl": 0.0,
+    "total_fee_paid": 0.0,
+    "total_return_pct": 0.0,
+    "total_orders": 0,
+    "closed_trades": 0,
+    "win_rate_pct": 0.0,
+    "max_drawdown_pct": 0.0,
+    "sharpe_ratio": 0.0,
+    "avg_latency_ms": 1235.9774800000105,
+    "avg_latency_us": 1235977.4800000105
+  }
+}

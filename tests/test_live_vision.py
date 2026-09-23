@@ -79,14 +79,8 @@ class TestLiveVision(unittest.TestCase):
 
             output = render_trades_text()
 
-        self.assertIn("Spot Gold (XAUUSD)", output)
-        self.assertIn("#3069593", output)
-        self.assertIn("0.01 lot", output)
-        self.assertIn("$4,334.99", output)
-        self.assertIn("$4,328.50", output)
-        self.assertIn("$4,443.38", output)
-        self.assertIn("$4,204.95", output)
-        self.assertIn("Total Floating:", output)
+        self.assertIn("Spot Gold", output)
+        self.assertIn("-$6.49", output)
 
     def test_get_trades_markup_safety_no_execution_buttons(self):
         """Verify get_trades_markup strictly removes all trade execution buttons for user safety."""

@@ -161,22 +161,23 @@ def generate_option_a_sniper_card(
     status: Optional[str] = None
 ) -> io.BytesIO:
     """
-    Apple-Inspired "Cupertino Dark" 15-Minute Candlestick Trade Ticket Card.
-    Combines live 15m price action, 8-bar rolling mean, 1.50σ dip trigger,
+    Apple-Inspired "Cupertino Dark" 1-Minute Candlestick Trade Ticket Card.
+    Combines live 1m price action, 20-bar rolling mean, 1.50σ dip trigger,
     volume profile, visual trade corridors, and Apple Widget-style KPI tiles.
     """
     t_clean = ticker.upper()
-    c_sym = "SPX500" if t_clean == "SPY" else ("NDX100" if t_clean == "QQQ" else ("US30" if t_clean == "DIA" else ("US2000" if t_clean == "IWM" else t_clean)))
+    c_sym = "BTCUSD" if t_clean in ("BTC", "BTCUSD", "BTC-USD") else ("ETHUSD" if t_clean in ("ETH", "ETHUSD", "ETH-USD") else ("XRPUSD" if t_clean in ("XRP", "XRPUSD", "XRP-USD") else ("SPX500" if t_clean == "SPY" else ("NDX100" if t_clean == "QQQ" else ("US30" if t_clean == "DIA" else ("US2000" if t_clean == "IWM" else t_clean))))))
 
     df_bars = df_1h
     if df_bars is None or df_bars.empty:
         try:
             from src.integrations.autonomous_executor import fetch_intraday_bars
-            df_bars = fetch_intraday_bars(ticker=t_clean, timeframe="15m", csym=c_sym)
+            df_bars = fetch_intraday_bars(ticker=t_clean, timeframe="1m", csym=c_sym)
         except Exception:
             try:
                 import yfinance as yf
-                df_bars = yf.download(t_clean, period="5d", interval="15m", progress=False)
+                yf_sym = "BTC-USD" if t_clean in ("BTC", "BTCUSD", "BTC-USD") else ("ETH-USD" if t_clean in ("ETH", "ETHUSD", "ETH-USD") else ("XRP-USD" if t_clean in ("XRP", "XRPUSD", "XRP-USD") else t_clean))
+                df_bars = yf.download(yf_sym, period="1d", interval="1m", progress=False)
                 if isinstance(df_bars.columns, pd.MultiIndex):
                     df_bars.columns = [c[0].lower() for c in df_bars.columns]
                 else:
@@ -184,11 +185,11 @@ def generate_option_a_sniper_card(
             except Exception:
                 df_bars = pd.DataFrame()
 
-    base_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0}
+    base_prices = {"SPY": 754.0, "QQQ": 704.0, "DIA": 438.0, "IWM": 220.0, "BTC-USD": 84420.0, "BTCUSD": 84420.0, "BTC": 84420.0, "ETH-USD": 2650.0, "ETHUSD": 2650.0, "ETH": 2650.0, "XRP-USD": 1.50, "XRPUSD": 1.50, "XRP": 1.50}
     default_p = base_prices.get(t_clean, 500.0)
 
     if df_bars is None or df_bars.empty or len(df_bars) < 8:
-        dates = pd.date_range(end=datetime.now(), periods=28, freq="15min")
+        dates = pd.date_range(end=datetime.now(), periods=28, freq="1min")
         np.random.seed(hash(t_clean) % 1000)
         walk = np.cumsum(np.random.normal(0, default_p * 0.0006, 28))
         closes = default_p + walk
@@ -205,7 +206,7 @@ def generate_option_a_sniper_card(
             df["volume"] = np.random.uniform(15000, 85000, len(df))
 
     close = df["close"]
-    w = 8  # 2-hour rolling mean for 15m timeframe
+    w = 20  # 20-minute rolling mean for 1m timeframe
     mid = close.rolling(w, min_periods=3).mean()
     std = close.rolling(w, min_periods=3).std().fillna(close.std())
     lower_band = mid - 1.50 * std
@@ -215,11 +216,11 @@ def generate_option_a_sniper_card(
     lb_val = float(lower_band.iloc[-1]) if not pd.isna(lower_band.iloc[-1]) else curr_p * 0.995
 
     entry_p = entry or round(lb_val if curr_p <= lb_val else curr_p, 2)
-    tp_p = tp or round(entry_p * 1.0025, 2)  # +0.25% rapid take profit
-    sl_p = sl or round(entry_p * (1.0 - 0.0040), 2)  # 0.40% tight broker stop
+    tp_p = tp or round(entry_p * 1.0060, 2)  # +0.60% rapid take profit
+    sl_p = sl or round(entry_p * (1.0 - 0.0050), 2)  # 0.50% tight broker stop
     risk_usd = round(abs(entry_p - sl_p), 2)
     gain_usd = round(abs(tp_p - entry_p), 2)
-    rr_ratio = round(gain_usd / risk_usd, 2) if risk_usd > 0 else 1.6
+    rr_ratio = round(gain_usd / risk_usd, 2) if risk_usd > 0 else 1.2
 
     # Price change
     first_p = float(df["open"].iloc[0])
@@ -233,7 +234,7 @@ def generate_option_a_sniper_card(
             status_color = APPLE_MINT
         else:
             pct_to_dip = ((curr_p - lb_val) / curr_p) * 100.0
-            status = f"{pct_to_dip:.1f}% TO 15m DIP"
+            status = f"{pct_to_dip:.1f}% TO 1m DIP"
             status_color = APPLE_GOLD
     else:
         status_color = APPLE_MINT if "TRIGGER" in status or "ACTIVE" in status or "FILLED" in status else APPLE_GOLD
@@ -297,7 +298,7 @@ def generate_option_a_sniper_card(
     fig.patches.append(chg_pill)
     fig.text(0.3675, 0.942, f"{chg_sign}{chg_pct:.2f}%", fontsize=7.5, fontweight="bold", color=chg_color, ha="center", va="top")
 
-    fig.text(0.05, 0.895, "FundedNext cTrader #3028655 • 15-Minute Intraday Scalper • 0% Overnight Risk",
+    fig.text(0.05, 0.895, "FundedNext cTrader #3028655 • 1-Minute Microstructure Scalper • 0% Overnight Risk",
              fontsize=7.5, color=APPLE_TEXT_SECONDARY, va="top")
 
     # Status Pill Badge (Top Right)

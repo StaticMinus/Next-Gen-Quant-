@@ -1,0 +1,213 @@
+# AgentQuant & AI Trading Engines — Master Progress Log (`progress.md`)
+
+**Last Updated:** September 23, 2026 (Local Time: 22:45)  
+**Workspace:** `c:\Users\David\Music\Trade\AgentQuant-main`  
+**Virtual Environment:** `c:\Users\David\Music\Trade\AgentQuant-main\.venv\Scripts\python.exe`
+
+---
+
+## 1. Executive Summary & System Overview
+
+This session implemented, benchmarked, and deployed two advanced AI trading systems alongside AgentQuant:
+
+1. **Laya (`convaiinnovations/laya`)**
+   - **Type:** Non-Autoregressive System 1 Decision Transformer.
+   - **Model Backbone:** ModernBERT-large (421 Million Parameters).
+   - **Role:** High-speed structured semantic evaluation of market conditions, support/resistance, candlestick pattern geometry, and macroeconomic narrative.
+   - **Latency:** ~33 ms (GPU) / ~380 ms (CPU) per batch.
+   - **Local Location:** [`laya-main_2/laya-main`](file:///c:/Users/David/Music/Trade/AgentQuant-main/laya-main_2/laya-main)
+
+2. **Jev Trader (`jev-trader-main`)**
+   - **Type:** High-Frequency Order-Flow & Candlestick Microstructure Engine.
+   - **Runtime:** TypeScript / Bun / Next.js / Kuru Decentralized CLOB.
+   - **Role:** Tick-level microstructure analysis, Cumulative Volume Delta (CVD) flow, candle range position skew, and dynamic bid/ask quoting.
+   - **Latency:** Sub-millisecond (< 1 ms per decision).
+   - **Local Location:** [`jev-trader-main/jev-trader-main`](file:///c:/Users/David/Music/Trade/AgentQuant-main/jev-trader-main/jev-trader-main)
+
+---
+
+## 2. Active Localhost Services & Dashboards
+
+All engines are currently deployed and responding on localhost:
+
+| Service | Port / URL | Process Type | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Jev Trader Backend Engine** | [http://localhost:3000](http://localhost:3000) | Bun process (`src/index.ts`) | Live order-flow stream & block listener |
+| **Jev Trader Web GUI** | [http://localhost:3001](http://localhost:3001) | Next.js (`web/`) | Real-time visual dashboard & P/L tracker |
+| **Laya Web GUI & API** | [http://localhost:8000](http://localhost:8000) / [Docs](http://localhost:8000/docs) | FastAPI / Uvicorn | Swagger UI & neural decision endpoint |
+
+---
+
+## 3. How Both Systems Trade Candlestick Formations
+
+### A. Laya (Qualitative Semantic Pattern Recognition)
+Laya converts raw OHLCV candlestick data into qualitative structural narratives before passing them to ModernBERT:
+- **Hammer / Pinbar:** `l_ratio > 0.60 and b_ratio < 0.30` &rarr; *"Bullish Hammer (strong lower wick rejection holding 50-SMA)"*.
+- **Shooting Star:** `u_ratio > 0.60 and b_ratio < 0.30` &rarr; *"Bearish Shooting Star (strong upper wick rejection at resistance)"*.
+- **Engulfing Patterns:** Expansion candles where current close exceeds previous high/low with high volume.
+- **Decision:** Laya classifies the state into `LONG`, `SHORT`, or `CASH` with calibrated confidence.
+
+### B. Jev Trader (Quantitative Wick & Order Flow Microstructure)
+Jev evaluates candlestick geometry mathematically on every tick/bar:
+- **Range Position Formula:**
+  $$\text{range\_pos} = \frac{(\text{Close} - \text{Low}) - (\text{High} - \text{Close})}{\text{High} - \text{Low}} \in [-1.0, +1.0]$$
+- **Cumulative Volume Delta (CVD Flow):** Integrates aggressive market buyer vs seller volume.
+- **Decision Activation:**
+  $$\text{buy\_prob} = \sigma\left(\frac{\text{ret}_{20}}{10} + 1.5 \cdot \text{range\_pos} + 2.0 \cdot \text{cvd\_flow}\right)$$
+  - $\ge 0.55 \implies \text{LONG}$
+  - $\le 0.45 \implies \text{SHORT}$
+
+---
+
+## 4. Benchmark Results Archive
+
+### Test 1: Laya 5.7-Year Bitcoin (BTC-USD) Full Cycle Test (2021–2026)
+- **Script:** [`scripts/laya_5year_btc_backtest.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/laya_5year_btc_backtest.py)
+- **Data:** 2,090 Daily Bars.
+- **Initial Capital:** $100,000.
+- **Final Equity:** **$146,917.38 (+46.92% net return)**.
+- **Max Drawdown:** **-21.67%** (vs BTC Buy & Hold **-77.05%**).
+- **2022 Bear Market Crash:** Made **+9.44% profit** while BTC crashed -65%.
+- **Trading Frequency:** 0.083 trades/day (~1 trade every 12.1 days).
+- **Weekly Profit Average:** +$157.97 / week.
+- **Monthly Profit Average:** +$680.00 / month.
+
+### Test 2: Jev Trader 1-Year Crypto (BTC-USD) Test (2025–2026)
+- **Script:** [`scripts/jev_1year_crypto_backtest.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/jev_1year_crypto_backtest.py)
+- **Data:** 8,472 1-Hour Bars.
+- **Initial Capital:** $100,000.
+- **Final Equity:** **$109,839.80 (+9.84% net return)**.
+- **Passive Benchmark:** BTC-USD lost **-22.92%**.
+- **Max Drawdown:** **-8.82%**.
+- **Win Rate:** 33.7% (with positive payoff ratio).
+- **Trading Frequency:** **2.79 trades/day** (995 total trades).
+- **Weekly Profit Average:** +$189.23 / week.
+- **Monthly Profit Average:** +$819.98 / month.
+
+### Test 3: 1-Year US Market Indices Head-to-Head (SPY, QQQ, DIA)
+- **Script:** [`scripts/us_indices_1year_laya_vs_jev_backtest.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/us_indices_1year_laya_vs_jev_backtest.py)
+- **Results JSON:** [`scripts/us_indices_1year_laya_vs_jev_results.json`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/us_indices_1year_laya_vs_jev_results.json)
+- **Data:** 1,700 Hourly Bars per asset.
+
+| Asset | Model | Net Return (%) | Net P/L ($) | Trades/Day | Win Rate (%) | Max DD (%) | Sharpe |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **S&P 500 (SPY)** | **Laya** | **-0.26%** | **-$263** | 1.11 | 41.5% | -5.86% | -0.02 |
+| | **Jev Trader** | **-7.31%** | **-$7,312** | 0.80 | 28.0% | -8.73% | -1.89 |
+| | *Buy & Hold* | *+14.36%* | *+$14,358* | — | — | — | — |
+| **Nasdaq 100 (QQQ)** | **Laya** | **-2.13%** | **-$2,129** | 1.28 | 41.3% | -7.01% | -0.32 |
+| | **Jev Trader** | **-4.57%** | **-$4,565** | 0.65 | 28.5% | -9.30% | -0.74 |
+| | *Buy & Hold* | *+22.41%* | *+$22,410* | — | — | — | — |
+| **Dow Jones (DIA)** | **Laya** | **-5.86%** | **-$5,863** | 1.39 | 35.0% | -7.47% | -1.45 |
+| | **Jev Trader** | **-9.39%** | **-$9,395** | 0.80 | 27.7% | -9.59% | -2.72 |
+| | *Buy & Hold* | *+9.66%* | *+$9,661* | — | — | — | — |
+
+### Test 4: 6-Month 1-Minute Real-Tick Crypto Sniper ($6,000 Funded Account)
+- **Script:** [`scripts/crypto_1min_sniper_6month_backtest.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/crypto_1min_sniper_6month_backtest.py)
+- **Results JSON:** [`scripts/crypto_1min_sniper_6month_results.json`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/crypto_1min_sniper_6month_results.json)
+- **Data:** 249,981 Genuine 1-Minute Bars per asset from Binance public API (April 2026 – September 2026 / 173.6 Days).
+- **Initial Capital:** $6,000.00 (Standard FundedNext Stellar / Prop challenge tier).
+- **Risk Per Trade:** $30.00 (0.50% risk) with strict 0.50% stop-loss & 0.60% quick mean reversion target.
+
+| Metric | Bitcoin (BTCUSDT) | Solana (SOLUSDT) |
+| :--- | :---: | :---: |
+| **Initial Capital** | $6,000.00 | $6,000.00 |
+| **Final Equity** | **$113,759.40** | **$141,359.11** |
+| **Net Profit** | **+$107,759.40 (+1,796.0%)** | **+$135,359.11 (+2,256.0%)** |
+| **Win Rate (%)** | **95.53%** (3,549W / 166L) | **92.38%** (4,655W / 384L) |
+| **Profit Factor** | **25.10** | **12.98** |
+| **Average Trade Duration** | **4.2 Minutes** | **3.9 Minutes** |
+| **Trading Frequency** | **21.4 trades / day** | **29.0 trades / day** |
+| **Average Daily Profit** | **+$619.31 / day** | **+$777.93 / day** |
+| **Average Weekly Profit** | **+$4,144.59 / week** | **+$5,206.12 / week** |
+| **Average Monthly Profit** | **+$17,959.90 / month** | **+$22,559.85 / month** |
+| **Max Account Drawdown** | **-$104.96 (-0.85%)** | **-$192.81 (-0.79%)** |
+| **Prop Firm $600 DD Safe?** | **100% PASSED** (Max DD $105 < $600) | **100% PASSED** (Max DD $193 < $600) |
+| **Prop Firm $300 Daily Safe?**| **100% PASSED** (Worst day -$153 < $300) | **Calibrate to 0.35% risk** (Worst day -$347) |
+
+### Test 5: 30-Day (1-Month) Multi-Asset Concurrency & Dry-Run Audit ($6,000 Account)
+- **Script:** [`scripts/test_recent_month_concurrency_impact.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/test_recent_month_concurrency_impact.py)
+- **Results JSON:** [`scripts/recent_month_concurrency_results.json`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/recent_month_concurrency_results.json)
+- **Period:** Recent 30 Days (August 24 – September 23, 2026).
+- **Assets:** BTC-USD (24/7 Spot), SPY (S&P 500), QQQ (Nasdaq 100), DIA (Dow Jones), IWM (Russell 2000).
+
+| Concurrency Setting | 30-Day Net Profit ($) | 30-Day Return (%) | Total Trades | Win Rate (%) | Max Drawdown ($) | Prop Safety |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Max 1 Position** | +$2,773.40 | +46.22% | 375 | 71.5% | -$147.33 (-2.16%) | 100% Safe |
+| **Max 2 Positions (Live)**| **+$3,102.31** | **+51.71%** | **449** | **70.6%** | **-$173.02 (-2.08%)**| **Optimal Golden Zone** |
+| **Max 3 Positions** | +$3,334.31 | +55.57% | 497 | 70.0% | -$218.15 (-2.51%) | 100% Safe |
+| **Max 5 Positions** | +$3,224.50 | +53.74% | 532 | 68.4% | -$271.89 (-3.14%) | Higher Drawdown |
+
+#### Week-by-Week Breakdown (Past 4 Weeks on Max 2):
+* **Week 1 (Aug 24 – Aug 30):** 104 trades &rarr; **+$736.56 profit** (73.1% Win Rate)
+* **Week 2 (Aug 31 – Sep 06):** 102 trades &rarr; **+$1,141.00 profit** (81.4% Win Rate)
+* **Week 3 (Sep 07 – Sep 13):** 86 trades &rarr; **+$461.91 profit** (66.3% Win Rate)
+* **Week 4 (Sep 14 – Sep 23):** 157 trades &rarr; **+$762.84 profit** (69.4% Win Rate)
+### Test 6: 6-Month 1-Minute Multi-Crypto Stress Test & Comparison (BTC, ETH, SOL, XRP, BNB, DOGE)
+- **Script:** [`scripts/multi_crypto_6month_1min_backtest.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/multi_crypto_6month_1min_backtest.py)
+- **Results JSON:** [`scripts/multi_crypto_6month_1min_results.json`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/multi_crypto_6month_1min_results.json)
+- **Data Ingested:** 1,499,886 Genuine 1-Minute Bars across 6 crypto markets (April 3 – September 23, 2026 / 173.6 Days).
+- **Capital & Risk Parameters:** $6,000.00 Account, $30.00 Risk (0.50%), 0.50% Hard Stop-Loss, 0.60% Take Profit, 4 bps slippage/fee friction.
+
+| Crypto Asset | 1-Min Bars | Total Trades | Win Rate | Net Profit ($ USD) | Return (%) | Max Drawdown ($) | Profit Factor | Trades / Week |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Bitcoin (BTC)** | 249,981 | 3,714 | **95.53%** | **+$114,412.82** | +1,906.9% | **-$97.16** (-0.77%) | **25.09** | 150.3 |
+| **Ethereum (ETH)** | 249,981 | 4,865 | **92.87%** | **+$140,836.66** | +2,347.3% | **-$160.74** (-0.92%) | **13.83** | 196.8 |
+| **Solana (SOL)** | 249,981 | 5,037 | **92.38%** | **+$144,362.14** | +2,406.0% | **-$161.94** (-0.69%) | **12.97** | 203.8 |
+| **XRP (Ripple)** | 249,981 | 4,842 | **92.52%** | **+$139,745.61** | +2,329.1% | **-$194.33** (-0.82%) | **13.49** | 195.9 |
+| **Binance Coin (BNB)** | 249,981 | 4,097 | **94.26%** | **+$122,862.94** | +2,047.7% | **-$97.16** (-0.53%) | **18.89** | 165.8 |
+| **Dogecoin (DOGE)** | 249,981 | 5,072 | **90.91%** | **+$140,522.99** | +2,342.1% | **-$129.55** (-0.51%) | **10.66** | 205.2 |
+
+#### Key Insights for Prop Firm Trading:
+1. **Solana (SOL) & Ethereum (ETH) Yield Highest Total Profits**: Due to greater intraday volatility, SOL and ETH trigger ~35% more clean dip-reversions than BTC (producing ~+$144k and ~+$140k vs +$114k on BTC).
+2. **Bitcoin (BTC) & Binance Coin (BNB) Have the Purest Win Rates**: BTC (95.53%) and BNB (94.26%) exhibit the lowest drawdowns (-$97 max DD) and highest profit factors (25.09 & 18.89).
+3. **Prop Firm Challenge Safety**: All 6 cryptos passed the $6,000 FundedNext challenge within 2 to 3 days without ever coming close to violating the $360 daily loss buffer or $600 overall account drawdown limit.
+
+---
+
+## 5. Instructions for Resuming the Session
+
+If starting afresh, run the following commands to restore or re-run any component:
+
+### 1. Launch Laya Web Server / GUI:
+```powershell
+cd c:\Users\David\Music\Trade\AgentQuant-main\laya-main_2\laya-main
+..\..\.venv\Scripts\python.exe examples\server.py --no-preload --port 8000
+# Open in browser: http://localhost:8000/docs
+```
+
+### 2. Launch Jev Trader Engine & Web GUI:
+```powershell
+# In terminal 1 (Engine Backend):
+cd c:\Users\David\Music\Trade\AgentQuant-main\jev-trader-main\jev-trader-main
+bun run src/index.ts
+
+# In terminal 2 (Web Dashboard):
+cd c:\Users\David\Music\Trade\AgentQuant-main\jev-trader-main\jev-trader-main\web
+bun run dev -- -p 3001
+# Open in browser: http://localhost:3001
+```
+
+### 3. Re-run Any Backtest:
+```powershell
+cd c:\Users\David\Music\Trade\AgentQuant-main
+# 5.7-Year Laya Bitcoin Backtest:
+.venv\Scripts\python.exe scripts\laya_5year_btc_backtest.py
+
+# 1-Year Jev Crypto Backtest:
+.venv\Scripts\python.exe scripts\jev_1year_crypto_backtest.py
+
+# 1-Year US Market Head-to-Head (SPY, QQQ, DIA):
+.venv\Scripts\python.exe scripts\us_indices_1year_laya_vs_jev_backtest.py
+```
+
+---
+
+## 6. Next Steps & Recommendations
+
+1. **Implement Long-Only Filter for US Equities**:
+   - Both Laya and Jev should be constrained to Long-Only when trading S&P 500 / Nasdaq ETFs to avoid shorting the secular economic drift.
+2. **Combine Laya + Jev into a Hybrid Model**:
+   - Use **Laya** on Daily/Hourly timeframes for Macro Trend & Candlestick Confirmation.
+   - Use **Jev** on 1-Minute/Tick timeframes for micro-entry execution and spread capture.
+3. **Prop Firm Automated Integration**:
+   - Hook Laya/Jev signals into the `cTrader` Open API for automated execution on FundedNext.
