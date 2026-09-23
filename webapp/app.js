@@ -119,20 +119,23 @@ async function fetchLiveBinanceRate() {
 // =========================================================================
 
 let currentTab = 'radar';
-let activeRadarAsset = 'SPY'; // 'SPY', 'QQQ', 'DIA', 'IWM'
+let activeRadarAsset = 'BTC'; // 'BTC', 'ETH', 'XRP', 'SPY', 'QQQ', 'DIA', 'IWM'
 let radarAnimId = null;
 let radarPulsePhase = 0;
 const navHistory = ['radar'];
 
-const ASSETS_LIST = ['SPY', 'QQQ', 'DIA', 'IWM'];
+const ASSETS_LIST = ['BTC', 'ETH', 'XRP', 'SPY', 'QQQ', 'DIA', 'IWM'];
 
 let telemetryData = {
-  capital: 6000.00, equity: 6000.00, buffer: 360.0, daily_buffer: 180.0,
-  strategy_name: 'Option A 1-Hour Quantitative Sniper (Fab-4 US Indices)',
-  spy_price: 754.07, spy_mean: 758.73, spy_dip: 755.23, spy_dist: -1.16, spy_dist_pct: -0.15,
-  qqq_price: 704.75, qqq_mean: 707.80, qqq_dip: 704.01, qqq_dist: 0.74, qqq_dist_pct: 0.11,
-  dia_price: 438.20, dia_mean: 440.15, dia_dip: 437.50, dia_dist: 0.70, dia_dist_pct: 0.16,
-  iwm_price: 218.40, iwm_mean: 220.10, iwm_dip: 217.80, iwm_dist: 0.60, iwm_dist_pct: 0.27,
+  capital: 5993.38, equity: 5993.38, buffer: 360.0, daily_buffer: 180.0,
+  strategy_name: 'Autonomous Tri-Crypto 24/7 Scalper (BTC+ETH+XRP) + US Indices (M1)',
+  btc_price: 84514.01, btc_mean: 84493.11, btc_dip: 84409.52, btc_dist: 104.48, btc_dist_pct: 0.12,
+  eth_price: 2682.86, eth_mean: 2685.12, eth_dip: 2679.04, eth_dist: 3.82, eth_dist_pct: 0.14,
+  xrp_price: 1.4988, xrp_mean: 1.5016, xrp_dip: 1.4970, xrp_dist: 0.0018, xrp_dist_pct: 0.12,
+  spy_price: 767.78, spy_mean: 767.96, spy_dip: 767.48, spy_dist: 0.30, spy_dist_pct: 0.04,
+  qqq_price: 741.17, qqq_mean: 740.87, qqq_dip: 740.58, qqq_dist: 0.59, qqq_dist_pct: 0.08,
+  dia_price: 514.31, dia_mean: 514.68, dia_dip: 514.32, dia_dist: 0.00, dia_dist_pct: 0.00,
+  iwm_price: 281.96, iwm_mean: 282.39, iwm_dip: 282.01, iwm_dist: 0.00, iwm_dist_pct: 0.00,
   active_positions: [],
   payout_days: 5,
 };
@@ -140,7 +143,7 @@ let telemetryData = {
 
 const MAX_RADAR_POINTS = 32;
 const assetHistories = {
-  SPY: [], QQQ: [], DIA: [], IWM: []
+  BTC: [], ETH: [], XRP: [], SPY: [], QQQ: [], DIA: [], IWM: []
 };
 
 function pushAssetTick(asset, price) {
@@ -218,7 +221,7 @@ function initGSAPAnimations() {
   gsap.from('.top-nav, .hero-widget, .segmented-control, .views-wrapper, .bottom-bar', {
     opacity: 0, y: 16, duration: 0.5, stagger: 0.06, ease: 'power3.out',
   });
-  animateBalance(6000.0);
+  animateBalance(telemetryData.equity || 5993.38);
 }
 
 function animateBalance(targetValue) {
@@ -881,7 +884,9 @@ function updateMatrixUI() {
     const dist = telemetryData[`${key}_dist`] || 0;
     const distPct = telemetryData[`${key}_dist_pct`] || 0;
 
-    if (priceEl) priceEl.textContent = `$${curPrice.toFixed(2)}`;
+    if (priceEl) {
+      priceEl.textContent = key === 'xrp' ? `$${curPrice.toFixed(4)}` : `$${curPrice.toFixed(2)}`;
+    }
 
     const isHolding = activeList.some(p => {
       const s = (p.symbol_name || p.symbolName || '').toUpperCase();
@@ -896,14 +901,16 @@ function updateMatrixUI() {
       }
     } else {
       if (distEl) {
-        distEl.textContent = `+$${dist.toFixed(2)} (+${distPct.toFixed(2)}%)`;
+        distEl.textContent = key === 'xrp'
+          ? `+$${dist.toFixed(4)} (+${distPct.toFixed(2)}%)`
+          : `+$${dist.toFixed(2)} (+${distPct.toFixed(2)}%)`;
       }
       if (badgeEl) {
         if (distPct <= 0.05) {
           badgeEl.textContent = 'AT DIP';
           badgeEl.className = 'status-badge badge-active';
         } else {
-          badgeEl.textContent = 'WAITING';
+          badgeEl.textContent = 'SCANNING';
           badgeEl.className = 'status-badge badge-waiting';
         }
       }
@@ -1187,8 +1194,21 @@ async function syncTelemetry() {
 
     const balEl = document.getElementById('balance-val');
     const buffEl = document.getElementById('buffer-val');
-    if (balEl && data.capital) balEl.textContent = `$${Number(data.capital).toFixed(2)}`;
+    const eqEl = document.getElementById('equity-val');
+    const nairaEl = document.getElementById('naira-val');
+
+    const capVal = data.capital || data.equity || 5993.38;
+    const eqVal = data.equity || data.capital || 5993.38;
+
+    if (balEl) balEl.textContent = `$${Number(capVal).toFixed(2)}`;
+    if (eqEl) eqEl.textContent = Number(eqVal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (buffEl && data.buffer) buffEl.textContent = `$${Number(data.buffer).toFixed(2)}`;
+
+    const rate = data.live_p2p_rate || LIVE_P2P_RATE;
+    if (nairaEl) {
+      const nVal = eqVal * rate;
+      nairaEl.textContent = `~₦${nVal.toLocaleString(undefined, {maximumFractionDigits: 0})} NGN`;
+    }
 
     updateMatrixUI();
     updateActiveTradesUI();

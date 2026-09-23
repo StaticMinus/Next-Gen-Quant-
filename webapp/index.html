@@ -66,10 +66,10 @@
         <div class="hero-balance-block">
           <div class="balance-primary">
             <span class="currency-symbol">$</span>
-            <span class="balance-number" id="equity-val">6,000.00</span>
+            <span class="balance-number" id="equity-val">5,993.38</span>
           </div>
           <div class="balance-secondary">
-            <span class="naira-est" id="naira-val">~₦9,990,000 NGN</span>
+            <span class="naira-est" id="naira-val">~₦9,100,348 NGN</span>
             <span class="split-tag">85% Take-Home Eligible</span>
           </div>
         </div>
@@ -78,7 +78,7 @@
         <div class="metric-trio">
           <div class="trio-item">
             <span class="trio-label">BALANCE</span>
-            <span class="trio-val" id="balance-val">$6,000.00</span>
+            <span class="trio-val" id="balance-val">$5,993.38</span>
           </div>
           <div class="trio-divider"></div>
           <div class="trio-item">
@@ -118,7 +118,7 @@
             <div style="font-size: 28px; margin-bottom: 6px;">🟢</div>
             <div style="font-weight: 700; font-size: 14px; color: var(--text-primary); margin-bottom: 3px;">All Clear — 100% in Cash</div>
             <div style="font-size: 11.5px; line-height: 1.4; color: var(--text-secondary);">
-              Option A 1-Hour Sniper active. Scanning Fab-4 US Indices (SPY, QQQ, DIA, IWM) dips. Zero open exposure.
+              Tri-Crypto 24/7 Sniper (BTC, ETH, XRP) + US Indices active. Zero open exposure.
             </div>
           </div>
         </div>
@@ -172,8 +172,8 @@
           <div class="card-inner">
             <div class="panel-header-row">
               <div>
-                <div class="panel-title">7-Asset Quantitative Dip Radar</div>
-                <div class="panel-subtitle" id="session-countdown">Pre-Market • Opens in 3h 10m (2:30 PM WAT)</div>
+                <div class="panel-title">Tri-Crypto (24/7) & US Indices Radar</div>
+                <div class="panel-subtitle" id="session-countdown">24/7 Crypto Live • US Markets Open at 2:30 PM WAT</div>
               </div>
               <button class="icon-action-btn" id="btn-refresh-radar" title="Refresh Live Prices">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -185,7 +185,10 @@
 
             <!-- Asset Switcher Pills for Radar -->
             <div class="radar-asset-pills" style="flex-wrap: wrap;">
-              <button class="radar-pill active" id="pill-spy" onclick="switchRadarAsset('SPY')">🏛️ SPY</button>
+              <button class="radar-pill active" id="pill-btc" onclick="switchRadarAsset('BTC')">🪙 BTC</button>
+              <button class="radar-pill" id="pill-eth" onclick="switchRadarAsset('ETH')">🔷 ETH</button>
+              <button class="radar-pill" id="pill-xrp" onclick="switchRadarAsset('XRP')">⚡ XRP</button>
+              <button class="radar-pill" id="pill-spy" onclick="switchRadarAsset('SPY')">🏛️ SPY</button>
               <button class="radar-pill" id="pill-qqq" onclick="switchRadarAsset('QQQ')">💻 QQQ</button>
               <button class="radar-pill" id="pill-dia" onclick="switchRadarAsset('DIA')">🏭 DIA</button>
               <button class="radar-pill" id="pill-iwm" onclick="switchRadarAsset('IWM')">🚀 IWM</button>
@@ -196,26 +199,74 @@
               <div class="chart-live-badge"><span class="live-dot"></span> LIVE</div>
               <canvas id="radarChart" width="380" height="190"></canvas>
               <div class="chart-badges">
-                <span class="badge-tag tag-target" id="badge-target">Mean Target: $758.89</span>
-                <span class="badge-tag tag-entry" id="badge-entry">1.25σ Dip Trigger: $754.05</span>
+                <span class="badge-tag tag-target" id="badge-target">Mean Target: $84,493.11</span>
+                <span class="badge-tag tag-entry" id="badge-entry">1.50σ Dip Trigger: $84,409.52</span>
               </div>
             </div>
 
-            <!-- Fab-4 US Indices Market Matrix -->
+            <!-- Crypto & US Indices Market Matrix -->
             <div class="seven-matrix-container">
-              <!-- SPY Card -->
-              <div class="asset-spec-card highlight" id="card-spec-spy" onclick="switchRadarAsset('SPY')">
+              <!-- BTC Card -->
+              <div class="asset-spec-card highlight" id="card-spec-btc" onclick="switchRadarAsset('BTC')">
                 <div class="card-top-line">
-                  <span class="asset-tag">🏛️ SPY (S&P 500)</span>
-                  <span class="asset-price font-mono" id="spy-price">$754.07</span>
+                  <span class="asset-tag">🪙 BTCUSD (24/7)</span>
+                  <span class="asset-price font-mono" id="btc-price">$84,514.01</span>
                 </div>
                 <div class="card-mid-line">
                   <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="spy-dip-dist">+$0.00</span>
+                  <span class="val-dist font-mono val-green" id="btc-dip-dist">+$104.48 (+0.12%)</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b>$755.23</b></span>
-                  <span class="status-badge badge-active" id="spy-status-badge">WAITING</span>
+                  <span class="lbl-dim">Trigger: <b>$84,409.52</b></span>
+                  <span class="status-badge badge-active" id="btc-status-badge">SCANNING</span>
+                </div>
+              </div>
+
+              <!-- ETH Card -->
+              <div class="asset-spec-card" id="card-spec-eth" onclick="switchRadarAsset('ETH')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🔷 ETHUSD (24/7)</span>
+                  <span class="asset-price font-mono" id="eth-price">$2,682.86</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="eth-dip-dist">+$3.82 (+0.14%)</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$2,679.04</b></span>
+                  <span class="status-badge badge-waiting" id="eth-status-badge">SCANNING</span>
+                </div>
+              </div>
+
+              <!-- XRP Card -->
+              <div class="asset-spec-card" id="card-spec-xrp" onclick="switchRadarAsset('XRP')">
+                <div class="card-top-line">
+                  <span class="asset-tag">⚡ XRPUSD (24/7)</span>
+                  <span class="asset-price font-mono" id="xrp-price">$1.4988</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="xrp-dip-dist">+$0.0018 (+0.12%)</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$1.4970</b></span>
+                  <span class="status-badge badge-waiting" id="xrp-status-badge">SCANNING</span>
+                </div>
+              </div>
+
+              <!-- SPY Card -->
+              <div class="asset-spec-card" id="card-spec-spy" onclick="switchRadarAsset('SPY')">
+                <div class="card-top-line">
+                  <span class="asset-tag">🏛️ SPY (S&P 500)</span>
+                  <span class="asset-price font-mono" id="spy-price">$767.78</span>
+                </div>
+                <div class="card-mid-line">
+                  <span class="lbl-small">Dip Distance</span>
+                  <span class="val-dist font-mono val-green" id="spy-dip-dist">+$0.30 (+0.04%)</span>
+                </div>
+                <div class="card-bottom-line">
+                  <span class="lbl-dim">Trigger: <b>$767.48</b></span>
+                  <span class="status-badge badge-waiting" id="spy-status-badge">WAITING</span>
                 </div>
               </div>
 
@@ -223,14 +274,14 @@
               <div class="asset-spec-card" id="card-spec-qqq" onclick="switchRadarAsset('QQQ')">
                 <div class="card-top-line">
                   <span class="asset-tag">💻 QQQ (Nasdaq 100)</span>
-                  <span class="asset-price font-mono" id="qqq-price">$704.75</span>
+                  <span class="asset-price font-mono" id="qqq-price">$741.17</span>
                 </div>
                 <div class="card-mid-line">
                   <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="qqq-dip-dist">+$0.74</span>
+                  <span class="val-dist font-mono val-green" id="qqq-dip-dist">+$0.59 (+0.08%)</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b>$704.01</b></span>
+                  <span class="lbl-dim">Trigger: <b>$740.58</b></span>
                   <span class="status-badge badge-waiting" id="qqq-status-badge">WAITING</span>
                 </div>
               </div>
@@ -239,14 +290,14 @@
               <div class="asset-spec-card" id="card-spec-dia" onclick="switchRadarAsset('DIA')">
                 <div class="card-top-line">
                   <span class="asset-tag">🏭 DIA (Dow Jones 30)</span>
-                  <span class="asset-price font-mono" id="dia-price">$438.20</span>
+                  <span class="asset-price font-mono" id="dia-price">$514.31</span>
                 </div>
                 <div class="card-mid-line">
                   <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="dia-dip-dist">+$0.70</span>
+                  <span class="val-dist font-mono val-green" id="dia-dip-dist">+$0.00 (+0.00%)</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b>$437.50</b></span>
+                  <span class="lbl-dim">Trigger: <b>$514.32</b></span>
                   <span class="status-badge badge-waiting" id="dia-status-badge">WAITING</span>
                 </div>
               </div>
@@ -255,14 +306,14 @@
               <div class="asset-spec-card" id="card-spec-iwm" onclick="switchRadarAsset('IWM')">
                 <div class="card-top-line">
                   <span class="asset-tag">🚀 IWM (Russell 2000)</span>
-                  <span class="asset-price font-mono" id="iwm-price">$218.40</span>
+                  <span class="asset-price font-mono" id="iwm-price">$281.96</span>
                 </div>
                 <div class="card-mid-line">
                   <span class="lbl-small">Dip Distance</span>
-                  <span class="val-dist font-mono val-green" id="iwm-dip-dist">+$0.60</span>
+                  <span class="val-dist font-mono val-green" id="iwm-dip-dist">+$0.00 (+0.00%)</span>
                 </div>
                 <div class="card-bottom-line">
-                  <span class="lbl-dim">Trigger: <b>$217.80</b></span>
+                  <span class="lbl-dim">Trigger: <b>$282.01</b></span>
                   <span class="status-badge badge-waiting" id="iwm-status-badge">WAITING</span>
                 </div>
               </div>
