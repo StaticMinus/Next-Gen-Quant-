@@ -59,10 +59,10 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
-    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": 0.10, "max_risk_usd": 25.0},
+    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 25.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 25.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 25.0},
 ]
 
 # Active timeframe: "15m" (Default M15 Rapid Scalper), "30m", "5m", or "1h"
@@ -701,7 +701,7 @@ class AutonomousExecutionEngine:
 
             ticker = item["ticker"]
             csym = item["ctrader_symbol"]
-            lots = item["target_lots"]
+            lots = item.get("target_lots")
             dname = item["name"]
 
             # Check duplicate
@@ -825,14 +825,18 @@ class AutonomousExecutionEngine:
 
             strat_name = cfg["label"]
 
-            # Dynamic max-risk safe lot sizing: bounds dollar loss to max_risk_usd ($25.00)
+            # Equal-risk dynamic safe lot sizing: calibrates lot size to target max_risk_usd ($25.00)
             max_risk_usd = item.get("max_risk_usd", 25.0)
+            target_cap = item.get("target_lots")
             if exec_price > 0 and stop_pct > 0:
-                max_safe_lots = max_risk_usd / (exec_price * stop_pct)
-                safe_lots = round(min(lots, max_safe_lots), 2)
+                calc_lots = max_risk_usd / (exec_price * stop_pct)
+                if target_cap is not None and target_cap > 0:
+                    safe_lots = round(min(target_cap, calc_lots), 2)
+                else:
+                    safe_lots = round(calc_lots, 2)
                 lots_to_trade = max(0.01, safe_lots)
             else:
-                lots_to_trade = lots
+                lots_to_trade = target_cap or 0.10
 
             trade_payload = {
                 "action": "BUY",
