@@ -1253,3 +1253,29 @@ Backtest Evidence: [`results/m15_m30_deep_dive_report.json`](file:///c:/Users/Da
 - **Git Deployment:**
   - Pushed to `origin/main` (`d54e181`), automatically triggering continuous deployment on Render.
 
+---
+
+## 38. Signal Clarity Hardening: Zero-Noise Falling Knife Suppression & Broker-Fill Verification
+
+**Date:** September 23, 2026 (15:15 WAT)  
+**Status:** **Diagnosed, Resolved, Tested (39/39 Passed) & Deployed to Main (`12092c5`)**
+
+### 1. Root Cause of User Confusion at 3:07 PM WAT:
+- When checking `/scan` or `Radar` at 3:07 PM WAT, the AI Radar Scanner returned:  
+  `• SPY (S&P 500): Spot $769.58 | Dip Band $770.01 | Target $771.50 (+0.25%) | Stop $766.50 (-0.40%) [⚠️ Falling Knife Filtered]`
+- Even though `[⚠️ Falling Knife Filtered]` was appended to the line, listing actionable **Target (+0.25%)** and **Stop (-0.40%)** levels gave the unmistakable appearance of a BUY recommendation on S&P 500, creating immediate confusion while the bot was intentionally holding cash.
+- In `autonomous_executor.py`, if a broker order submission returned an unconfirmed response, `broadcast_telegram_ticket` did not assert a valid broker `orderId` before sending.
+
+### 2. Implemented Resolutions:
+1. **Suppressed Target/Stop Levels on Filtered Dips ([`src/integrations/telegram_ai_coach.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_ai_coach.py)):**
+   - When an asset touches the dip band but fails the buyer absorption test (lower wick < 15%), all Target and Stop levels are stripped out.
+   - The scanner explicitly outputs:  
+     `• SPY (S&P 500): 🚫 NO TRADE — Falling Knife Dump (Wick 9.1% < 15% absorption • Bot in Cash)`
+   - The header no longer displays `🚨 15M INTRADAY DIP ACTIVE` when all dips are rejected; it now displays:  
+     `📡 RADAR // ALL CLEAR (100% CASH PROTECTED)`
+2. **Fail-Closed Broker-Fill Gate ([`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py)):**
+   - Strictly enforces broker verification: if `place_market_order` returns `None`, `isError`, or an unconfirmed `orderId`, the ticket dispatch is skipped entirely.
+3. **Calm Radar Status in Terminal ([`src/integrations/telegram_bot_service.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_bot_service.py)):**
+   - Replaced alarming `🚨 Dipping now!` in `render_signals_text()` with `🚫 Filtered (Cash)`.
+
+
