@@ -17,3 +17,5 @@ reportlab>=4.0
 google-generativeai>=0.8
 openai>=1.0
 SpeechRecognition>=3.10.0
+telethon>=1.36.0
+beautifulsoup4>=4.12.0

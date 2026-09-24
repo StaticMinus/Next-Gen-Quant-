@@ -343,56 +343,108 @@ class TelegramGoldCopier:
         except Exception as e:
             logger.error(f"Error managing active Breakeven positions: {e}")
 
-    def run_poll_cycle(self):
-        """Single poll cycle: checks channel, extracts new signal, verifies price, and executes."""
-        messages = self.fetch_channel_messages()
-        if not messages:
-            return
+    def process_raw_message(self, text: str, post_id: Optional[str] = None) -> bool:
+        """Processes a single raw text message from MTProto push or web poll."""
+        if not text:
+            return False
 
         # Fetch live spot price on cTrader
         spot_data = self.ctrader.get_spot_price("XAUUSD")
         if not spot_data or not spot_data.get("bid"):
             if not self.ctrader.initialize():
                 logger.warning("cTrader offline. Retrying...")
-                return
+                return False
             spot_data = self.ctrader.get_spot_price("XAUUSD") or {}
 
         current_spot = float(spot_data.get("bid", 0.0))
         if current_spot <= 0:
             logger.warning("Could not obtain live XAUUSD spot price.")
+            return False
+
+        # Validate signal
+        sig, reason = self.parse_and_validate_signal(text, current_spot=current_spot)
+        if not sig:
+            return False
+
+        # Check if this signal was already executed
+        if sig["signal_key"] in self.state.get("executed_signal_keys", []):
+            return False
+
+        # Execute
+        logger.info(f"✨ [0-LATENCY SIGNAL DETECTED] ({post_id or 'PUSH'}): {sig['side']} {sig['symbol']} @ {sig['entry']}")
+        self.execute_copier_signal(sig)
+        if post_id:
+            self.state["last_processed_post_id"] = post_id
+        self.save_state()
+        return True
+
+    def run_poll_cycle(self):
+        """Single poll cycle: checks channel, extracts new signal, verifies price, and executes."""
+        messages = self.fetch_channel_messages()
+        if not messages:
             return
 
         # Check latest messages
         for msg in messages[-3:]:
             post_id = msg["post_id"]
             text = msg["text"]
-
-            # Validate signal
-            sig, reason = self.parse_and_validate_signal(text, current_spot=current_spot)
-            if not sig:
-                continue
-
-            # Check if this signal was already executed
-            if sig["signal_key"] in self.state.get("executed_signal_keys", []):
-                continue
-
-            # Execute
-            logger.info(f"✨ NEW VALID SIGNAL FOUND ({post_id}): {sig['side']} {sig['symbol']} @ {sig['entry']}")
-            self.execute_copier_signal(sig)
-            self.state["last_processed_post_id"] = post_id
-            self.save_state()
-            break
+            if self.process_raw_message(text, post_id=post_id):
+                break
 
         # Check existing trades for Breakeven management
         self.manage_active_positions_breakeven()
 
 
-def start_copier_daemon(interval_sec: int = 4, dry_run: bool = False):
-    """Starts the continuous 24/7 Telegram Gold signal listener."""
+def start_telethon_listener(copier: TelegramGoldCopier):
+    """Starts the Telethon 0-Latency MTProto push client."""
+    api_id_val = os.getenv("TELEGRAM_API_ID", "39413180")
+    api_hash_val = os.getenv("TELEGRAM_API_HASH", "bdc5dff1961bdf031366120670658e58")
+    bot_token_val = os.getenv("TELEGRAM_BOT_TOKEN")
+    channel_target = os.getenv("TELEGRAM_CHANNEL_HANDLE", "XAUUSD_GOLD_TRADING_FOREX")
+
+    if not api_id_val or not api_hash_val or not bot_token_val:
+        logger.warning("[Telethon] Missing API credentials, running in Web-Poller mode only.")
+        return
+
+    try:
+        from telethon import TelegramClient, events
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        session_path = str(ROOT_DIR / "cache" / "gold_copier_bot.session")
+        client = TelegramClient(session_path, int(api_id_val), api_hash_val, loop=loop)
+
+        @client.on(events.NewMessage(chats=channel_target))
+        async def on_new_channel_message(event):
+            raw_text = event.raw_text or ""
+            logger.info(f"⚡ [Telethon MTProto Event] New push from {channel_target}: {raw_text[:60]}...")
+            copier.process_raw_message(raw_text, post_id=str(event.id))
+
+        async def main_async():
+            await client.start(bot_token=bot_token_val)
+            logger.info(f"🚀 [Telethon MTProto] 0-Latency listener connected to @{channel_target} successfully!")
+            await client.run_until_disconnected()
+
+        loop.run_until_complete(main_async())
+    except Exception as e:
+        logger.warning(f"[Telethon] MTProto client startup note: {e} (Falling back to 2s high-speed poller)")
+
+
+def start_copier_daemon(interval_sec: int = 2, dry_run: bool = False):
+    """Starts the continuous 24/7 Telegram Gold signal listener (Dual MTProto + Poller Engine)."""
+    import threading
+
     copier = TelegramGoldCopier(dry_run=dry_run)
     mode_str = "DRY-RUN (Simulated)" if dry_run else "LIVE EXECUTION (cTrader)"
-    logger.info(f"🚀 Telegram Gold Copier started in {mode_str} mode. Polling every {interval_sec}s...")
+    logger.info(f"🚀 Telegram Gold Copier started in {mode_str} mode. Polling every {interval_sec}s + MTProto Push active...")
 
+    # 1. Start Telethon MTProto Push in background thread
+    t_proto = threading.Thread(target=start_telethon_listener, args=(copier,), daemon=True, name="TelethonPushWorker")
+    t_proto.start()
+
+    # 2. Main loop: 2s Web Poller + Breakeven Position Manager
     while True:
         try:
             copier.run_poll_cycle()
@@ -407,4 +459,4 @@ def start_copier_daemon(interval_sec: int = 4, dry_run: bool = False):
 
 if __name__ == "__main__":
     is_dry = "--dry-run" in sys.argv or "-d" in sys.argv
-    start_copier_daemon(interval_sec=4, dry_run=is_dry)
+    start_copier_daemon(interval_sec=2, dry_run=is_dry)
