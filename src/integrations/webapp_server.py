@@ -241,9 +241,9 @@ def launch_gold_copier_thread():
     """Launches the 24/7 Telegram Gold Copier inside a daemon thread."""
     try:
         from src.integrations.telegram_gold_copier import start_copier_daemon
-        t = threading.Thread(target=start_copier_daemon, kwargs={"interval_sec": 4, "dry_run": False}, daemon=True, name="GoldCopierDaemon")
+        t = threading.Thread(target=start_copier_daemon, kwargs={"interval_sec": 2, "dry_run": False}, daemon=True, name="GoldCopierDaemon")
         t.start()
-        print("[+] Telegram Gold Copier daemon thread started successfully.")
+        print("[+] Telegram Gold Copier daemon thread started successfully (2s interval).")
         return t
     except Exception as e:
         print(f"[!] Warning: Could not start Gold Copier daemon thread: {e}")
