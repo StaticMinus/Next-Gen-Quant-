@@ -59,9 +59,9 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.02, "max_risk_usd": 30.0, "is_crypto": True},
-    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 0.50, "max_risk_usd": 30.0, "is_crypto": True},
-    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 1000.0, "max_risk_usd": 30.0, "is_crypto": True},
+    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.04, "max_risk_usd": 35.0, "is_crypto": True},
+    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 1.00, "max_risk_usd": 35.0, "is_crypto": True},
+    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 2000.0, "max_risk_usd": 25.0, "is_crypto": True},
     {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0},
     {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 25.0},
     {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 25.0},
