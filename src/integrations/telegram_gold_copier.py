@@ -134,7 +134,7 @@ class TelegramGoldCopier:
             logger.error(f"Error fetching Telegram channel: {e}")
             return []
 
-    def parse_and_validate_signal(self, text: str, current_spot: float) -> Tuple[Optional[Dict[str, Any]], str]:
+    def parse_and_validate_signal(self, text: str, current_spot: Optional[float] = None) -> Tuple[Optional[Dict[str, Any]], str]:
         """
         Parses text for Gold signal signature, filters out promo/spam/celebration messages,
         and enforces anti-chase price tolerance.
@@ -152,26 +152,32 @@ class TelegramGoldCopier:
             if not ("stop loss" in text_lower or "sl" in text_lower):
                 return None, "Celebration update filtered"
 
-        # 3. Clean text for regex
-        text_clean = re.sub(r"[^\w\s\./#:\-]", " ", text)
+        # 2.5 Normalize broken space digits inside numbers (e.g. '4 355' -> '4355', '40 62' -> '4062')
+        text_normalized = re.sub(r"(\d{1,2})\s+(\d{2,3})\b", r"\1\2", text)
 
-        # Match Action (BUY/SELL) and 4-digit Entry Price
-        m_side = re.search(r"(BUY|SELL)\s*[:\-]?\s*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        # 3. Clean text for regex
+        text_clean = re.sub(r"[^\w\s\./#:\-@]", " ", text_normalized)
+
+        # Match Action (BUY/SELL) and 4-digit Entry Price (allowing words like NOW, MORE, GOLD, XAUUSD, @ in between)
+        m_side = re.search(r"(BUY|SELL)(?:\s+(?:NOW|MORE|GOLD|XAUUSD|AT|@))*[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if not m_side:
-            return None, "No Action and 4-digit Entry found"
+            # Also check if format is 'GOLD/XAUUSD (BUY|SELL) 4xxx'
+            m_side = re.search(r"(?:GOLD|XAUUSD)[\s:\-@]+(BUY|SELL)[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            if not m_side:
+                return None, "No Action and 4-digit Entry found"
 
         side = m_side.group(1).upper()
         entry = float(m_side.group(2))
 
         # Match Stop Loss (or fallback to default safe 10.0 pts if minimal format)
-        m_sl = re.search(r"(?:STOP\s*LOSS|SL)\s*[:\-]?\s*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_sl = re.search(r"(?:STOP\s*LOSS|SL)[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if m_sl:
             raw_sl = float(m_sl.group(1))
         else:
             raw_sl = (entry - MAX_SL_DISTANCE_POINTS) if side == "BUY" else (entry + MAX_SL_DISTANCE_POINTS)
 
         # Match Take Profits (or fallback to standard targets if minimal format)
-        tp_matches = re.findall(r"(?:TAKE\s*PROFIT|TP)\s*(?:[123¹²³]|\d)?\s*[:\-]?\s*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        tp_matches = re.findall(r"(?:TAKE\s*PROFIT|TP)\s*(?:[123¹²³]|\d)?[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if not tp_matches:
             # Fallback search for numeric targets
             potential_tps = re.findall(r"\b4\d{3}(?:\.\d+)?\b", text_clean)
@@ -199,10 +205,11 @@ class TelegramGoldCopier:
             # Safe Clamped Stop Loss (max 10 points risk)
             safe_sl = min(raw_sl, entry + MAX_SL_DISTANCE_POINTS)
 
-        # 4. Anti-Chase / Price Slippage Guard
-        slippage = abs(current_spot - entry)
-        if slippage > MAX_SLIPPAGE_TOLERANCE:
-            return None, f"Anti-Chase: Spot {current_spot:.2f} is {slippage:.2f} pts from Entry {entry:.2f} (max {MAX_SLIPPAGE_TOLERANCE})"
+        # 4. Anti-Chase / Price Slippage Guard (only if live current_spot is provided)
+        if current_spot is not None:
+            slippage = abs(current_spot - entry)
+            if slippage > MAX_SLIPPAGE_TOLERANCE:
+                return None, f"Anti-Chase: Spot {current_spot:.2f} is {slippage:.2f} pts from Entry {entry:.2f} (max {MAX_SLIPPAGE_TOLERANCE})"
 
         signal_key = f"XAUUSD_{side}_{entry:.1f}_{raw_sl:.1f}"
 
