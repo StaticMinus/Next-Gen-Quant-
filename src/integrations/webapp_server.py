@@ -237,16 +237,28 @@ def launch_server_in_thread(port=None):
     server_port = int(port or os.getenv("PORT", 8080))
     t = threading.Thread(target=start_webapp_server, kwargs={"port": server_port}, daemon=True, name="WebAppServer")
     t.start()
-    return t
+def launch_gold_copier_thread():
+    """Launches the 24/7 Telegram Gold Copier inside a daemon thread."""
+    try:
+        from src.integrations.telegram_gold_copier import start_copier_daemon
+        t = threading.Thread(target=start_copier_daemon, kwargs={"interval_sec": 4, "dry_run": False}, daemon=True, name="GoldCopierDaemon")
+        t.start()
+        print("[+] Telegram Gold Copier daemon thread started successfully.")
+        return t
+    except Exception as e:
+        print(f"[!] Warning: Could not start Gold Copier daemon thread: {e}")
+        return None
 
 
 if __name__ == "__main__":
-    # If run directly on Render or locally, launch the Telegram Bot Polling service
-    # which starts the WebApp server in a background thread and runs the bot loop.
+    # Launch 24/7 Telegram Gold Copier daemon thread
+    launch_gold_copier_thread()
+
+    # Launch Web Server & Healthcheck on Render Free Tier
     try:
         from src.integrations.telegram_bot_service import run_polling
         run_polling()
     except Exception as e:
-        print(f"[!] Warning: Could not start Telegram Bot polling: {e}")
+        print(f"[!] Running standalone WebApp server for healthchecks: {e}")
         start_webapp_server()
 
