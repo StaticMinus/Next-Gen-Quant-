@@ -61,6 +61,17 @@ class TelegramGoldCopier:
         self.ctrader = CTraderMCPClient()
         self.state = self.load_state()
 
+        # Cold-start watermark: on boot, record current latest post ID so past messages are NEVER executed
+        if not self.state.get("last_processed_post_id"):
+            try:
+                initial_msgs = self.fetch_channel_messages()
+                if initial_msgs:
+                    self.state["last_processed_post_id"] = initial_msgs[-1]["post_id"]
+                    self.save_state()
+                    logger.info(f"🛡️ Cold-start initialized: Watermark set to {self.state['last_processed_post_id']}. Past messages ignored.")
+            except Exception as e:
+                logger.warning(f"Could not fetch initial watermark: {e}")
+
     def load_state(self) -> dict:
         if STATE_FILE.exists():
             try:
@@ -343,10 +354,22 @@ class TelegramGoldCopier:
         except Exception as e:
             logger.error(f"Error managing active Breakeven positions: {e}")
 
-    def process_raw_message(self, text: str, post_id: Optional[str] = None) -> bool:
+    def process_raw_message(self, text: str, post_id: Optional[str] = None, msg_datetime: Optional[str] = None) -> bool:
         """Processes a single raw text message from MTProto push or web poll."""
         if not text:
             return False
+
+        # Freshness check: reject messages older than 5 minutes
+        if msg_datetime:
+            try:
+                from datetime import timezone
+                dt = datetime.fromisoformat(msg_datetime.replace("Z", "+00:00"))
+                age_seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+                if age_seconds > 300:
+                    logger.debug(f"⏭️ Skipping stale message ({post_id}): posted {age_seconds:.0f}s ago (> 300s max allowed)")
+                    return False
+            except Exception:
+                pass
 
         # Fetch live spot price on cTrader
         spot_data = self.ctrader.get_spot_price("XAUUSD")
@@ -388,7 +411,8 @@ class TelegramGoldCopier:
         for msg in messages[-3:]:
             post_id = msg["post_id"]
             text = msg["text"]
-            if self.process_raw_message(text, post_id=post_id):
+            dt = msg.get("datetime")
+            if self.process_raw_message(text, post_id=post_id, msg_datetime=dt):
                 break
 
         # Check existing trades for Breakeven management
