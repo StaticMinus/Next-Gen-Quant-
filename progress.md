@@ -265,3 +265,21 @@ This occurred because `relativeStopLoss` point calculations sent integer units t
 ### 3. Verification:
 - `23/23` pytest unit tests passed (`tests/test_autonomous_executor.py`).
 - Active background daemon running (`task-2159`).
+
+---
+
+## 9. FundedNext Drawdown Safety Audit & Real-Time Account Milestones (September 24, 2026)
+
+### 1. Risk Boundary Verification:
+- **Daily Drawdown Limit**: **`$180.00 USD` (3.0%)** on FundedNext Stellar 1-Step ($6,000).
+- **Maximum Drawdown Limit**: **`$360.00 USD` (6.0%)**.
+- **Per-Trade Exposure**:
+  - `BTCUSD` (0.04 lots): Max Stop Loss (-0.50%) = **-$16.80 USD** (9.3% of daily buffer).
+  - `ETHUSD` (1.00 lot): Max Stop Loss (-0.50%) = **-$13.40 USD** (7.4% of daily buffer).
+  - Combined Dual-Trade Simultaneous Loss: **-$30.20 USD** (Leaves **$149.80 USD / 83.2%** intact).
+- **Risk Guardian Kill-Switch**: Pre-emptively halts at **-$90.00 USD** daily loss.
+
+### 2. Live Settlement Telemetry:
+- **`BTCUSD` (#3086988)**: Exit at `$84,163.70` &rarr; Net Realized: **`+$1.11 USD`** (WIN 🎯).
+- **`ETHUSD` (#3086991)**: Exit at `$2,686.35` &rarr; Net Realized: **`+$0.40 USD`** (WIN 🎯).
+- **Current Account Balance**: **`$5,998.58 USD`** (+**$7.29 USD** net gains today).
