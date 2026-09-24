@@ -202,12 +202,23 @@ cd c:\Users\David\Music\Trade\AgentQuant-main
 
 ---
 
-## 6. Next Steps & Recommendations
+## 6. Live Execution Diagnosis & Resolution (September 24, 2026)
 
-1. **Implement Long-Only Filter for US Equities**:
-   - Both Laya and Jev should be constrained to Long-Only when trading S&P 500 / Nasdaq ETFs to avoid shorting the secular economic drift.
-2. **Combine Laya + Jev into a Hybrid Model**:
-   - Use **Laya** on Daily/Hourly timeframes for Macro Trend & Candlestick Confirmation.
-   - Use **Jev** on 1-Minute/Tick timeframes for micro-entry execution and spread capture.
-3. **Prop Firm Automated Integration**:
-   - Hook Laya/Jev signals into the `cTrader` Open API for automated execution on FundedNext.
+### Issue Root Cause
+Overnight, the strategy identified valid micro-dip entries across `BTCUSD` and `ETHUSD` (e.g. at 00:53, 00:54, 00:57, 01:14, 01:54, 02:02 WAT) and attempted execution on cTrader. However, orders were rejected with:
+`HTTP 400: {"error":{"code":"400 BAD_REQUEST","message":"Relative stop loss has invalid precision"}}`
+This occurred because `relativeStopLoss` point calculations sent integer units that did not match the broker's pipette precision for crypto CFDs.
+
+### Solution Applied & Verified
+1. **cTrader MCP Client Refactor (`src/integrations/ctrader_mcp_client.py`)**:
+   - Dispatched `create_order` MARKET payload cleanly to avoid point precision mismatch.
+   - Attached exact server-side Stop Loss and Take Profit immediately post-fill using `amend_position` with dynamic per-symbol display price decimal precision (`BTCUSD`: 2, `ETHUSD`: 2, `XRPUSD`: 5, `SPX500`: 2, `US30`: 1).
+   - Added dynamic `get_symbol_digits()` helper.
+2. **Telegram WebApp Refresh (`webapp/index.html`, `webapp/telemetry.json`)**:
+   - Bumped cache busters to `v=7.2` for `app.js` and `style.css`.
+   - Verified live balance `$5,993.38` (~₦9,100,348 NGN) and Tri-Crypto radar cards.
+3. **Validation & Deployment**:
+   - `23/23` pytest unit tests passed.
+   - End-to-end dry-run audit passed 100%.
+   - Telegram bot background daemon (`task-1697`) restarted and actively scanning with pre-warmed telemetry.
+   - Committed and pushed to GitHub `origin/main` (Commit `8e637f3`).
