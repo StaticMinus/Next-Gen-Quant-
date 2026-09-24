@@ -352,12 +352,14 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         """Verify that when spread > 0.03% (3 bps), order entry is blocked."""
         # Bid = 5000.0, Ask = 5002.5 -> Spread = 2.5 / 5001.25 = 0.05% (> 0.03%)
         spot_wide = {"bid": 5000.0, "ask": 5002.5}
+        self.mock_ctrader.get_spot_price.return_value = spot_wide
         is_ok, spread_pct, reason = self.engine.check_spread_shield("SPX500", spot_wide)
         self.assertFalse(is_ok)
         self.assertIn("SPREAD_TOO_WIDE", reason)
 
         # Bid = 5000.0, Ask = 5000.5 -> Spread = 0.5 / 5000.25 = 0.01% (< 0.03%)
         spot_tight = {"bid": 5000.0, "ask": 5000.5}
+        self.mock_ctrader.get_spot_price.return_value = spot_tight
         is_ok2, spread_pct2, reason2 = self.engine.check_spread_shield("SPX500", spot_tight)
         self.assertTrue(is_ok2)
         self.assertEqual(reason2, "SPREAD_OPTIMAL")

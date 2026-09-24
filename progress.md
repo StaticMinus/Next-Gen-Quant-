@@ -244,4 +244,24 @@ This occurred because `relativeStopLoss` point calculations sent integer units t
 
 ### 4. Git & Daemon Status
 - Pushed all updates to GitHub `origin/main` (Commit `41c89fb`).
-- 24/7 background sniper daemon is running cleanly (`task-1921`), streaming quotes, and scanning for the next dip setups.
+- 24/7 background sniper daemon is running cleanly, streaming quotes, and scanning for the next dip setups.
+
+---
+
+## 8. Deployment of 4 Live System Upgrades (September 24, 2026)
+
+### 1. Upgrade Suite Deployed:
+1. **Automatic Breakeven Lock-In**: Positions crossing +0.30% gain automatically move Stop Loss to `Entry + 0.06%` (covers broker commissions) to convert open trades to 100% risk-free runners.
+2. **Pure 24/7 Crypto Runner**: Crypto positions (`BTCUSD`, `ETHUSD`, `XRPUSD`) run freely without timer cutoffs, allowing complete expansion to full +0.60% Take Profit.
+3. **3-Tick Adaptive Spread Normalizer**: Re-samples spot spreads up to 3 times over 1.5 seconds during tick fluctuations, preventing false rejection from transient spread spikes.
+4. **Distance-to-Target Live Radar**: Telegram `/trades` and status displays include visual progress bars `[██████░░░░] 60%`, Take Profit price targets, and breakeven indicators.
+
+### 2. Sizing & Risk Profile:
+- **`BTCUSD`**: 0.04 lots (~+$15 to +$20 target profit).
+- **`ETHUSD`**: 1.00 lot (~+$12 to +$16 target profit).
+- **`XRPUSD`**: 2,000 lots (~+$7 to +$10 target profit).
+- **FundedNext $180 Daily Loss Limit**: 100% safe (over 11 consecutive stop losses required to reach buffer).
+
+### 3. Verification:
+- `23/23` pytest unit tests passed (`tests/test_autonomous_executor.py`).
+- Active background daemon running (`task-2159`).

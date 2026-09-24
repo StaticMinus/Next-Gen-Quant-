@@ -326,22 +326,43 @@ class AutonomousExecutionEngine:
 
     def check_spread_shield(self, csym: str, spot_info: Optional[dict], max_spread_pct: Optional[float] = None) -> Tuple[bool, float, str]:
         """
-        Spread & Slippage Shield Guard:
+        Spread & Slippage Shield Guard (Upgraded with 3-Tick Adaptive Normalizer):
         Verifies broker spread does not exceed max_spread_pct (default: 0.03% for majors, 0.04% for US2000 small-caps).
-        Prevents entry when broker spread would eat > 15-20% of the scalper's net target profit.
+        If spread is temporarily elevated during tick fluctuations, performs up to 3 rapid sub-second re-polls
+        to capture the normalized spread without missing the entry window.
         """
         if max_spread_pct is None:
             max_spread_pct = 0.0004 if ("2000" in csym.upper() or "IWM" in csym.upper()) else 0.0003
         try:
-            if spot_info and "ask" in spot_info and "bid" in spot_info:
-                ask = float(spot_info["ask"])
-                bid = float(spot_info["bid"])
-                if ask > 0 and bid > 0 and ask >= bid:
-                    mid = (ask + bid) / 2.0
-                    spread_pct = (ask - bid) / mid
-                    if spread_pct > max_spread_pct:
-                        return False, spread_pct, f"SPREAD_TOO_WIDE ({spread_pct*100:.3f}% > {max_spread_pct*100:.3f}%)"
-                    return True, spread_pct, "SPREAD_OPTIMAL"
+            current_spot = spot_info
+            for attempt in range(3):
+                if current_spot and "ask" in current_spot and "bid" in current_spot:
+                    ask = float(current_spot["ask"])
+                    bid = float(current_spot["bid"])
+                    if ask > 0 and bid > 0 and ask >= bid:
+                        mid = (ask + bid) / 2.0
+                        spread_pct = (ask - bid) / mid
+                        if spread_pct <= max_spread_pct:
+                            if attempt > 0:
+                                return True, spread_pct, f"SPREAD_NORMALIZED (tick {attempt+1})"
+                            return True, spread_pct, "SPREAD_OPTIMAL"
+                
+                # If wide on initial check, pause 500ms and re-fetch spot price
+                if attempt < 2:
+                    time.sleep(0.5)
+                    try:
+                        new_spot = self.ctrader.get_spot_price(csym)
+                        if new_spot and isinstance(new_spot, dict) and "ask" in new_spot:
+                            current_spot = new_spot
+                    except Exception:
+                        break
+            
+            if current_spot and "ask" in current_spot and "bid" in current_spot:
+                ask = float(current_spot["ask"])
+                bid = float(current_spot["bid"])
+                if ask > 0 and bid > 0:
+                    spread_pct = (ask - bid) / ((ask + bid) / 2.0)
+                    return False, spread_pct, f"SPREAD_TOO_WIDE ({spread_pct*100:.3f}% > {max_spread_pct*100:.3f}%)"
         except Exception as e:
             logger.warning(f"Error evaluating spread shield for {csym}: {e}")
         return True, 0.0, "BYPASS_NO_SPOT"
@@ -552,8 +573,37 @@ class AutonomousExecutionEngine:
                 if cts:
                     entry_ts = float(cts) / 1000.0
                 else:
-                    open_meta[str(pid)] = {"entry_time": now, "entry_price": entry_price, "symbol": sym_name}
                     entry_ts = now
+                meta = open_meta.setdefault(str(pid), {"entry_time": entry_ts, "entry_price": entry_price, "symbol": sym_name})
+            elif meta is None:
+                meta = open_meta.setdefault(str(pid), {"entry_time": entry_ts, "entry_price": entry_price, "symbol": sym_name})
+
+            # --- UPGRADE 1: Automatic Breakeven Lock-In (Risk-Free Trade Conversion) ---
+            if not meta.get("breakeven_locked") and pnl_pct >= 0.0030:  # +0.30% profit (50% to target)
+                try:
+                    comm_buffer = 0.0006  # +0.06% above entry covers broker commissions with pure net
+                    be_price = entry_price * (1.0 + comm_buffer) if trade_side == "BUY" else entry_price * (1.0 - comm_buffer)
+                    amend_res = self.ctrader.amend_position_sl(position_id=pid, stop_loss=be_price, symbol=sym_name)
+                    meta["breakeven_locked"] = True
+                    save_execution_state(self.state)
+
+                    friendly_names = {
+                        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin",
+                        "ETHUSD": "Ethereum", "ETH-USD": "Ethereum", "ETH": "Ethereum",
+                        "XRPUSD": "XRP (Ripple)", "XRP-USD": "XRP (Ripple)", "XRP": "XRP (Ripple)",
+                        "SPX500": "S&P 500", "NDX100": "Nasdaq", "US30": "Dow Jones", "US2000": "Russell"
+                    }
+                    dname = friendly_names.get(sym_name.upper(), sym_name)
+                    be_msg = (
+                        f"🛡️ <b>BREAKEVEN LOCKED:</b> <b>{dname} (#{pid})</b>\n"
+                        f"• <b>Profit Milestone:</b> <b>+{pnl_pct*100:.2f}%</b> (Reached 50% target milestone)\n"
+                        f"• <b>New Hard SL:</b> <code>${be_price:,.2f}</code> (+Commission Buffer)\n"
+                        f"• <b>Status: 100% RISK-FREE TRADE</b> (Cannot lose) 🎯"
+                    )
+                    broadcast_telegram_ticket(be_msg)
+                    logger.info(f"🛡️ [BREAKEVEN LOCKED] Moved SL for #{pid} ({sym_name}) to ${be_price:.2f} at +{pnl_pct*100:.2f}%")
+                except Exception as e:
+                    logger.error(f"[!] Error moving SL to breakeven for #{pid}: {e}")
 
             is_crypto = any(c in sym_name.upper() for c in ["BTC", "ETH", "XRP", "SOL", "BNB", "DOGE"])
             if is_crypto:

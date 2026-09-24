@@ -1486,9 +1486,15 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
     if not enriched_positions and not positions:
         return "⚪ <b>No open trades</b>"
 
-    lines = []
+    lines = [
+        "📊 <b>ACTIVE TRADES & TARGET RADAR</b>",
+        "────────────────────────────"
+    ]
     total_pnl = 0.0
     friendly_names = {
+        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin",
+        "ETHUSD": "Ethereum", "ETH-USD": "Ethereum", "ETH": "Ethereum",
+        "XRPUSD": "XRP (Ripple)", "XRP-USD": "XRP (Ripple)", "XRP": "XRP (Ripple)",
         "SPX500": "S&P 500", "SPY": "S&P 500",
         "NDX100": "Nasdaq", "QQQ": "Nasdaq",
         "US30": "Dow Jones", "DIA": "Dow Jones",
@@ -1498,31 +1504,62 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
 
     items = enriched_positions if enriched_positions else positions
     for p in items:
+        pos_id = p.get("position_id") or p.get("positionId", "---")
         sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "Trade")
         dname = p.get("display_name") or friendly_names.get(sym.upper(), sym)
+        side = str(p.get("trade_side") or p.get("tradeSide", "BUY")).upper()
+        raw_vol = p.get("volume", 0)
+        lots = float(p.get("lots", 0.0))
+        if lots == 0.0:
+            lots = raw_vol / 100.0 if ("BTC" in sym.upper() or "ETH" in sym.upper()) else 0.01
+
+        entry = float(p.get("entry_price") or p.get("entryPrice", 0.0))
+        curr = float(p.get("current_price") or p.get("currentPrice", entry))
+        tp = float(p.get("take_profit") or p.get("takeProfit", 0.0) or 0.0)
+        sl = float(p.get("stop_loss") or p.get("stopLoss", 0.0) or 0.0)
         pnl = float(p.get("floating_pnl", p.get("profit", 0.0)))
         total_pnl += pnl
         naira_pnl = pnl * LIVE_P2P_RATE
 
-        if pnl >= 0:
-            lines.append(f"🟢 <b>{dname}:</b> <b>+${pnl:,.2f} (+₦{naira_pnl:,.0f})</b>")
-        else:
-            lines.append(f"🔴 <b>{dname}:</b> <b>-${abs(pnl):,.2f} (-₦{abs(naira_pnl):,.0f})</b>")
+        # Distance-to-target calculation & progress bar
+        bar_str = ""
+        if tp > 0 and entry > 0:
+            tot_dist = abs(tp - entry)
+            curr_dist = (curr - entry) if side == "BUY" else (entry - curr)
+            prog_pct = max(0.0, min(100.0, (curr_dist / tot_dist) * 100.0)) if tot_dist > 0 else 0.0
+            filled = int(round(prog_pct / 10))
+            bar_vis = "█" * filled + "░" * (10 - filled)
+            bar_str = f"• <b>Take Profit:</b> <code>${tp:,.2f}</code> 🎯 [{bar_vis}] {prog_pct:.0f}%\n"
 
-    if len(items) > 1:
-        total_naira = total_pnl * LIVE_P2P_RATE
-        if total_pnl >= 0:
-            lines.append(f"💰 <b>Total:</b> <b>+${total_pnl:,.2f} (+₦{total_naira:,.0f})</b>")
-        else:
-            lines.append(f"💰 <b>Total:</b> <b>-${abs(total_pnl):,.2f} (-₦{abs(total_naira):,.0f})</b>")
+        sl_str = ""
+        if sl > 0:
+            is_be = (sl >= entry) if side == "BUY" else (sl <= entry)
+            sl_badge = "🛡️ Breakeven Locked" if is_be else "🛡️ Hard Stop"
+            sl_str = f"• <b>Stop Loss:</b> <code>${sl:,.2f}</code> ({sl_badge})\n"
+
+        pnl_icon = "🟢" if pnl >= 0 else "🔴"
+        pnl_sign = "+" if pnl >= 0 else "-"
+        lines.append(
+            f"{pnl_icon} <b>{dname.upper()}</b> <code>#{pos_id}</code>\n"
+            f"• <b>Position:</b> <code>{side} {lots:.2f} Lots</code>\n"
+            f"• <b>Entry:</b> <code>${entry:,.2f}</code> ➔ <b>Current:</b> <code>${curr:,.2f}</code>\n"
+            f"{bar_str}"
+            f"{sl_str}"
+            f"• <b>Net PnL:</b> <b>{pnl_sign}${abs(pnl):.2f} USD</b> (~{pnl_sign}₦{abs(naira_pnl):,.0f})\n"
+            "────────────────────────────"
+        )
+
+    total_naira = total_pnl * LIVE_P2P_RATE
+    tot_sign = "+" if total_pnl >= 0 else "-"
+    lines.append(f"💰 <b>Total Floating:</b> <b>{tot_sign}${abs(total_pnl):,.2f} USD</b> (~{tot_sign}₦{abs(total_naira):,.0f})")
 
     if is_owner(user_id) and items:
         if pending_step == 1:
-            lines.append(f"⚠️ <b>SAFETY CLOSE INITIATED</b>: Confirm close for #{pending_pos_id}")
+            lines.append(f"\n⚠️ <b>SAFETY CLOSE INITIATED</b>: Confirm close for #{pending_pos_id}")
         elif pending_step == 2:
-            lines.append(f"🚨 <b>FINAL EXECUTION WARNING</b>: Tap execute close now for #{pending_pos_id}!")
+            lines.append(f"\n🚨 <b>FINAL EXECUTION WARNING</b>: Tap execute close now for #{pending_pos_id}!")
         else:
-            lines.append("⚡ <i>Manual Control (David Exclusive)</i>")
+            lines.append("⚡ <i>1-Tap Fast Actions (David Exclusive)</i>")
 
     return "\n".join(lines)
 
