@@ -2193,7 +2193,27 @@ def handle_update(update: dict):
                 return
             ack_callback(cq_id, "⚡ Closing position on cTrader...")
             try:
+                # Capture position info before close
+                pos_symbol = "ASSET"
+                pnl_usd = 0.0
+                enriched = _CACHE.get("enriched_positions", [])
+                for ep in enriched:
+                    if str(ep.get("position_id") or ep.get("positionId")) == str(pos_id):
+                        pos_symbol = ep.get("display_name") or ep.get("symbol_name", "ASSET")
+                        pnl_usd = float(ep.get("floating_pnl", 0.0))
+                        break
+
                 close_res = ctrader_client.close_position(pos_id)
+                time.sleep(0.5)
+
+                # Query confirmed closed deals from cTrader for exact broker settlement
+                deals = ctrader_client.get_closed_deals(days=1)
+                for d in deals:
+                    if str(d.get("position_id") or d.get("positionId")) == str(pos_id):
+                        pnl_usd = float(d.get("pnl", pnl_usd))
+                        pos_symbol = d.get("display_name") or d.get("symbol_name", pos_symbol)
+                        break
+
                 en = ctrader_client.get_enriched_positions()
                 _CACHE["enriched_positions"] = en
                 bal = ctrader_client.get_balance()
@@ -2201,11 +2221,18 @@ def handle_update(update: dict):
                     _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 6000.0))
                     _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 6000.0))
                     _CACHE["free_margin"] = bal.get("freeMargin", _CACHE.get("free_margin", 5700.0))
+
+                save_telemetry_snapshot()
+
+                pnl_icon = "💰" if pnl_usd >= 0 else "🔴"
+                pnl_sign = "+" if pnl_usd >= 0 else "-"
+                naira_pnl = abs(pnl_usd) * LIVE_P2P_RATE
+
                 receipt = (
-                    "✅ <b>TRADE CLOSED SUCCESSFULLY</b>\n"
+                    f"{pnl_icon} <b>TRADE CLOSED: {pos_symbol.upper()}</b>\n"
                     "────────────────────────────\n"
                     f"• <b>Position ID:</b> <code>#{pos_id}</code>\n"
-                    "• <b>Action:</b> Manual market close executed by David\n"
+                    f"• <b>Realized PnL:</b> <b>{pnl_sign}${abs(pnl_usd):.2f} USD</b> (~{pnl_sign}₦{naira_pnl:,.0f} NGN)\n"
                     f"• <b>Updated Balance:</b> <code>${_CACHE['capital']:,.2f} USD</code>\n"
                     f"• <b>Account Equity:</b> <code>${_CACHE['equity']:,.2f} USD</code>\n"
                     "────────────────────────────\n"

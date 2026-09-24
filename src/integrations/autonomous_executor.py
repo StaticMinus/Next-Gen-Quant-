@@ -589,10 +589,42 @@ class AutonomousExecutionEngine:
                         "NDX100": "Nasdaq", "QQQ": "Nasdaq",
                         "US30": "Dow Jones", "DIA": "Dow Jones",
                         "US2000": "Russell", "IWM": "Russell",
-                        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin"
+                        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin",
+                        "ETHUSD": "Ethereum", "ETH-USD": "Ethereum", "ETH": "Ethereum",
+                        "XRPUSD": "XRP (Ripple)", "XRP-USD": "XRP (Ripple)", "XRP": "XRP (Ripple)"
                     }
                     dname = friendly_names.get(sym_name.upper(), sym_name)
-                    pnl_usd = float(p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0))
+
+                    # Compute accurate dollar PnL
+                    raw_vol = p.get("volume", 0)
+                    sym_upper = sym_name.upper()
+                    if "XAU" in sym_upper or "GOLD" in sym_upper:
+                        lots = raw_vol / 10000.0
+                    elif any(k in sym_upper for k in ["EUR", "GBP", "AUD", "NZD", "JPY"]) and not any(k in sym_upper for k in ["BTC", "ETH", "XRP", "SPX", "NDX", "US30", "US2000"]):
+                        lots = raw_vol / 10000000.0
+                    else:
+                        lots = raw_vol / 100.0
+
+                    trade_side = str(p.get("tradeSide", "BUY")).upper()
+                    entry_p = float(p.get("entryPrice", 0.0))
+                    if p.get("floating_pnl") is not None:
+                        pnl_usd = float(p.get("floating_pnl"))
+                    elif curr_price > 0 and entry_p > 0 and lots > 0:
+                        pnl_usd = (curr_price - entry_p) * lots if trade_side == "BUY" else (entry_p - curr_price) * lots
+                    else:
+                        pnl_usd = float(p.get("profit", 0.0))
+
+                    # Query broker deals for exact realized settlement if available
+                    try:
+                        time.sleep(0.4)
+                        deals = self.ctrader.get_closed_deals(days=1)
+                        for d in deals:
+                            if str(d.get("position_id") or d.get("positionId")) == str(pid):
+                                pnl_usd = float(d.get("pnl", pnl_usd))
+                                break
+                    except Exception:
+                        pass
+
                     naira_pnl = pnl_usd * LIVE_P2P_RATE
                     guardian.record_trade_result(is_loss=(pnl_usd < 0), pnl_usd=pnl_usd)
 
