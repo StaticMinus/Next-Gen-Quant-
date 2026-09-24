@@ -143,7 +143,7 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         prices_close = [580.0] * 8 + [570.0]
         prices_open = [580.0] * 8 + [579.0]
         prices_high = [581.0] * 8 + [580.0]
-        prices_low = [579.0] * 8 + [568.0] # wick = (570 - 568) / (580 - 568) = 2/12 = 16.7% (>15% microstructure)
+        prices_low = [579.0] * 8 + [565.0] # wick = (570 - 565) / (580 - 565) = 5/15 = 33.3% (>25% microstructure)
         mock_df = pd.DataFrame({
             "close": prices_close, "open": prices_open, "high": prices_high, "low": prices_low, "volume": [1000]*9
         }, index=idx)

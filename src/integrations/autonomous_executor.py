@@ -59,13 +59,13 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.04, "max_risk_usd": 35.0, "is_crypto": True},
-    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 1.00, "max_risk_usd": 35.0, "is_crypto": True},
-    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 2000.0, "max_risk_usd": 25.0, "is_crypto": True},
-    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 25.0},
-    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 25.0},
-    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 25.0},
+    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.04, "max_risk_usd": 20.0, "is_crypto": True},
+    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 1.00, "max_risk_usd": 15.0, "is_crypto": True},
+    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 1000.0, "max_risk_usd": 10.0, "is_crypto": True},
+    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 20.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 20.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 20.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 20.0},
 ]
 
 # Active timeframe: "1m" (Default M1 Microstructure Sniper), "15m", "30m", "5m", or "1h"
@@ -297,8 +297,8 @@ class AutonomousExecutionEngine:
         """
         Upgrade 5: Microstructure Rejection Filter (M1/M5 Wick Check)
         Examines the lowest candle to ensure buyer absorption / rejection wick.
-        Requires lower wick >= 30% of candle range to confirm dip rejection,
-        or rejects if candle is a solid red falling knife (lower wick < 15% and close < open).
+        Requires lower wick >= 25% of candle range when closing red (to confirm buyers absorb the sell-off),
+        or rejects if candle is a solid red falling knife (lower wick < 25% and close < open).
         """
         try:
             if df is not None and len(df) > 0:
@@ -313,8 +313,8 @@ class AutonomousExecutionEngine:
                 lower_wick = min(o, c) - l
                 wick_ratio = lower_wick / rng
 
-                # Solid red falling knife check
-                if c < o and wick_ratio < 0.15:
+                # Solid red falling knife check: on red candle (c < o), require at least 25% buyer absorption wick
+                if c < o and wick_ratio < 0.25:
                     return False, wick_ratio, "FALLING_KNIFE_REJECTED"
                 # Absorption hammer / rejection check
                 if wick_ratio >= 0.30 or (c > o and (c - o) / rng >= 0.40):
@@ -393,7 +393,8 @@ class AutonomousExecutionEngine:
         """
         Macro Trend Regime Filter:
         Inspects higher-timeframe trend structure to prevent dip-buying during waterfall dumps.
-        If price is > 1.0% below the 50-period EMA on intraday bars, suppresses long entries.
+        If price is > 0.60% below the 50-period EMA on intraday bars, suppresses long entries.
+        Also suppresses entries if the last 3 consecutive bars are severe red candles dumping > 0.40% without consolidation.
         """
         try:
             if df is not None and len(df) >= 30 and "close" in df.columns:
@@ -401,8 +402,16 @@ class AutonomousExecutionEngine:
                 ema50 = close.ewm(span=min(50, len(close)), adjust=False).mean()
                 c_last = float(close.iloc[-1])
                 ema_last = float(ema50.iloc[-1])
-                if ema_last > 0 and c_last < ema_last * 0.990:
+                if ema_last > 0 and c_last < ema_last * 0.994:
                     return False, f"WATERFALL_DOWNTREND (Price {((c_last - ema_last)/ema_last)*100:.2f}% below EMA50)"
+
+                # Check for 3-bar consecutive red cascade (> 0.40% dump)
+                if len(df) >= 3 and "open" in df.columns:
+                    last_3 = df.iloc[-3:]
+                    all_red = all(float(last_3.iloc[i]["close"]) < float(last_3.iloc[i]["open"]) for i in range(3))
+                    total_drop = (float(last_3.iloc[-1]["close"]) - float(last_3.iloc[0]["open"])) / float(last_3.iloc[0]["open"])
+                    if all_red and total_drop < -0.0040:
+                        return False, f"MULTI_CANDLE_CASCADE (3 consecutive red bars dropping {total_drop*100:.2f}%)"
         except Exception as e:
             logger.debug(f"Trend regime check exception: {e}")
         return True, "HEALTHY_REGIME"
@@ -729,6 +738,7 @@ class AutonomousExecutionEngine:
 
             balance = bal_data.get("balance", 6000.0)
             equity = bal_data.get("equity", balance)
+            free_margin = bal_data.get("freeMargin", equity)
 
             if hasattr(self.ctrader, "get_positions_strict") and not isinstance(self.ctrader, MagicMock):
                 open_positions = self.ctrader.get_positions_strict()
@@ -954,6 +964,12 @@ class AutonomousExecutionEngine:
                     safe_lots = round(min(target_cap, calc_lots), 2)
                 else:
                     safe_lots = round(calc_lots, 2)
+                
+                # Margin safety guard: Ensure position notional doesn't breach 80% available free margin
+                if is_crypto and exec_price > 100.0 and free_margin > 0:
+                    max_margin_lots = (free_margin * 0.80) / exec_price
+                    safe_lots = min(safe_lots, round(max_margin_lots, 2))
+                
                 lots_to_trade = max(0.01, safe_lots)
             else:
                 lots_to_trade = target_cap or 0.10

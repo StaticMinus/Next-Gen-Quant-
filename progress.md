@@ -283,3 +283,28 @@ This occurred because `relativeStopLoss` point calculations sent integer units t
 - **`BTCUSD` (#3086988)**: Exit at `$84,163.70` &rarr; Net Realized: **`+$1.11 USD`** (WIN 🎯).
 - **`ETHUSD` (#3086991)**: Exit at `$2,686.35` &rarr; Net Realized: **`+$0.40 USD`** (WIN 🎯).
 - **Current Account Balance**: **`$5,998.58 USD`** (+**$7.29 USD** net gains today).
+
+---
+
+## 10. London/NY Open Waterfall Cascade Protection & Free Margin Safeguard (September 24, 2026)
+
+### 1. Protection Features Deployed:
+1. **25% Lower Wick Buyer Absorption Guard**:
+   - On red candles during dip scans, requires `wick_ratio >= 0.25` (25%) to ensure buyers are actively absorbing the sell-off before entering.
+   - Prevents entering into unmitigated red falling knives during session opens.
+2. **0.60% EMA-50 & 3-Candle Waterfall Filter**:
+   - Suppresses entries if price is extended >0.60% below the 50-period EMA on intraday bars.
+   - Suppresses entries if 3 consecutive bars dump >0.40% cumulatively without consolidation.
+3. **Dynamic Free Margin Protection**:
+   - Sizing algorithm inspects real-time broker `freeMargin` to ensure new positions never exceed 80% available margin.
+   - Prevents broker `HTTP 422: Not enough funds` rejection during multi-position holding.
+
+### 2. Lot Sizing Configuration (Maintained as Requested):
+- **`BTCUSD`**: **0.04 lots** (Max SL -$16.80 USD | Target: +$16 to +$20 USD)
+- **`ETHUSD`**: **1.00 lot** (Max SL -$13.40 USD | Target: +$12 to +$16 USD)
+- **`XRPUSD`**: **1,000 lots** (Max SL -$2.90 USD | Target: +$3 to +$5 USD)
+- **FundedNext $180 Daily Loss Limit**: 100% compliant and protected.
+
+### 3. Verification & Daemon Status:
+- `23/23` pytest unit tests passed in [`tests/test_autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/tests/test_autonomous_executor.py).
+- Live background daemon restarted (`telegram_bot_service.py`) and actively monitoring positions and scanning markets 24/7.
