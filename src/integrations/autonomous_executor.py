@@ -79,11 +79,11 @@ TIMEFRAME_CONFIGS = {
         "num_std": 1.50,         # 1.50 sigma dip band (M1 Microstructure Sniper)
         "exit_at_mean": True,    # Take profit at mean or target
         "allow_short": False,    # Long-Only on dip snipes
-        "stop_loss_pct": 0.0050, # 0.50% tight hard stop
-        "target_profit_pct": 0.0060, # +0.60% rapid take profit
+        "stop_loss_pct": 0.0035, # 0.35% tight hard stop (Asymmetric 1:2.14 R:R)
+        "target_profit_pct": 0.0075, # +0.75% extended take profit
         "max_hold_bars": 12,     # 12 minutes max hold (Strict in-and-out!)
         "time_decay_bars": 5,    # Bank profit if holding >= 5 mins and green
-        "time_decay_min_profit": 0.0015, # +0.15% profit triggers early close
+        "time_decay_min_profit": 0.0025, # +0.25% profit triggers early close
         "bar_freshness_seconds": 60,   # 1 minute max age from bar close
         "price_tolerance_pct": 0.0010, # Max 0.10% bounce above trigger (anti-chase)
         "cooldown_seconds": 180,       # 3 min cooldown per ticker
@@ -588,9 +588,9 @@ class AutonomousExecutionEngine:
                 meta = open_meta.setdefault(str(pid), {"entry_time": entry_ts, "entry_price": entry_price, "symbol": sym_name})
 
             # --- UPGRADE 1: Automatic Breakeven Lock-In (Risk-Free Trade Conversion) ---
-            if not meta.get("breakeven_locked") and pnl_pct >= 0.0030:  # +0.30% profit (50% to target)
+            if not meta.get("breakeven_locked") and pnl_pct >= 0.0020:  # +0.20% profit milestone
                 try:
-                    comm_buffer = 0.0006  # +0.06% above entry covers broker commissions with pure net
+                    comm_buffer = 0.0005  # +0.05% above entry covers broker commissions with pure net
                     be_price = entry_price * (1.0 + comm_buffer) if trade_side == "BUY" else entry_price * (1.0 - comm_buffer)
                     amend_res = self.ctrader.amend_position_sl(position_id=pid, stop_loss=be_price, symbol=sym_name)
                     meta["breakeven_locked"] = True
@@ -942,11 +942,14 @@ class AutonomousExecutionEngine:
                 )
                 continue
 
-            # Compute Take Profit & Stop Loss (Dynamic ATR-Scaled)
+            # Compute Take Profit & Stop Loss (Asymmetric R:R Scaled)
             stop_pct = cfg["stop_loss_pct"]
-            dynamic_target = self.compute_dynamic_atr_target(df)
-            mean_dist = (scaled_mean - exec_price) / exec_price if scaled_mean > exec_price else dynamic_target
-            target_pct = min(dynamic_target, max(0.0018, mean_dist))
+            if is_crypto:
+                target_pct = cfg.get("target_profit_pct", 0.0075)
+            else:
+                dynamic_target = self.compute_dynamic_atr_target(df)
+                mean_dist = (scaled_mean - exec_price) / exec_price if scaled_mean > exec_price else dynamic_target
+                target_pct = min(dynamic_target, max(0.0018, mean_dist))
 
             tp_price = round(exec_price * (1.0 + target_pct), 2)
             sl_price = round(exec_price * (1.0 - stop_pct), 2)
