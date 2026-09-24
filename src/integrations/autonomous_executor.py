@@ -559,14 +559,15 @@ class AutonomousExecutionEngine:
             if dur_sec >= time_decay_seconds and pnl_pct >= min_profit_pct:
                 close_reason = f"TIME-DECAY PROFIT BANKED ({dur_mins:.0f}m hold)"
             elif dur_sec >= max_hold_seconds:
-                if pnl_pct >= 0.0:
+                if pnl_pct >= min_profit_pct:
                     close_reason = f"SMART RECOVERY PROFIT BANKED ({dur_mins:.0f}m hold)"
                 else:
-                    # Smart Recovery: in minus, do NOT force close!
-                    # Allow position to breathe, protected by broker hard SL (-0.40%) & 15:45 EST EOD flatten
+                    # Smart Recovery: pnl_pct < min_profit_pct.
+                    # Do NOT force close for micro-fractions (+0.01%) where broker commissions exceed gross profit!
+                    # Allow position to breathe towards target (+0.50%+) or broker hard SL (-0.50%).
                     logger.debug(
-                        f"🛡️ [SMART RECOVERY] Position #{pid} ({sym_name}) held {dur_mins:.0f}m is in drawdown ({pnl_pct*100:+.2f}%). "
-                        f"Allowing to breathe until recovery, hard SL, or 15:45 EST EOD flatten."
+                        f"🛡️ [SMART RECOVERY] Position #{pid} ({sym_name}) held {dur_mins:.0f}m is at {pnl_pct*100:+.2f}%. "
+                        f"Below commission-safe profit buffer (+{min_profit_pct*100:.2f}%). Allowing to breathe."
                     )
 
             if close_reason:
