@@ -680,11 +680,7 @@ def background_telemetry_loop():
         print(f"[!] Error in initial briefings check: {e}")
     sync_ctrader_telemetry_worker()
     sync_market_radar_worker()
-    try:
-        run_autonomous_execution_cycle()
-    except Exception as e:
-        print(f"[!] Autonomous execution startup error: {e}")
-    check_and_dispatch_autonomous_alerts()
+    # Autonomous execution permanently decommissioned - operating in read-only telemetry mode
     check_and_dispatch_scheduled_briefings()
     check_and_dispatch_milestone_alerts()
     while True:
@@ -692,15 +688,7 @@ def background_telemetry_loop():
             time.sleep(35)
             sync_ctrader_telemetry_worker()
             sync_market_radar_worker()
-            # 100% Autonomous Trade Execution (Max 2 Positions, Hard Stops)
-            try:
-                auto_trades = run_autonomous_execution_cycle()
-                if auto_trades:
-                    print(f"[+] Autonomous cycle placed {len(auto_trades)} trade(s). Re-syncing telemetry...")
-                    sync_ctrader_telemetry_worker()
-            except Exception as e:
-                print(f"[!] Autonomous execution cycle error: {e}")
-            check_and_dispatch_autonomous_alerts()
+            # Autonomous trade execution permanently disabled (read-only telemetry mode)
             check_and_dispatch_scheduled_briefings()
             check_and_dispatch_milestone_alerts()
         except Exception as e:

@@ -725,6 +725,15 @@ class AutonomousExecutionEngine:
         dt_ny = dt_override or pd.Timestamp.now(tz="America/New_York")
         executed_trades = []
 
+        # 0. Global Master Trading Pause & Decommission Guard
+        if (
+            os.getenv("AUTONOMOUS_TRADING_ENABLED", "true").lower() not in ("true", "1", "yes")
+            or os.getenv("DECOMMISSIONED_AUTO_TRADING", "false").lower() in ("true", "1", "yes")
+            or guardian.state.get("decommissioned")
+        ):
+            logger.info("[!] Automated trading is DECOMMISSIONED/PAUSED. Skipping execution cycle.")
+            return []
+
         # 1. Connect & Sync Live cTrader Account (Fail-Closed)
         try:
             if not self.ctrader.session_id:

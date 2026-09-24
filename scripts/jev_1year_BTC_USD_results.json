@@ -1,121 +1,121 @@
 {
   "ticker": "BTC-USD",
-  "period": "2025-09-28 to 2026-09-23",
+  "period": "2025-09-28 to 2026-09-24",
   "total_bars": 8472,
   "daily_trade_frequency": {
-    "total_trades_opened": 995,
-    "avg_trades_opened_per_day": 2.787114845938375,
-    "total_calendar_days": 357
+    "total_trades_opened": 992,
+    "avg_trades_opened_per_day": 2.7709497206703912,
+    "total_calendar_days": 358
   },
   "weekly_profit_metrics": {
     "total_weeks": 53,
     "positive_weeks": 26,
     "negative_weeks": 27,
     "weekly_win_rate_pct": 49.056603773584904,
-    "avg_profit_per_week": 185.65654117663973,
-    "best_week_profit": 5222.694025931647,
-    "worst_week_profit": -3629.098340020908
+    "avg_profit_per_week": 188.03530537723597,
+    "best_week_profit": 5216.8893252667185,
+    "worst_week_profit": -3625.064822176908
   },
   "monthly_profit_metrics": {
     "total_months": 13,
     "positive_months": 7,
     "monthly_win_rate_pct": 53.84615384615385,
-    "avg_profit_per_month": 756.907437104762,
-    "best_month_profit": 5389.407748394369,
-    "worst_month_profit": -2887.834462482817,
+    "avg_profit_per_month": 766.6054757687313,
+    "best_month_profit": 5383.417755761198,
+    "worst_month_profit": -2884.6248134892376,
     "monthly_table": [
       {
         "year": 2025,
         "month": "Sep",
-        "pnl": 314.3365225861053,
-        "return_pct": 0.3143365225861053
+        "pnl": 202.8433559906116,
+        "return_pct": 0.2028433559906116
       },
       {
         "year": 2025,
         "month": "Oct",
-        "pnl": 2670.1940479113982,
-        "return_pct": 2.661826953628104
+        "pnl": 2667.2262925939867,
+        "return_pct": 2.6618269534709036
       },
       {
         "year": 2025,
         "month": "Nov",
-        "pnl": 3884.603904918229,
-        "return_pct": 3.7720266173947787
+        "pnl": 3880.2864084772154,
+        "return_pct": 3.772026617394834
       },
       {
         "year": 2025,
         "month": "Dec",
-        "pnl": -2887.834462482817,
-        "return_pct": -2.7022156365897554
+        "pnl": -2884.6248134892376,
+        "return_pct": -2.7022156365898247
       },
       {
         "year": 2026,
         "month": "Jan",
-        "pnl": -33.15806913972483,
-        "return_pct": -0.031888492580493526
+        "pnl": -33.12121600139653,
+        "return_pct": -0.031888492580603806
       },
       {
         "year": 2026,
         "month": "Feb",
-        "pnl": 5389.407748394369,
-        "return_pct": 5.184708112732336
+        "pnl": 5383.417755761198,
+        "return_pct": 5.184708112732324
       },
       {
         "year": 2026,
         "month": "Mar",
-        "pnl": -1090.950218447746,
-        "return_pct": -0.9977818430347513
+        "pnl": -1089.737694905707,
+        "return_pct": -0.997781843034593
       },
       {
         "year": 2026,
         "month": "Apr",
-        "pnl": -1485.3718054827768,
-        "return_pct": -1.3722110557783591
+        "pnl": -1483.7209067964432,
+        "return_pct": -1.372211055778426
       },
       {
         "year": 2026,
         "month": "May",
-        "pnl": -123.41208577921498,
-        "return_pct": -0.1155963531654935
+        "pnl": -123.27492089600128,
+        "return_pct": -0.11559635316553876
       },
       {
         "year": 2026,
         "month": "Jun",
-        "pnl": 970.5200480767526,
-        "return_pct": 0.9101087102877822
+        "pnl": 969.4413752040855,
+        "return_pct": 0.9101087102878476
       },
       {
         "year": 2026,
         "month": "Jul",
-        "pnl": -2319.2344975935266,
+        "pnl": -2316.656812214409,
         "return_pct": -2.1552554307279865
       },
       {
         "year": 2026,
         "month": "Aug",
-        "pnl": 1993.967070713581,
-        "return_pct": 1.8938019692993315
+        "pnl": 1991.750899916573,
+        "return_pct": 1.8938019692991839
       },
       {
         "year": 2026,
         "month": "Sep",
-        "pnl": 2556.728478687277,
-        "return_pct": 2.383161221520419
+        "pnl": 2802.04146135303,
+        "return_pct": 2.614726879936147
       }
     ]
   },
   "portfolio_summary": {
     "initial_capital": 100000.0,
-    "final_equity": 109839.7966823619,
-    "net_profit": 9839.796682361906,
-    "total_return_pct": 9.839796682361907,
-    "total_orders": 1989,
-    "closed_trades": 994,
-    "trade_win_rate_pct": 30.885311871227366,
-    "profit_factor": 1.1656818197382193,
-    "total_fees_paid": 10590.174999329516,
-    "max_drawdown_pct": -8.81575181864449,
-    "sharpe_ratio": 0.8265372651827255,
-    "asset_buy_and_hold_return_pct": -22.918397339858014
+    "final_equity": 109965.8711849935,
+    "net_profit": 9965.871184993506,
+    "total_return_pct": 9.965871184993507,
+    "total_orders": 1983,
+    "closed_trades": 991,
+    "trade_win_rate_pct": 30.978809283551968,
+    "profit_factor": 1.1643600364232682,
+    "total_fees_paid": 10548.437850054503,
+    "max_drawdown_pct": -8.815751818644562,
+    "sharpe_ratio": 0.8447270888040346,
+    "asset_buy_and_hold_return_pct": -24.193173071886587
   }
 }

@@ -1,4 +1,27 @@
 services:
+  - type: worker
+    name: agentquant-gold-copier
+    runtime: python
+    region: frankfurt
+    plan: starter
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && pip install -e ."
+    startCommand: "python -m src.integrations.telegram_gold_copier"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CTRADER_ACCOUNT_ID
+        sync: false
+      - key: CTRADER_ACCESS_TOKEN
+        sync: false
+      - key: CTRADER_MCP_URL
+        value: "https://mcp.ctrader.com/trading/mcp"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
   - type: web
     name: agentquant-telegram-ai
     runtime: python
@@ -22,7 +45,3 @@ services:
         sync: false
       - key: PYTHONUNBUFFERED
         value: "1"
-      - key: AUTONOMOUS_TIMEFRAME
-        value: "15m"
-      - key: TRADING_MODE
-        value: "LIVE"

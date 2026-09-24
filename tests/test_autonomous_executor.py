@@ -17,9 +17,33 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.engine = AutonomousExecutionEngine(ctrader_client=self.mock_ctrader)
         # Mock active market session timestamp (Wednesday 11:00 AM EST)
         self.active_dt = pd.Timestamp("2026-09-16 11:00:00", tz="America/New_York")
+        import os
+        self.orig_trading_enabled = os.environ.get("AUTONOMOUS_TRADING_ENABLED")
+        self.orig_decommissioned = os.environ.get("DECOMMISSIONED_AUTO_TRADING")
+        os.environ["AUTONOMOUS_TRADING_ENABLED"] = "true"
+        os.environ["DECOMMISSIONED_AUTO_TRADING"] = "false"
+        from src.integrations.risk_guardian import guardian
+        self.orig_guardian_state = guardian.state.copy()
+        guardian.state["trading_halted"] = False
+        guardian.state["decommissioned"] = False
+        guardian.state["daily_losses_count"] = 0
+        guardian.state["daily_loss_total"] = 0.0
 
     def tearDown(self):
         self.patcher_broadcast.stop()
+        import os
+        if self.orig_trading_enabled is not None:
+            os.environ["AUTONOMOUS_TRADING_ENABLED"] = self.orig_trading_enabled
+        elif "AUTONOMOUS_TRADING_ENABLED" in os.environ:
+            del os.environ["AUTONOMOUS_TRADING_ENABLED"]
+        if self.orig_decommissioned is not None:
+            os.environ["DECOMMISSIONED_AUTO_TRADING"] = self.orig_decommissioned
+        elif "DECOMMISSIONED_AUTO_TRADING" in os.environ:
+            del os.environ["DECOMMISSIONED_AUTO_TRADING"]
+        from src.integrations.risk_guardian import guardian
+        guardian.state.clear()
+        guardian.state.update(self.orig_guardian_state)
+        guardian.save_state()
 
     def test_blocks_when_portfolio_at_max_capacity(self):
         """Verify that when 2 positions are active, no new trades are placed."""
@@ -41,6 +65,21 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         with patch.dict("src.integrations.autonomous_executor.guardian.state", {"trading_halted": True}):
             trades = self.engine.run_cycle(dry_run=True, dt_override=self.active_dt)
             self.assertEqual(len(trades), 0, "Should NOT execute when trading is halted")
+
+    def test_blocks_when_autonomous_trading_disabled(self):
+        """Verify that when AUTONOMOUS_TRADING_ENABLED is false, no trades are executed."""
+        with patch.dict("os.environ", {"AUTONOMOUS_TRADING_ENABLED": "false"}):
+            trades = self.engine.run_cycle(dry_run=True, dt_override=self.active_dt)
+            self.assertEqual(len(trades), 0, "Should NOT execute when AUTONOMOUS_TRADING_ENABLED is false")
+
+    def test_blocks_when_auto_trading_decommissioned(self):
+        """Verify that when DECOMMISSIONED_AUTO_TRADING is true or guardian is decommissioned, no trades are executed."""
+        with patch.dict("os.environ", {"DECOMMISSIONED_AUTO_TRADING": "true"}):
+            trades = self.engine.run_cycle(dry_run=True, dt_override=self.active_dt)
+            self.assertEqual(len(trades), 0, "Should NOT execute when DECOMMISSIONED_AUTO_TRADING is true")
+        with patch.dict("src.integrations.autonomous_executor.guardian.state", {"decommissioned": True}):
+            trades = self.engine.run_cycle(dry_run=True, dt_override=self.active_dt)
+            self.assertEqual(len(trades), 0, "Should NOT execute when guardian state is decommissioned")
 
     def test_skips_duplicate_held_symbols(self):
         """Verify that an asset already in portfolio is never duplicated."""

@@ -1,0 +1,121 @@
+{
+  "ticker": "ETH-USD",
+  "period": "2025-09-28 to 2026-09-24",
+  "total_bars": 8472,
+  "daily_trade_frequency": {
+    "total_trades_opened": 964,
+    "avg_trades_opened_per_day": 2.6927374301675977,
+    "total_calendar_days": 358
+  },
+  "weekly_profit_metrics": {
+    "total_weeks": 53,
+    "positive_weeks": 22,
+    "negative_weeks": 31,
+    "weekly_win_rate_pct": 41.509433962264154,
+    "avg_profit_per_week": 134.40018405280028,
+    "best_week_profit": 7601.305697671385,
+    "worst_week_profit": -3707.605629618716
+  },
+  "monthly_profit_metrics": {
+    "total_months": 13,
+    "positive_months": 7,
+    "monthly_win_rate_pct": 53.84615384615385,
+    "avg_profit_per_month": 547.9392119075704,
+    "best_month_profit": 5524.5815855011315,
+    "worst_month_profit": -4006.0421655701357,
+    "monthly_table": [
+      {
+        "year": 2025,
+        "month": "Sep",
+        "pnl": 434.11333505150105,
+        "return_pct": 0.43411333505150107
+      },
+      {
+        "year": 2025,
+        "month": "Oct",
+        "pnl": -2492.116594212872,
+        "return_pct": -2.481344745782829
+      },
+      {
+        "year": 2025,
+        "month": "Nov",
+        "pnl": -894.0412687308126,
+        "return_pct": -0.9128272839857535
+      },
+      {
+        "year": 2025,
+        "month": "Dec",
+        "pnl": -4006.0421655701357,
+        "return_pct": -4.127899599823611
+      },
+      {
+        "year": 2026,
+        "month": "Jan",
+        "pnl": 748.1593281686946,
+        "return_pct": 0.804109999010655
+      },
+      {
+        "year": 2026,
+        "month": "Feb",
+        "pnl": 3562.1692166867288,
+        "return_pct": 3.798023731744688
+      },
+      {
+        "year": 2026,
+        "month": "Mar",
+        "pnl": 5524.5815855011315,
+        "return_pct": 5.674837559400359
+      },
+      {
+        "year": 2026,
+        "month": "Apr",
+        "pnl": 1206.7592273967748,
+        "return_pct": 1.1730136945149885
+      },
+      {
+        "year": 2026,
+        "month": "May",
+        "pnl": -2368.7036388608685,
+        "return_pct": -2.275770662603761
+      },
+      {
+        "year": 2026,
+        "month": "Jun",
+        "pnl": 2880.793241567546,
+        "return_pct": 2.8322240257959774
+      },
+      {
+        "year": 2026,
+        "month": "Jul",
+        "pnl": -1351.9496312099363,
+        "return_pct": -1.2925483453644833
+      },
+      {
+        "year": 2026,
+        "month": "Aug",
+        "pnl": -438.69602587111876,
+        "return_pct": -0.4249130258686081
+      },
+      {
+        "year": 2026,
+        "month": "Sep",
+        "pnl": 4318.183144881783,
+        "return_pct": 4.200361876532259
+      }
+    ]
+  },
+  "portfolio_summary": {
+    "initial_capital": 100000.0,
+    "final_equity": 107123.20975479842,
+    "net_profit": 7123.209754798416,
+    "total_return_pct": 7.123209754798415,
+    "total_orders": 1927,
+    "closed_trades": 963,
+    "trade_win_rate_pct": 29.283489096573206,
+    "profit_factor": 1.0962410270224796,
+    "total_fees_paid": 9655.444472044224,
+    "max_drawdown_pct": -12.34446902122742,
+    "sharpe_ratio": 0.46537657820469047,
+    "asset_buy_and_hold_return_pct": -34.33271229163177
+  }
+}

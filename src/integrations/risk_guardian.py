@@ -81,8 +81,12 @@ class RiskGuardian:
             self.state["daily_loss_date"] = today_str
             self.state["daily_losses_count"] = 0
             self.state["daily_loss_total"] = 0.0
-            # If halted purely for yesterday's 2-strike rule, automatically resume today
-            if self.state.get("trading_halted") and "Daily 2-Strike" in str(self.state.get("halt_reason", "")):
+            # If halted purely for yesterday's 2-strike rule and NOT decommissioned, automatically resume today
+            if (
+                self.state.get("trading_halted")
+                and not self.state.get("decommissioned")
+                and "Daily 2-Strike" in str(self.state.get("halt_reason", ""))
+            ):
                 self.resume_trading()
             else:
                 self.save_state()
@@ -125,7 +129,13 @@ class RiskGuardian:
         }
 
     def resume_trading(self) -> dict:
-        """Restores normal automated execution."""
+        """Restores normal automated execution if not decommissioned."""
+        if self.state.get("decommissioned"):
+            return {
+                "status": "HALTED",
+                "mode": self.state.get("active_mode", "balanced"),
+                "message": "Autonomous trading is PERMANENTLY DECOMMISSIONED by user."
+            }
         self.state["trading_halted"] = False
         self.state["halt_reason"] = None
         self.state["halt_time"] = None

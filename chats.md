@@ -1622,3 +1622,43 @@ Across the first 2.5 hours of the US session, three distinct technical bottlenec
 - **Pytest Suite**: `23/23` unit tests passing cleanly.
 - **Live Daemon**: Active background process (`task-2348`) scanning 24/7.
 - **Live Account Status**: Balance `$5,973.75 USD`, Active Position `#3087349` on `BTCUSD` (0.04 lots, SL: $83,512.40, TP: $84,099.92).
+
+---
+
+## 50. Temporary Disconnection & Full Pause of Automated cTrader Trading Engine
+
+**Date:** September 24, 2026 (13:45 WAT)  
+**Status:** **100% Paused & Disconnected — Zero New Trades Permitted Until Explicitly Re-Enabled**
+
+### 1. Executive Action & Safeguards Enforced:
+- **Automated Trading Master Pause**: All current and future trade entry logic is strictly paused and disconnected.
+- **Layer 1 Protection (Risk Guardian Kill Switch)**: `RiskGuardian` state locked to `"trading_halted": true` with reason `"User Manual Pause: All Trading Halted & Disconnected"`.
+- **Layer 2 Protection (Environment Configuration)**: `.env` configured with `AUTONOMOUS_TRADING_ENABLED=false`.
+- **Layer 3 Code-Level Circuit Breaker**: [`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py) `run_cycle()` immediately aborts with `[]` before any telemetry scanning or order submission.
+- **Unit Test Suite**: 24/24 unit tests passing cleanly (including verified block tests for paused state).
+
+### 2. Live Account & Open Positions Snapshot at Disconnection:
+- **Account ID**: cTrader #`3028655` (FundedNext Stellar $6,000 Model)
+- **Account Balance**: **`$5,940.70 USD`**
+- **Account Equity**: **`$5,939.65 USD`**
+- **Free Margin**: **`$4,840.18 USD`**
+- **Active Open Positions (Server-Side SL & TP Active on Broker)**:
+  1. **`BTCUSD`** (Position `#3087905`):
+     - **Side**: BUY | **Volume**: 1 (0.01 lot) | **Entry Price**: `$83,512.24`
+     - **Hard Stop Loss**: `$83,220.51` (-$2.92 risk)
+     - **Take Profit**: `$84,139.15` (+$6.27 profit target)
+  2. **`ETHUSD`** (Position `#3088036`):
+     - **Side**: BUY | **Volume**: 10 (0.10 lot) | **Entry Price**: `$2,643.45`
+     - **Hard Stop Loss**: `$2,634.20` (-$0.92 risk)
+     - **Take Profit**: `$2,663.28` (+$1.98 profit target)
+- *Note: Both open trades carry broker-level Stop Loss and Take Profit orders residing directly on cTrader servers, ensuring 100% downside protection without requiring an active local engine.*
+
+### 3. Step-by-Step Reconnection Guide (How to Resume Trading When Ready):
+To resume automated trading whenever you choose:
+1. **Enable Environment Flag**:
+   - In [`.env`](file:///c:/Users/David/Music/Trade/AgentQuant-main/.env), change `AUTONOMOUS_TRADING_ENABLED=false` to `AUTONOMOUS_TRADING_ENABLED=true`.
+2. **Unlock Risk Guardian**:
+   - From Telegram: Send `/resume` or tap **"🟢 Resume Trading"** in the bot menu.
+   - Or from terminal: Run `.venv\Scripts\python.exe -c "from src.integrations.risk_guardian import guardian; guardian.resume_trading()"`
+3. **Start / Verify Daemon**:
+   - Run `.venv\Scripts\python.exe -m src.integrations.telegram_bot_service` (or execute `scripts/run_background_bot.vbs`).
