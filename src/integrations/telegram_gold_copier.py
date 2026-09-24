@@ -368,8 +368,13 @@ class TelegramGoldCopier:
                 if age_seconds > 300:
                     logger.debug(f"⏭️ Skipping stale message ({post_id}): posted {age_seconds:.0f}s ago (> 300s max allowed)")
                     return False
-            except Exception:
-                pass
+        # Strict Daily Loss Circuit Breaker: If equity dropped below $5,880 ($120 loss), block all trades for today
+        bal_data = self.ctrader.get_balance()
+        if bal_data:
+            current_bal = bal_data.get("equity") or bal_data.get("balance") or 6000.0
+            if current_bal <= 5880.0:
+                logger.warning(f"🛑 [DAILY DRAWDOWN CIRCUIT BREAKER] Current equity ${current_bal:.2f} is at daily safety threshold. All execution locked until midnight reset.")
+                return False
 
         # Fetch live spot price on cTrader
         spot_data = self.ctrader.get_spot_price("XAUUSD")
