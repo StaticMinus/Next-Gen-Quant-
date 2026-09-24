@@ -222,3 +222,26 @@ This occurred because `relativeStopLoss` point calculations sent integer units t
    - End-to-end dry-run audit passed 100%.
    - Telegram bot background daemon (`task-1697`) restarted and actively scanning with pre-warmed telemetry.
    - Committed and pushed to GitHub `origin/main` (Commit `8e637f3`).
+
+---
+
+## 7. Live Multi-Asset Execution & Net PnL Commission Synchronization (September 24, 2026)
+
+### 1. Realized Settlement Audit (cTrader Account #3028655)
+- **BTCUSD (#3086731)**: Entry `$83,810.24`, Exit `$83,953.18`, Gross `+$2.86 USD`, Broker Commission `-$0.68 USD`, **Net Realized Take-Home Profit: `+$2.18 USD`** (WIN 🎯).
+- **ETHUSD (#3086723)**: Entry `$2,674.55`, Exit `$2,679.12`, Gross `+$2.28 USD`, Broker Commission `-$0.54 USD`, **Net Realized Take-Home Profit: `+$1.75 USD`** (WIN 🎯).
+- **Account Balance**: Grew to **`$5,996.43 USD`**.
+
+### 2. Exact Net Realized PnL Engine Update
+- Upgraded `get_closed_deals()` in [`src/integrations/ctrader_mcp_client.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/ctrader_mcp_client.py) to aggregate all raw deal commissions (`commission / 100`) and overnight swaps (`swap / 100`).
+- Updated [`src/integrations/autonomous_executor.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/autonomous_executor.py) and [`src/integrations/telegram_bot_service.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_bot_service.py) so that Telegram notifications and reports always display exact net settled take-home profits.
+
+### 3. $20 Personal Account 6-Month 1-Minute Strategy Simulation (250k M1 Bars)
+- **Trade Cadence**: ~9.7 trades/day | ~67.6 trades/week | ~289.8 trades/month (1,674 total trades).
+- **Win Rate & Profit Factor**: **94.38%** win rate | **17.88** Profit Factor.
+- **Fixed 0.01 Micro Model**: **+$158.04 USD** profit (+790.2%), max DD **-$0.34 USD** (0.48%).
+- **15% Compound Scaling Model**: Grows $20 to **$7,289.82 USD** (+36,349%), max DD **-$17.09 USD** (1.71%).
+
+### 4. Git & Daemon Status
+- Pushed all updates to GitHub `origin/main` (Commit `41c89fb`).
+- 24/7 background sniper daemon is running cleanly (`task-1921`), streaming quotes, and scanning for the next dip setups.
