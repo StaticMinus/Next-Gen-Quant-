@@ -768,9 +768,14 @@ class CTraderMCPClient:
                     mult = 1.0
 
                 if side == "BUY":
-                    pnl = (exit_p - entry_p) * lots * mult
+                    gross_pnl = (exit_p - entry_p) * lots * mult
                 else:
-                    pnl = (entry_p - exit_p) * lots * mult
+                    gross_pnl = (entry_p - exit_p) * lots * mult
+
+                # Factor in broker commissions and swaps (provided in cents/currency sub-units)
+                total_commission = sum(float(d.get("commission", 0)) for d in p_deals) / 100.0
+                total_swap = sum(float(d.get("swap", 0)) for d in p_deals) / 100.0
+                net_pnl = gross_pnl + total_commission + total_swap
 
                 exit_ts = int(exit_deal.get("executionTimestamp", 0)) / 1000.0
                 exit_time_str = datetime.fromtimestamp(exit_ts).strftime("%b %d, %H:%M")
@@ -783,8 +788,12 @@ class CTraderMCPClient:
                     "lots": round(lots, 2),
                     "entry_price": entry_p,
                     "exit_price": exit_p,
-                    "pnl": round(pnl, 2),
-                    "is_win": pnl >= 0,
+                    "gross_pnl": round(gross_pnl, 2),
+                    "commission": round(total_commission, 2),
+                    "swap": round(total_swap, 2),
+                    "pnl": round(net_pnl, 2),
+                    "net_pnl": round(net_pnl, 2),
+                    "is_win": net_pnl >= 0,
                     "exit_time": exit_time_str,
                     "exit_timestamp": exit_ts,
                 })
