@@ -59,13 +59,13 @@ MAX_CONCURRENT_POSITIONS = 2  # Hard FundedNext limit
 ALLOW_OVERNIGHT_HOLD = os.getenv("ALLOW_OVERNIGHT_HOLD", "false").lower() in ("true", "1", "yes")
 
 TARGET_UNIVERSE = [
-    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.04, "max_risk_usd": 20.0, "is_crypto": True},
-    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 1.00, "max_risk_usd": 15.0, "is_crypto": True},
-    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 1000.0, "max_risk_usd": 10.0, "is_crypto": True},
-    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 20.0},
-    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 20.0},
-    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 20.0},
-    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 20.0},
+    {"ticker": "BTC-USD", "ctrader_symbol": "BTCUSD", "name": "Bitcoin Spot (24/7 Sniper)", "target_lots": 0.01, "max_risk_usd": 10.0, "is_crypto": True},
+    {"ticker": "ETH-USD", "ctrader_symbol": "ETHUSD", "name": "Ethereum Spot (24/7 Sniper)", "target_lots": 0.10, "max_risk_usd": 5.0, "is_crypto": True},
+    {"ticker": "XRP-USD", "ctrader_symbol": "XRPUSD", "name": "XRP Spot (24/7 Sniper)", "target_lots": 500.0, "max_risk_usd": 5.0, "is_crypto": True},
+    {"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 10.0},
+    {"ticker": "QQQ", "ctrader_symbol": "NDX100", "name": "Nasdaq 100 Index", "target_lots": None, "max_risk_usd": 10.0},
+    {"ticker": "DIA", "ctrader_symbol": "US30", "name": "Dow Jones 30 Index", "target_lots": None, "max_risk_usd": 10.0},
+    {"ticker": "IWM", "ctrader_symbol": "US2000", "name": "Russell 2000 Index", "target_lots": None, "max_risk_usd": 10.0},
 ]
 
 # Active timeframe: "1m" (Default M1 Microstructure Sniper), "15m", "30m", "5m", or "1h"
