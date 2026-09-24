@@ -352,6 +352,20 @@ class CTraderMCPClient:
             return data["orders"]
         return []
 
+    def get_symbol_digits(self, symbol: Optional[str]) -> int:
+        if not symbol:
+            return 2
+        sym = symbol.upper().replace("-", "")
+        if "XRP" in sym or "EUR" in sym or "GBP" in sym or "AUD" in sym or "NZD" in sym or ("USD" in sym and not any(k in sym for k in ["BTC", "ETH", "SPX", "NDX", "US30", "US2000"])):
+            if "JPY" in sym:
+                return 3
+            return 5
+        elif any(k in sym for k in ["BTC", "ETH", "SPX", "NDX", "US2000", "XAU", "GOLD"]):
+            return 2
+        elif "US30" in sym:
+            return 1
+        return 2
+
     def place_market_order(self, symbol: str, side: str = "BUY", volume_lots: float = 0.01,
                            relative_sl_points: Optional[int] = None,
                            relative_tp_points: Optional[int] = None,
@@ -411,7 +425,6 @@ class CTraderMCPClient:
             raise ValueError(f"Unknown symbol: {symbol}")
 
         # Compute volume in 1/100 units
-        sym_upper = symbol.upper()
         if "SPX" in sym_upper or "NDX" in sym_upper or "US30" in sym_upper or "UK100" in sym_upper:
             # Index lotSize = 1
             raw_vol = int(round(volume_lots * 1 * 100))
@@ -419,8 +432,10 @@ class CTraderMCPClient:
             # Metal lotSize = 100
             raw_vol = int(round(volume_lots * 100 * 100))
         else:
-            # Forex/Stocks lotSize = 100000 or 100
+            # Forex/Stocks/Crypto lotSize = 100000 or 100
             raw_vol = int(round(volume_lots * 100))
+
+        digits = self.get_symbol_digits(symbol)
 
         args = {
             "symbolId": sym_id,
@@ -431,42 +446,28 @@ class CTraderMCPClient:
             "comment": comment[:256]
         }
 
-        # ── ATOMIC SL/TP SUBMISSION (UPGRADE 3) ──
-        # cTrader MCP accepts relativeStopLoss & relativeTakeProfit in points directly on MARKET orders
-        if relative_sl_points:
-            args["relativeStopLoss"] = int(relative_sl_points)
-        elif stop_loss_price:
-            spot = self.get_spot_price(symbol)
-            if spot:
-                base_p = float(spot["ask"]) if side.upper() == "BUY" else float(spot["bid"])
-                points = int(round(abs(base_p - float(stop_loss_price)) * 100))
-                if points > 0:
-                    args["relativeStopLoss"] = points
-
-        if relative_tp_points:
-            args["relativeTakeProfit"] = int(relative_tp_points)
-        elif take_profit_price:
-            spot = self.get_spot_price(symbol)
-            if spot:
-                base_p = float(spot["ask"]) if side.upper() == "BUY" else float(spot["bid"])
-                points = int(round(abs(float(take_profit_price) - base_p) * 100))
-                if points > 0:
-                    args["relativeTakeProfit"] = points
-
+        # Send MARKET order cleanly to avoid point precision rejections across various asset types
         raw = self.call_tool("create_order", args)
         result = self._parse_content_json(raw)
 
-        # Fallback amend ONLY if relative SL/TP was not included in the atomic order payload
-        if result and isinstance(result, dict) and ("relativeStopLoss" not in args or "relativeTakeProfit" not in args):
-            pos_id = result.get("positionId") or (result.get("position", {}).get("positionId") if isinstance(result.get("position"), dict) else None)
-            if pos_id:
-                amend_args = {"positionId": pos_id}
-                if stop_loss_price and "relativeStopLoss" not in args:
-                    amend_args["stopLoss"] = round(float(stop_loss_price), 2)
-                if take_profit_price and "relativeTakeProfit" not in args:
-                    amend_args["takeProfit"] = round(float(take_profit_price), 2)
+        # Immediate post-fill atomic SL/TP attachment with exact display price precision
+        if result and isinstance(result, dict) and not result.get("isError"):
+            pos_id = (
+                result.get("positionId")
+                or (result.get("position", {}).get("positionId") if isinstance(result.get("position"), dict) else None)
+                or result.get("orderId")
+            )
+            if pos_id and (stop_loss_price or take_profit_price):
+                amend_args = {"positionId": int(pos_id)}
+                if stop_loss_price:
+                    amend_args["stopLoss"] = round(float(stop_loss_price), digits)
+                if take_profit_price:
+                    amend_args["takeProfit"] = round(float(take_profit_price), digits)
                 if len(amend_args) > 1:
-                    self.call_tool("amend_position", amend_args)
+                    amend_res = self.call_tool("amend_position", amend_args)
+                    parsed_amend = self._parse_content_json(amend_res)
+                    if parsed_amend:
+                        result["amended_protection"] = parsed_amend
 
         return result
 
@@ -529,6 +530,7 @@ class CTraderMCPClient:
         else:
             raw_vol = int(round(volume_lots * 100))
 
+        digits = self.get_symbol_digits(symbol)
         now_ms = int(time.time() * 1000)
         exp_ms = now_ms + int(expiry_seconds * 1000)
 
@@ -537,16 +539,16 @@ class CTraderMCPClient:
             "orderType": "LIMIT",
             "tradeSide": side.upper(),
             "volume": max(1, raw_vol),
-            "limitPrice": round(float(limit_price), 2),
+            "limitPrice": round(float(limit_price), digits),
             "timeInForce": "GOOD_TILL_DATE",
             "expirationTimestamp": exp_ms,
             "label": "AgentQuant",
             "comment": comment[:256]
         }
         if stop_loss_price:
-            args["stopLoss"] = round(float(stop_loss_price), 2)
+            args["stopLoss"] = round(float(stop_loss_price), digits)
         if take_profit_price:
-            args["takeProfit"] = round(float(take_profit_price), 2)
+            args["takeProfit"] = round(float(take_profit_price), digits)
 
         raw = self.call_tool("create_order", args)
         return self._parse_content_json(raw)
@@ -646,13 +648,14 @@ class CTraderMCPClient:
         raw = self.call_tool("close_position", args)
         return self._parse_content_json(raw)
 
-    def amend_position_sl(self, position_id: int, stop_loss: float) -> Optional[dict]:
+    def amend_position_sl(self, position_id: int, stop_loss: float, symbol: Optional[str] = None) -> Optional[dict]:
         """
         Amends the stop loss of an active position (e.g., Move SL to Break-Even).
         """
+        digits = self.get_symbol_digits(symbol) if symbol else (5 if stop_loss < 10.0 else 2)
         args = {
             "positionId": position_id,
-            "stopLoss": round(float(stop_loss), 2)
+            "stopLoss": round(float(stop_loss), digits)
         }
         raw = self.call_tool("amend_position", args)
         return self._parse_content_json(raw)

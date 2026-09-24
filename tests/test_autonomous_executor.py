@@ -279,13 +279,15 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
             take_profit_price=5015.0
         )
         self.assertEqual(res["orderId"], 5555)
-        # Verify create_order was called with relativeStopLoss and relativeTakeProfit
-        client.call_tool.assert_called_once()
-        call_name = client.call_tool.call_args[0][0]
-        call_args = client.call_tool.call_args[0][1]
-        self.assertEqual(call_name, "create_order")
-        self.assertEqual(call_args["relativeStopLoss"], 200)
-        self.assertEqual(call_args["relativeTakeProfit"], 150)
+        # Verify create_order was called, followed immediately by amend_position with display SL/TP
+        self.assertEqual(client.call_tool.call_count, 2)
+        create_call = client.call_tool.call_args_list[0]
+        amend_call = client.call_tool.call_args_list[1]
+        self.assertEqual(create_call[0][0], "create_order")
+        self.assertEqual(create_call[0][1]["orderType"], "MARKET")
+        self.assertEqual(amend_call[0][0], "amend_position")
+        self.assertEqual(amend_call[0][1]["stopLoss"], 4980.0)
+        self.assertEqual(amend_call[0][1]["takeProfit"], 5015.0)
 
     def test_place_limit_order(self):
         """Verify that place_limit_order submits a resting LIMIT order with display SL/TP and expiry."""

@@ -19,6 +19,8 @@ import os
 import random
 import re
 import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
 import threading
 import time
 import urllib.parse
