@@ -456,6 +456,9 @@ class AutonomousExecutionEngine:
 
             sym_id = p.get("symbolId")
             sym_name = p.get("symbolName") or id_to_sym.get(sym_id, "INDEX")
+            is_crypto = any(c in sym_name.upper() for c in ["BTC", "ETH", "XRP", "SOL", "BNB", "DOGE"])
+            if is_crypto:
+                continue  # Crypto trades 24/7, never flatten for stock market sessions
             entry_price = float(p.get("entryPrice", 0.0))
             trade_side = str(p.get("tradeSide", "BUY")).upper()
 
@@ -552,6 +555,14 @@ class AutonomousExecutionEngine:
                     open_meta[str(pid)] = {"entry_time": now, "entry_price": entry_price, "symbol": sym_name}
                     entry_ts = now
 
+            is_crypto = any(c in sym_name.upper() for c in ["BTC", "ETH", "XRP", "SOL", "BNB", "DOGE"])
+            if is_crypto:
+                # 24/7 Crypto Pure TP/SL Runner:
+                # Crypto markets never close and have no session/weekend gap risk.
+                # Allow position to breathe naturally until it hits server-side Take Profit (+0.60%)
+                # or server-side Hard Stop Loss (-0.50%). No timer cutoff!
+                continue
+
             dur_sec = max(0.0, now - entry_ts)
             dur_mins = dur_sec / 60.0
 
@@ -562,9 +573,8 @@ class AutonomousExecutionEngine:
                 if pnl_pct >= min_profit_pct:
                     close_reason = f"SMART RECOVERY PROFIT BANKED ({dur_mins:.0f}m hold)"
                 else:
-                    # Smart Recovery: pnl_pct < min_profit_pct.
+                    # Smart Recovery for traditional indices: pnl_pct < min_profit_pct.
                     # Do NOT force close for micro-fractions (+0.01%) where broker commissions exceed gross profit!
-                    # Allow position to breathe towards target (+0.50%+) or broker hard SL (-0.50%).
                     logger.debug(
                         f"🛡️ [SMART RECOVERY] Position #{pid} ({sym_name}) held {dur_mins:.0f}m is at {pnl_pct*100:+.2f}%. "
                         f"Below commission-safe profit buffer (+{min_profit_pct*100:.2f}%). Allowing to breathe."
