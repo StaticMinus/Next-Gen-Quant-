@@ -34,7 +34,10 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-from src.integrations.autonomous_executor import run_autonomous_execution_cycle
+try:
+    from src.integrations.autonomous_executor import run_autonomous_execution_cycle
+except ImportError:
+    run_autonomous_execution_cycle = None
 from src.integrations.chacha_romantic_briefings import (
     render_morning_briefing_chacha,
     render_nightly_summary_chacha,
@@ -1361,35 +1364,80 @@ def render_payout_progress_bar(current_profit: float, target_profit: float = 300
 
 def render_overview_text():
     capital = float(_CACHE.get("capital", 5999.83))
+    equity = float(_CACHE.get("equity", capital))
     rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
     naira_val = capital * rate
     naira_str = f"~₦{naira_val/1e6:.1f}M" if naira_val >= 1e6 else f"~₦{naira_val:,.0f}"
     is_halted = guardian.state["trading_halted"]
-    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE (Mode A)</b>"
+    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE (Cloud Active)</b>"
+
+    # Enriched and active positions
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     items = enriched if enriched else positions
-    num_trades = len(items)
+    gold_positions = [
+        p for p in items
+        if "XAU" in str(p.get("symbol_name") or p.get("symbol") or p.get("symbolName") or "XAUUSD").upper()
+        or p.get("symbolId") == 41
+    ]
+    num_trades = len(gold_positions)
 
+    # Gold Live Quote & Spread
+    gold_bid = float(_CACHE.get("gold_bid", _CACHE.get("gold_price", 4165.81)))
+    gold_ask = float(_CACHE.get("gold_ask", gold_bid + 0.20))
+    gold_spread = round(abs(gold_ask - gold_bid), 2)
+
+    # FundedNext Milestone Progress
     curr_profit = max(0.0, capital - 6000.0)
     payout_bar = render_payout_progress_bar(curr_profit, target_profit=480.0)
 
-    gold_p = float(_CACHE.get("gold_price", 0.0))
-    if gold_p <= 0:
-        gold_p = float(_CACHE.get("gold_bid", 4165.81))
+    # Drawdown Guardrails
+    daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+    daily_buffer = max(0.0, equity - daily_floor)
+    total_buffer = 360.0
 
-    strat_tag = "<b>🟡 Gold Telegram Copier (Mode A: TP1+TP2 • XAUUSD)</b>"
+    account_id = os.getenv("CTRADER_ACCOUNT_ID", "5942153")
+    ticket_mode = os.getenv("GOLD_COPIER_TICKET_MODE", "TWO_TICKETS")
+    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.05")
+
     if num_trades == 0:
-        overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)\n{payout_bar}"
+        pos_block = "• <b>Exposure:</b> <code>0 Open Trades (100% Cash Cushion)</code>"
     else:
-        total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
-        total_naira = total_pnl * rate
+        total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in gold_positions)
         pnl_sign = "+" if total_pnl >= 0 else "-"
-        pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
-        overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})\n{payout_bar}"
+        pnl_naira = total_pnl * rate
+        pnl_naira_str = f"{pnl_sign}₦{abs(pnl_naira)/1e3:.0f}k" if abs(pnl_naira) < 1e6 else f"{pnl_sign}₦{abs(pnl_naira)/1e6:.1f}M"
+        pos_block = f"• <b>Active Gold Tickets:</b> <code>{num_trades} Open XAUUSD</code> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})"
 
-    gold_line = f"• <b>Gold (XAUUSD):</b> <code>${gold_p:,.2f}</code> | <b>Target:</b> <code>+$480.00 USD</code>"
-    return f"{overview_header}\n{gold_line}"
+    return (
+        "⚡ <b>AGENTQUANT GOLD COMMAND CENTER</b>\n"
+        "────────────────────────────\n"
+        f"• <b>Status:</b> {status_icon}\n"
+        f"• <b>Trader:</b> David • FundedNext ($6,000 Challenge)\n"
+        f"• <b>cTrader Account:</b> <code>#{account_id}</code> (Demo)\n"
+        f"• <b>Capital:</b> <b>${capital:,.2f} USD</b> ({naira_str})\n"
+        f"• <b>Equity:</b> <b>${equity:,.2f} USD</b>\n"
+        f"• <b>Daily Floor:</b> <code>${daily_floor:,.2f}</code> (Buffer: <code>+${daily_buffer:,.2f}</code>)\n"
+        f"• <b>Max Drawdown Buffer:</b> <code>${total_buffer:,.2f}</code>\n"
+        "────────────────────────────\n"
+        "🟡 <b>SPOT GOLD RADAR (XAUUSD):</b>\n"
+        f"• <b>Live Quote:</b> <code>Bid: ${gold_bid:,.2f} | Ask: ${gold_ask:,.2f}</code>\n"
+        f"• <b>Broker Spread:</b> <code>{gold_spread:.2f} pts</code> (Ultra-tight direct fill)\n"
+        "• <b>Signal Source:</b> <code>@XAUUSD_GOLD_TRADING_FOREX</code>\n"
+        "────────────────────────────\n"
+        "⚙️ <b>STRATEGY & EXECUTION (MODE A):</b>\n"
+        f"• <b>Engine:</b> <b>Gold Telegram Copier (Mode A: TP1 + TP2)</b>\n"
+        f"• <b>Lot Allocation:</b> <code>2x {lot_size} lots</code> (0.10 total volume)\n"
+        "• <b>Ticket 1:</b> Closes at TP1 (+10 pts / +$50 profit)\n"
+        "• <b>Ticket 2:</b> Runs to TP2 (+20 pts / +$100 profit)\n"
+        "• <b>Breakeven Shield:</b> SL moved to Entry + 0.30pt buffer when TP1 hits\n"
+        "• <b>Risk Cap:</b> Max 10 pts Stop Loss ($50/ticket risk ceiling)\n"
+        "────────────────────────────\n"
+        f"{pos_block}\n"
+        f"{payout_bar}\n"
+        "────────────────────────────\n"
+        "☁️ <i>Running 24/7 on GitHub Actions Cloud • Zero laptop dependency.</i>"
+    )
 
 
 def render_balance_text():
@@ -1463,12 +1511,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     items = enriched_positions if enriched_positions else positions
-    gold_items = [
-        p for p in items
-        if "XAU" in str(p.get("symbol_name") or p.get("symbol") or p.get("symbolName") or "XAUUSD").upper()
-        or p.get("symbolId") == 41
-    ]
-    display_items = gold_items if gold_items else items
+    display_items = items
 
     if not display_items:
         return (
@@ -1516,8 +1559,9 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
 
         pnl_icon = "🟢" if pnl >= 0 else "🔴"
         pnl_sign = "+" if pnl >= 0 else "-"
+        display_name = p.get("display_name") or ("Spot Gold (XAUUSD)" if "XAU" in str(sym).upper() or p.get("symbolId") == 41 else ("Nasdaq 100 Index" if "NDX" in str(sym).upper() else str(sym)))
         lines.append(
-            f"{pnl_icon} <b>GOLD SPOT (XAUUSD)</b> <code>#{pos_id}</code>\n"
+            f"{pnl_icon} <b>{display_name}</b> <code>#{pos_id}</code>\n"
             f"• <b>Position:</b> <code>{side} {lots:.2f} Lots</code>\n"
             f"• <b>Entry:</b> <code>${entry:,.2f}</code> ➔ <b>Current:</b> <code>${curr:,.2f}</code>\n"
             f"{bar_str}"
@@ -1532,11 +1576,11 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
 
     if is_owner(user_id) and display_items:
         if pending_step == 1:
-            lines.append(f"\n⚠️ <b>CONFIRM CLOSE</b> for #{pending_pos_id}")
+            lines.append(f"\n⚠️ <b>SAFETY CLOSE INITIATED</b> for #{pending_pos_id}")
         elif pending_step == 2:
-            lines.append(f"\n🚨 <b>TAP TO EXECUTE CLOSE</b> for #{pending_pos_id}!")
+            lines.append(f"\n🚨 <b>FINAL EXECUTION WARNING</b> for #{pending_pos_id}!")
         else:
-            lines.append("⚡ <i>1-Tap Fast Actions (David Exclusive)</i>")
+            lines.append("⚡ <i>Manual Control (David Exclusive)</i>")
 
     return "\n".join(lines)
 
@@ -2171,7 +2215,7 @@ def handle_update(update: dict):
         # Navigation Callbacks
         if data in ["cmd_overview", "cmd_menu", "cmd_refresh"]:
             new_text = render_overview_text()
-            markup = {"inline_keyboard": []}
+            markup = get_main_menu_markup()
         elif data == "cmd_balance":
             new_text = render_balance_text()
             markup = get_balance_markup()
@@ -2422,12 +2466,11 @@ def handle_update(update: dict):
                 "────────────────────────────\n"
                 "I am your 24/7 trading and risk intelligence assistant.\n\n"
                 "I have real-time live data for:\n"
-                "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #3028655\n"
-                "• <b>Primary 24/7 Asset:</b> BTCUSD (Bitcoin Spot Scalper)\n"
-                "• <b>US Indices:</b> SPY, QQQ, DIA, IWM\n"
-                "• <b>Strategy:</b> 1m Scalper with strict risk protection\n"
-                "• <b>Risk Limits:</b> $180 daily buffer, $360 total buffer\n"
-                "• <b>Real Trade History:</b> Live closed deals & win rate\n\n"
+                "• <b>FundedNext Stellar 1-Step ($6,000)</b> Account #5942153\n"
+                "• <b>Primary 24/7 Asset:</b> Spot Gold (XAUUSD)\n"
+                "• <b>Strategy:</b> Telegram VIP Gold Copier (Mode A: TP1+TP2)\n"
+                "• <b>Risk Limits:</b> $5,650 Daily Floor, $360 Total Buffer\n"
+                "• <b>Real Trade History:</b> Live cTrader closed deals & win rate\n\n"
                 "💬 <i>Send me any question directly in chat!</i>"
             )
             markup = {
@@ -2707,7 +2750,7 @@ def handle_update(update: dict):
                 "🟢 <b>AUTOMATED TRADING RESUMED</b>\n"
                 "────────────────────────────\n"
                 "• Status: 🟢 <b>LOCKED IN & ACTIVE</b>\n"
-                "• Strategy: <code>Balanced SPY Scalper</code>\n"
+                "• Strategy: <code>Telegram Gold Copier (Mode A: TP1+TP2)</code>\n"
                 "• Risk Guardian: 🛡️ <b>ARMED & MONITORING</b>\n"
                 "────────────────────────────\n"
                 "The engine is scanning for high-probability setups."
@@ -3137,6 +3180,7 @@ def handle_update(update: dict):
                 "chat_id": chat_id,
                 "text": render_overview_text(),
                 "parse_mode": "HTML",
+                "reply_markup": get_main_menu_markup(),
             })
         elif any(cmd in text for cmd in ["/balance", "/bal", "💰 balance", "balance", "bal", "risk", "sentinel", "capital", "buffer"]):
             api_call("sendMessage", {

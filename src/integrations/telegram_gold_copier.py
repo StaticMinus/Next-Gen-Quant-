@@ -27,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import requests
 try:
     from bs4 import BeautifulSoup
 except ImportError:
@@ -123,26 +124,36 @@ class TelegramGoldCopier:
                 logger.warning(f"Telegram channel fetch returned HTTP {resp.status_code}")
                 return []
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-            wraps = soup.find_all("div", class_="tgme_widget_message_wrap")
-            messages = []
-            for w in wraps:
-                msg_div = w.find("div", class_="tgme_widget_message")
-                if not msg_div:
-                    continue
-                post_id = msg_div.get("data-post")
-                txt_div = w.find("div", class_="tgme_widget_message_text")
-                text = txt_div.get_text(separator=" ").strip() if txt_div else ""
-                time_tag = w.find("time")
-                datetime_str = time_tag.get("datetime") if time_tag else ""
+            if BeautifulSoup is not None:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                wraps = soup.find_all("div", class_="tgme_widget_message_wrap")
+                messages = []
+                for w in wraps:
+                    msg_div = w.find("div", class_="tgme_widget_message")
+                    if not msg_div:
+                        continue
+                    post_id = msg_div.get("data-post")
+                    txt_div = w.find("div", class_="tgme_widget_message_text")
+                    text = txt_div.get_text(separator=" ").strip() if txt_div else ""
+                    time_tag = w.find("time")
+                    datetime_str = time_tag.get("datetime") if time_tag else ""
 
-                if post_id and text:
-                    messages.append({
-                        "post_id": post_id,
-                        "text": text,
-                        "datetime": datetime_str
-                    })
-            return messages
+                    if post_id and text:
+                        messages.append({
+                            "post_id": post_id,
+                            "text": text,
+                            "datetime": datetime_str
+                        })
+                return messages
+            else:
+                messages = []
+                posts = re.findall(r'data-post="([^"]+)"[\s\S]*?<div class="tgme_widget_message_text[^>]*>([\s\S]*?)</div>', resp.text)
+                for post_id, raw_html in posts:
+                    clean_text = re.sub(r'<br\s*/?>', '\n', raw_html)
+                    clean_text = re.sub(r'<[^>]+>', ' ', clean_text).strip()
+                    if clean_text:
+                        messages.append({"post_id": post_id, "text": clean_text, "datetime": ""})
+                return messages
         except Exception as e:
             logger.error(f"Error fetching Telegram channel: {e}")
             return []
