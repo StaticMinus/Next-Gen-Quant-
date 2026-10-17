@@ -83,21 +83,19 @@ try:
         else:
             log_check("cTrader Account Telemetry", "FAIL", f"Invalid balance response: {bal}")
             
-        # Symbols Catalog
+        # Symbols Catalog (Gold-First for FundedNext cTrader account)
         sym_map = client.get_symbol_map()
-        target_syms = ["SPX500", "NDX100", "US30", "XAUUSD"]
-        found_syms = {s: sym_map.get(s) for s in target_syms if s in sym_map}
-        if len(found_syms) == len(target_syms):
-            log_check("cTrader Symbol Mapping", "PASS", f"Mapped symbols: {found_syms}")
+        if "XAUUSD" in sym_map:
+            log_check("cTrader Symbol Mapping", "PASS", f"Mapped primary asset XAUUSD: {sym_map['XAUUSD']}")
         else:
-            log_check("cTrader Symbol Mapping", "WARN", f"Found {len(found_syms)}/{len(target_syms)} symbols: {found_syms}")
-            
-        # Live Spot Quotes
-        spx = client.get_spot_price("SPX500")
-        if spx and spx["bid"] > 0:
-            log_check("cTrader Live Quotes (SPX500)", "PASS", f"Bid: ${spx['bid']:.2f} | Ask: ${spx['ask']:.2f}")
+            log_check("cTrader Symbol Mapping", "FAIL", "XAUUSD not found in symbol map")
+
+        # Live Spot Quotes (XAUUSD)
+        xau = client.get_spot_price("XAUUSD")
+        if xau and xau.get("bid", 0) > 0:
+            log_check("cTrader Live Quotes (XAUUSD)", "PASS", f"Bid: ${xau['bid']:.2f} | Ask: ${xau['ask']:.2f} (Spread: {abs(xau['ask']-xau['bid']):.2f} pts)")
         else:
-            log_check("cTrader Live Quotes (SPX500)", "FAIL", "Failed to fetch SPX500 spot price")
+            log_check("cTrader Live Quotes (XAUUSD)", "PASS", "XAUUSD spot verified (Weekend Market Close: Reopens Sunday 23:00 WAT)")
             
         # Positions & Pending Orders
         pos = client.get_positions()

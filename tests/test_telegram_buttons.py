@@ -149,25 +149,25 @@ class TestTelegramTerminalButtons(unittest.TestCase):
         b4 = generate_profile_summary_card()
         self.assertTrue(len(b4.getvalue()) > 5000, "Profile summary card too small")
 
-    def test_15m_strategy_renders(self):
-        """Verify that overview, briefings, and trade logic all reflect the active 15m Scalper strategy."""
+    def test_gold_copier_mode_a_renders(self):
+        """Verify that overview, briefings, and trade logic all reflect the active Gold Copier Mode A strategy."""
         overview = render_overview_text()
-        self.assertIn("15m", overview)
+        self.assertIn("Gold Telegram Copier", overview)
+        self.assertIn("Mode A", overview)
 
         morning = render_morning_briefing_text()
         self.assertIn("MORNING BRIEF", morning)
-        self.assertIn("15m", morning)
-        self.assertNotIn("1-Hour", morning)
+        self.assertIn("Mode A", morning)
+        self.assertIn("Gold", morning)
 
         nightly = render_nightly_summary_text()
         self.assertIn("NIGHT WRAP", nightly)
-        self.assertIn("15m", nightly)
-        self.assertNotIn("1-Hour", nightly)
+        self.assertIn("Mode A", nightly)
+        self.assertIn("Gold", nightly)
 
         logic = render_trade_logic_text()
-        self.assertIn("M15 RAPID SCALPER", logic)
-        self.assertIn("15-Minute", logic)
-        self.assertNotIn("1-Hour", logic)
+        self.assertIn("MODE A STRATEGY LOGIC", logic)
+        self.assertIn("XAUUSD", logic)
 
         b5 = generate_risk_sentinel_card()
         self.assertTrue(len(b5.getvalue()) > 5000, "Risk sentinel card too small")
@@ -210,16 +210,16 @@ class TestTelegramTerminalButtons(unittest.TestCase):
         self.assertTrue(is_authorized_user("8428715579"))
 
     def test_partner_keyboard_structure(self):
-        """Verify partner keyboard excludes wallet/withdraw/P2P buttons."""
+        """Verify partner keyboard excludes sensitive buttons and includes Gold viewer actions."""
         kb = get_partner_bottom_keyboard()
         self.assertTrue(kb.get("resize_keyboard"))
         self.assertTrue(kb.get("is_persistent"))
         all_labels = [btn["text"] for row in kb["keyboard"] for btn in row]
         # Partners should NOT see these:
-        for forbidden in ["💰 Balance & Risk", "🏦 Binance P2P", "👤 Overview"]:
+        for forbidden in ["💰 Balance & Risk", "🛑 Emergency Close", "⚙️ Copier Status (Mode A)"]:
             self.assertNotIn(forbidden, all_labels)
         # Partners SHOULD see these:
-        for allowed in ["💬 Ask AI Coach", "📊 Active Trades", "🏆 Milestones", "📡 Live Radar"]:
+        for allowed in ["🟡 Gold Radar (XAUUSD)", "⚡ Active Gold Trades", "💬 Ask AI Coach", "🎯 Prop Target ($480)", "📜 Copier History"]:
             self.assertIn(allowed, all_labels)
 
     def test_partner_menu_excludes_sensitive_buttons(self):
@@ -284,12 +284,12 @@ class TestTelegramTerminalButtons(unittest.TestCase):
         # Owner David gets standard briefing
         d_morning = get_morning_briefing_for_user(PRIMARY_CHAT_ID)
         self.assertIn("MORNING BRIEF", d_morning)
-        self.assertIn("15m", d_morning)
+        self.assertIn("Mode A", d_morning)
         self.assertNotIn("Cha Cha", d_morning)
 
         d_nightly = get_nightly_summary_for_user(PRIMARY_CHAT_ID)
         self.assertIn("NIGHT WRAP", d_nightly)
-        self.assertIn("15m", d_nightly)
+        self.assertIn("Mode A", d_nightly)
         self.assertNotIn("Cha Cha", d_nightly)
 
         # Partner Cha Cha (7923834818) gets romantic version

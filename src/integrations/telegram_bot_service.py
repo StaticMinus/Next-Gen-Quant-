@@ -987,12 +987,12 @@ def send_document_buffer(chat_id, buf, filename="Statement.pdf", caption=""):
 # =====================================================================
 
 def get_persistent_bottom_keyboard():
-    """Permanent keyboard docked at bottom of Telegram chat — no scrolling needed."""
+    """Permanent keyboard docked at bottom of Telegram chat — Gold-Only Command Center."""
     return {
         "keyboard": [
-            [{"text": "💬 Ask AI Coach"}, {"text": "👤 Overview"}, {"text": "💰 Balance & Risk"}],
-            [{"text": "📡 Live Radar"}, {"text": "📊 Active Trades"}, {"text": "🏆 Milestones"}],
-            [{"text": "📜 History"}, {"text": "🏦 Binance P2P"}]
+            [{"text": "🟡 Gold Radar (XAUUSD)"}, {"text": "⚡ Active Gold Trades"}],
+            [{"text": "💰 Balance & Risk"}, {"text": "🎯 Prop Target ($480)"}],
+            [{"text": "⚙️ Copier Status (Mode A)"}, {"text": "🛑 Emergency Close"}]
         ],
         "resize_keyboard": True,
         "is_persistent": True
@@ -1000,12 +1000,12 @@ def get_persistent_bottom_keyboard():
 
 
 def get_partner_bottom_keyboard():
-    """Streamlined keyboard for partners (Cha Cha) — no wallet/withdraw/models."""
+    """Streamlined keyboard for partners (Cha Cha) — Gold viewer."""
     return {
         "keyboard": [
-            [{"text": "💬 Ask AI Coach"}, {"text": "📊 Active Trades"}],
-            [{"text": "🏆 Milestones"}, {"text": "📡 Live Radar"}],
-            [{"text": "📜 History"}]
+            [{"text": "🟡 Gold Radar (XAUUSD)"}, {"text": "⚡ Active Gold Trades"}],
+            [{"text": "💬 Ask AI Coach"}, {"text": "🎯 Prop Target ($480)"}],
+            [{"text": "📜 Copier History"}]
         ],
         "resize_keyboard": True,
         "is_persistent": True
@@ -1023,6 +1023,7 @@ def get_keyboard_for_user(user_id: str):
 OWNER_ONLY_CALLBACKS = {
     "cmd_withdraw", "cmd_ask_payout", "cmd_confirm_payout",
     "cmd_models_menu", "cmd_card_profile", "cmd_export_pdf",
+    "cmd_emergency_close", "cmd_confirm_emergency_close", "cmd_pause_copier"
 }
 
 # Owner-only text commands — partners get a polite denial
@@ -1056,10 +1057,9 @@ def is_owner(user_id: str) -> bool:
 def get_webapp_url() -> str:
     wallet = _CACHE.get("wallet_address", "")
     rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
-    spy = _CACHE.get("spy_price", 764.29)
-    qqq = _CACHE.get("qqq_price", 704.54)
-    cap = _CACHE.get("capital", 6000.0)
-    eq = _CACHE.get("equity", 6000.0)
+    gold = _CACHE.get("gold_price", _CACHE.get("gold_bid", 4165.81))
+    cap = _CACHE.get("capital", 5999.83)
+    eq = _CACHE.get("equity", cap)
 
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
@@ -1068,14 +1068,14 @@ def get_webapp_url() -> str:
     trades_data = []
     for p in raw_list:
         pos_id = p.get("position_id") or p.get("positionId")
-        sym = p.get("symbol_name") or p.get("symbolName") or ("XAUUSD" if p.get("symbolId") == 41 else "NDX100")
-        name = p.get("display_name") or ("Spot Gold" if "XAU" in sym else ("Nasdaq 100 Index" if "NDX" in sym else sym))
+        sym = p.get("symbol_name") or p.get("symbolName") or ("XAUUSD" if p.get("symbolId") == 41 else "XAUUSD")
+        name = "Spot Gold" if "XAU" in sym else sym
         trades_data.append({
             "id": pos_id,
             "sym": sym,
             "name": name,
             "side": p.get("trade_side") or p.get("tradeSide", "BUY"),
-            "lots": p.get("lots", 0.01),
+            "lots": p.get("lots", 0.05),
             "entry": p.get("entry_price") or p.get("entryPrice", 0.0),
             "curr": p.get("current_price") or p.get("entry_price", 0.0),
             "pnl": p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0),
@@ -1084,7 +1084,7 @@ def get_webapp_url() -> str:
         })
 
     encoded_trades = urllib.parse.quote(json.dumps(trades_data))
-    params = f"?v=7.1&rate={rate}&spy={spy}&qqq={qqq}&cap={cap}&eq={eq}&trades={encoded_trades}"
+    params = f"?v=8.0&rate={rate}&gold={gold}&cap={cap}&eq={eq}&trades={encoded_trades}"
     if wallet and wallet.startswith("T") and len(wallet) == 34:
         params += f"&wallet={wallet}"
     return f"https://staticminus.github.io/agentquant-pro/{params}"
@@ -1097,31 +1097,27 @@ def get_main_menu_markup():
                 {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
             ],
             [
-                {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
+                {"text": "🟡 Gold Radar (XAUUSD)", "callback_data": "cmd_signals"},
+                {"text": "⚡ Active Gold Trades", "callback_data": "cmd_trades"},
+            ],
+            [
                 {"text": "💰 Balance & Risk", "callback_data": "cmd_balance"},
+                {"text": "🎯 Prop Target ($480)", "callback_data": "cmd_tracker"},
             ],
             [
-                {"text": "📡 Live Radar", "callback_data": "cmd_signals"},
-                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
+                {"text": "⚙️ Copier Status (Mode A)", "callback_data": "cmd_copier_status"},
+                {"text": "📜 Copier History", "callback_data": "cmd_hist_overview"},
             ],
             [
-                {"text": "🖼️ Profile Card", "callback_data": "cmd_card_profile"},
-                {"text": "📈 15Y PnL Chart", "callback_data": "cmd_chart_pnl"},
+                {"text": "💸 Request Payout", "callback_data": "cmd_withdraw"},
+                {"text": "⚙️ Prop Models", "callback_data": "cmd_models_menu"},
             ],
             [
-                {"text": "💸 Withdraw Crypto", "callback_data": "cmd_withdraw"},
-                {"text": "📜 History", "callback_data": "cmd_hist_overview"},
-            ],
-            [
-                {"text": "⏳ Payout & Goals", "callback_data": "cmd_tracker"},
                 {"text": "🏦 Binance P2P Rate", "callback_data": "cmd_p2p_rate"},
-            ],
-            [
-                {"text": "🏢 Prop Models", "callback_data": "cmd_models_menu"},
-                {"text": "🔍 Trade Logic", "callback_data": "cmd_trade_logic"},
-            ],
-            [
                 {"text": "💬 Ask AI Coach", "callback_data": "cmd_ask_ai_prompt"},
+            ],
+            [
+                {"text": "🛑 Emergency Close", "callback_data": "cmd_emergency_close"},
                 {"text": "⚡ Refresh Status", "callback_data": "cmd_refresh"},
             ],
         ]
@@ -1129,27 +1125,26 @@ def get_main_menu_markup():
 
 
 def get_partner_menu_markup():
-    """Inline menu for partners — excludes wallet, withdraw, models, PDF export."""
+    """Inline menu for partners (Cha Cha) — Gold viewer."""
     return {
         "inline_keyboard": [
             [
-                {"text": "👤 Profile Overview", "callback_data": "cmd_overview"},
-                {"text": "💰 Balance & Risk", "callback_data": "cmd_balance"},
-            ],
-            [
-                {"text": "📡 Live Radar", "callback_data": "cmd_signals"},
-                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
-            ],
-            [
+                {"text": "🏠 Master Overview", "callback_data": "cmd_overview"},
                 {"text": "🏆 Milestones", "callback_data": "cmd_milestones"},
-                {"text": "📈 15Y PnL Chart", "callback_data": "cmd_chart_pnl"},
             ],
             [
-                {"text": "⏳ Payout & Goals", "callback_data": "cmd_tracker"},
-                {"text": "📜 History", "callback_data": "cmd_hist_overview"},
+                {"text": "🟡 Gold Radar (XAUUSD)", "callback_data": "cmd_signals"},
+                {"text": "⚡ Active Gold Trades", "callback_data": "cmd_trades"},
             ],
             [
+                {"text": "💰 Balance & Risk", "callback_data": "cmd_balance"},
+                {"text": "🎯 Prop Target ($480)", "callback_data": "cmd_tracker"},
+            ],
+            [
+                {"text": "📜 Copier History", "callback_data": "cmd_hist_overview"},
                 {"text": "💬 Ask AI Coach", "callback_data": "cmd_ask_ai_prompt"},
+            ],
+            [
                 {"text": "⚡ Refresh Status", "callback_data": "cmd_refresh"},
             ],
         ]
@@ -1191,16 +1186,25 @@ def get_tracker_markup():
         "inline_keyboard": [
             [
                 {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
-                {"text": "🖼️ Visual Goal Roadmap", "callback_data": "cmd_chart_roadmap"},
+                {"text": "⚡ Refresh Status", "callback_data": "cmd_tracker"},
             ],
             [
-                {"text": "⚙️ Switch Prop Account Model", "callback_data": "cmd_models_menu"},
-                {"text": "💸 Request Payout Now", "callback_data": "cmd_withdraw"},
+                {"text": "🟡 View Gold Radar", "callback_data": "cmd_signals"},
+                {"text": "📊 Active Gold Trades", "callback_data": "cmd_trades"},
             ],
             [
-                {"text": "🔙 Back", "callback_data": "cmd_back"},
                 {"text": "🏠 Overview", "callback_data": "cmd_overview"},
             ],
+        ]
+    }
+
+
+def get_emergency_close_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "🔴 CONFIRM: FLATTEN ALL OPEN TRADES", "callback_data": "cmd_confirm_emergency_close"}],
+            [{"text": "⏸️ Pause Copier Engine", "callback_data": "cmd_pause_copier"}],
+            [{"text": "❌ Cancel (Keep Trades Open)", "callback_data": "cmd_trades"}]
         ]
     }
 
@@ -1241,25 +1245,16 @@ def get_radar_markup():
     return {
         "inline_keyboard": [
             [
-                {"text": "🪙 BTCUSD", "callback_data": "cmd_chart_radar_BTC-USD"},
-                {"text": "🔷 ETHUSD", "callback_data": "cmd_chart_radar_ETH-USD"},
-                {"text": "⚡ XRPUSD", "callback_data": "cmd_chart_radar_XRP-USD"},
+                {"text": "🟡 View XAUUSD Live Radar", "callback_data": "cmd_signals"},
+                {"text": "⚡ Active Gold Trades", "callback_data": "cmd_trades"},
             ],
             [
-                {"text": "🏛️ SPY Candlestick", "callback_data": "cmd_chart_radar_SPY"},
-                {"text": "💻 QQQ Candlestick", "callback_data": "cmd_chart_radar_QQQ"},
+                {"text": "⚙️ Copier Status (Mode A)", "callback_data": "cmd_copier_status"},
+                {"text": "🎯 Prop Target ($480)", "callback_data": "cmd_tracker"},
             ],
             [
-                {"text": "🏭 DIA Candlestick", "callback_data": "cmd_chart_radar_DIA"},
-                {"text": "🚀 IWM Candlestick", "callback_data": "cmd_chart_radar_IWM"},
-            ],
-            [
-                {"text": "🤖 Run AI Market Scan", "callback_data": "cmd_ai_scan"},
                 {"text": "📱 Open Pro Mini App", "web_app": {"url": get_webapp_url()}},
-            ],
-            [
-                {"text": "🔄 Refresh Market Prices", "callback_data": "cmd_signals"},
-                {"text": "📊 Active Trades", "callback_data": "cmd_trades"},
+                {"text": "🔄 Refresh Spot Price", "callback_data": "cmd_signals"},
             ],
             [
                 {"text": "🏠 Main Menu", "callback_data": "cmd_overview"},
@@ -1365,34 +1360,25 @@ def render_payout_progress_bar(current_profit: float, target_profit: float = 300
 
 
 def render_overview_text():
-    capital = _CACHE.get("capital", 5993.38)
-    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
+    capital = float(_CACHE.get("capital", 5999.83))
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
     naira_val = capital * rate
     naira_str = f"~₦{naira_val/1e6:.1f}M" if naira_val >= 1e6 else f"~₦{naira_val:,.0f}"
     is_halted = guardian.state["trading_halted"]
-    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE (24/7)</b>"
+    status_icon = "🔴 <b>HALTED</b>" if is_halted else "🟢 <b>ONLINE (Mode A)</b>"
     enriched = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
     items = enriched if enriched else positions
     num_trades = len(items)
 
     curr_profit = max(0.0, capital - 6000.0)
-    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=480.0)
 
-    # Pull live crypto fleet data
-    btc_p = _CACHE.get("btc-usd_price", _CACHE.get("btc_price", 84420.0))
-    btc_dip = _CACHE.get("btc-usd_lower_band", _CACHE.get("btc_lower_band", btc_p * 0.995))
-    btc_dist_pct = _CACHE.get("btc-usd_dist_pct", 0.0)
+    gold_p = float(_CACHE.get("gold_price", 0.0))
+    if gold_p <= 0:
+        gold_p = float(_CACHE.get("gold_bid", 4165.81))
 
-    eth_p = _CACHE.get("eth-usd_price", 2650.0)
-    eth_dip = _CACHE.get("eth-usd_lower_band", eth_p * 0.995)
-    eth_dist_pct = _CACHE.get("eth-usd_dist_pct", 0.0)
-
-    xrp_p = _CACHE.get("xrp-usd_price", 1.50)
-    xrp_dip = _CACHE.get("xrp-usd_lower_band", xrp_p * 0.995)
-    xrp_dist_pct = _CACHE.get("xrp-usd_dist_pct", 0.0)
-
-    strat_tag = "<b>🪙 Tri-Crypto Scalper (BTC+ETH+XRP • 1m • 24/7) + US Indices</b>"
+    strat_tag = "<b>🟡 Gold Telegram Copier (Mode A: TP1+TP2 • XAUUSD)</b>"
     if num_trades == 0:
         overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>0 Open Trades</b> (100% Cash)\n{payout_bar}"
     else:
@@ -1402,114 +1388,117 @@ def render_overview_text():
         pnl_naira_str = f"{pnl_sign}₦{abs(total_naira)/1e3:.0f}k" if abs(total_naira) < 1e6 else f"{pnl_sign}₦{abs(total_naira)/1e6:.1f}M"
         overview_header = f"{status_icon} • {strat_tag} • <b>${capital:,.2f}</b> ({naira_str}) • <b>{num_trades} Active Trade{'s' if num_trades > 1 else ''}</b> ({pnl_sign}${abs(total_pnl):,.2f} / {pnl_naira_str})\n{payout_bar}"
 
-    fleet_line = f"• <b>BTC:</b> <code>${btc_p:,.2f}</code> ({btc_dist_pct:+.2f}%) | <b>ETH:</b> <code>${eth_p:,.2f}</code> ({eth_dist_pct:+.2f}%) | <b>XRP:</b> <code>${xrp_p:.4f}</code> ({xrp_dist_pct:+.2f}%)"
-    return f"{overview_header}\n{fleet_line}"
+    gold_line = f"• <b>Gold (XAUUSD):</b> <code>${gold_p:,.2f}</code> | <b>Target:</b> <code>+$480.00 USD</code>"
+    return f"{overview_header}\n{gold_line}"
 
 
 def render_balance_text():
-    capital = _CACHE.get("capital", 5993.38)
-    buffer_left = _CACHE.get("buffer", 360.0)
-    naira_cap = capital * LIVE_P2P_RATE
-    naira_buf = buffer_left * LIVE_P2P_RATE
+    capital = float(_CACHE.get("capital", 5999.83))
+    equity = float(_CACHE.get("equity", capital))
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+    daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+    daily_buffer = max(0.0, equity - daily_floor)
+    total_buffer = 360.0
+    naira_cap = capital * rate
+    naira_buf = daily_buffer * rate
     naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
     naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
 
-    return f"💰 <b>Balance:</b> <b>${capital:,.2f} ({naira_cap_str})</b> | 🛡️ <b>Buffer:</b> <b>${buffer_left:,.2f} ({naira_buf_str})</b>"
+    return (
+        f"💰 <b>Balance:</b> <b>${capital:,.2f} ({naira_cap_str})</b> | "
+        f"🛡️ <b>Daily Buffer:</b> <b>${daily_buffer:,.2f} ({naira_buf_str})</b> | "
+        f"🛡️ <b>Max Buffer:</b> <b>${total_buffer:,.2f}</b>"
+    )
+
+
+def render_gold_radar_text():
+    now = time.time()
+    last_sync = _CACHE.get("last_market_scan", 0.0)
+    if (now - last_sync > 15.0 or _CACHE.get("gold_bid", 0.0) <= 0) and executor:
+        executor.submit(sync_market_radar_worker)
+
+    gold_p = float(_CACHE.get("gold_price", 0.0))
+    bid = float(_CACHE.get("gold_bid", gold_p or 4165.81))
+    ask = float(_CACHE.get("gold_ask", gold_p or 4166.01))
+    spread = float(_CACHE.get("gold_spread", abs(ask - bid) if (ask and bid) else 0.20))
+    high = float(_CACHE.get("gold_high", 0.0))
+    low = float(_CACHE.get("gold_low", 0.0))
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+    weekday = now_utc.weekday()
+    hour = now_utc.hour
+    is_weekend = (weekday == 5) or (weekday == 4 and hour >= 22) or (weekday == 6 and hour < 22)
+    session_status = "⏸️ <b>WEEKEND PAUSE (Reopens Sunday 23:00 WAT)</b>" if is_weekend else "🟢 <b>MARKET ACTIVE (0-Latency MTProto Push)</b>"
+    spread_badge = "🛡️ <b>Optimal (< 1.50pt limit)</b>" if spread <= 1.50 else "⚠️ <b>Wide Spread (Anti-Chase Active)</b>"
+
+    lines = [
+        "🟡 <b>GOLD RADAR • XAUUSD LIVE SPOT</b>\n",
+        f"• <b>Market Session:</b> {session_status}\n",
+        f"• <b>Live Bid / Ask:</b> <code>${bid:,.2f}</code> / <code>${ask:,.2f}</code>\n",
+        f"• <b>Live Spread:</b> <code>{spread:.2f} pts</code> ({spread_badge})\n",
+    ]
+    if high > 0 and low > 0:
+        lines.append(f"• <b>24h Range:</b> <code>${low:,.2f}</code> ➔ <code>${high:,.2f}</code>\n")
+
+    lines.extend([
+        f"• <b>Binance P2P Rate:</b> <code>₦{rate:,.2f} / USDT</code>\n",
+        "• <b>Signal Feed:</b> <code>@XAUUSD_GOLD_TRADING_FOREX</code> (0-Latency)\n",
+        "• <b>Execution:</b> ⚡ <b>Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)</b>"
+    ])
+    return "".join(lines)
 
 
 def render_signals_text():
-    friendly_labels = {
-        "BTC-USD": "🪙 BTC",
-        "ETH-USD": "🔷 ETH",
-        "XRP-USD": "⚡ XRP",
-        "SPY": "SPY",
-        "QQQ": "QQQ",
-        "DIA": "Dow",
-        "IWM": "Russell",
-    }
-    parts = []
-    for t in CORE_UNIVERSE:
-        low_t = t.lower()
-        p = _CACHE.get(f"{low_t}_price", 0.0)
-        l_band = _CACHE.get(f"{low_t}_lower_band", 0.0)
-        dist = _CACHE.get(f"{low_t}_dist", p - l_band)
-        dist_pct = _CACHE.get(f"{low_t}_dist_pct", 0.0)
-        name = friendly_labels.get(t, t)
-
-        if p > 0:
-            if p <= l_band or dist <= 0:
-                parts.append(f"<b>{name}:</b> 🚨 Dip Triggered")
-            elif dist_pct <= 0.5:
-                parts.append(f"<b>{name}:</b> 🟡 Near ({dist_pct:.1f}%)")
-            elif dist_pct <= 1.0:
-                parts.append(f"<b>{name}:</b> 🟢 {dist_pct:.1f}% to dip")
-            else:
-                parts.append(f"<b>{name}:</b> ⚪ Scanning ({dist_pct:.1f}%)")
-        else:
-            parts.append(f"<b>{name}:</b> 🟢 Live")
-
-    return "📡 " + " • ".join(parts)
+    return render_gold_radar_text()
 
 
 def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[int] = None, pending_step: int = 0):
     now = time.time()
     last_sync = _CACHE.get("last_telemetry_sync", 0.0) or 0.0
-    if (now - last_sync > 45.0 or "enriched_positions" not in _CACHE) and executor:
+    if (now - last_sync > 15.0 or "enriched_positions" not in _CACHE) and executor:
         executor.submit(sync_ctrader_telemetry_worker)
 
     enriched_positions = _CACHE.get("enriched_positions", [])
     positions = _CACHE.get("positions", [])
+    items = enriched_positions if enriched_positions else positions
+    gold_items = [
+        p for p in items
+        if "XAU" in str(p.get("symbol_name") or p.get("symbol") or p.get("symbolName") or "XAUUSD").upper()
+        or p.get("symbolId") == 41
+    ]
+    display_items = gold_items if gold_items else items
 
-    if not enriched_positions and not positions:
-        try:
-            _telem_file = ROOT_DIR / "webapp" / "telemetry.json"
-            if _telem_file.exists():
-                _saved = json.loads(_telem_file.read_text(encoding="utf-8"))
-                if _saved.get("active_positions"):
-                    enriched_positions = _saved["active_positions"]
-                    _CACHE["enriched_positions"] = enriched_positions
-        except Exception:
-            pass
-
-    if not enriched_positions and not positions:
-        return "⚪ <b>No open trades</b>"
+    if not display_items:
+        return (
+            "⚪ <b>No open Gold trades</b>\n"
+            "────────────────────────────\n"
+            "• Exposure: <code>100% Cash Buffer Intact</code>\n"
+            "• Copier Engine: 🟢 <b>Armed for next @XAUUSD_GOLD_TRADING_FOREX signal</b>\n"
+            "• Strategy: <b>Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)</b>"
+        )
 
     lines = [
-        "📊 <b>ACTIVE TRADES & TARGET RADAR</b>",
+        "📊 <b>ACTIVE GOLD TRADES & TARGET RADAR</b>",
         "────────────────────────────"
     ]
     total_pnl = 0.0
-    friendly_names = {
-        "BTCUSD": "Bitcoin", "BTC-USD": "Bitcoin", "BTC": "Bitcoin",
-        "ETHUSD": "Ethereum", "ETH-USD": "Ethereum", "ETH": "Ethereum",
-        "XRPUSD": "XRP (Ripple)", "XRP-USD": "XRP (Ripple)", "XRP": "XRP (Ripple)",
-        "SPX500": "S&P 500", "SPY": "S&P 500",
-        "NDX100": "Nasdaq", "QQQ": "Nasdaq",
-        "US30": "Dow Jones", "DIA": "Dow Jones",
-        "US2000": "Russell", "IWM": "Russell",
-        "XAUUSD": "Spot Gold", "GOLD": "Spot Gold"
-    }
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
 
-    items = enriched_positions if enriched_positions else positions
-    for p in items:
+    for p in display_items:
         pos_id = p.get("position_id") or p.get("positionId", "---")
-        sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "Trade")
-        dname = p.get("display_name") or friendly_names.get(sym.upper(), sym)
+        sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "XAUUSD")
         side = str(p.get("trade_side") or p.get("tradeSide", "BUY")).upper()
-        raw_vol = p.get("volume", 0)
-        lots = float(p.get("lots", 0.0))
-        if lots == 0.0:
-            lots = raw_vol / 100.0 if ("BTC" in sym.upper() or "ETH" in sym.upper()) else 0.01
-
+        lots = float(p.get("lots", 0.05))
         entry = float(p.get("entry_price") or p.get("entryPrice", 0.0))
         curr = float(p.get("current_price") or p.get("currentPrice", entry))
         tp = float(p.get("take_profit") or p.get("takeProfit", 0.0) or 0.0)
         sl = float(p.get("stop_loss") or p.get("stopLoss", 0.0) or 0.0)
         pnl = float(p.get("floating_pnl", p.get("profit", 0.0)))
         total_pnl += pnl
-        naira_pnl = pnl * LIVE_P2P_RATE
+        naira_pnl = pnl * rate
 
-        # Distance-to-target calculation & progress bar
         bar_str = ""
         if tp > 0 and entry > 0:
             tot_dist = abs(tp - entry)
@@ -1522,63 +1511,168 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         sl_str = ""
         if sl > 0:
             is_be = (sl >= entry) if side == "BUY" else (sl <= entry)
-            sl_badge = "🛡️ Breakeven Locked" if is_be else "🛡️ Hard Stop"
+            sl_badge = "🛡️ Breakeven Locked (+0.30pt Buffer)" if is_be else "🛡️ Protective Stop"
             sl_str = f"• <b>Stop Loss:</b> <code>${sl:,.2f}</code> ({sl_badge})\n"
 
         pnl_icon = "🟢" if pnl >= 0 else "🔴"
         pnl_sign = "+" if pnl >= 0 else "-"
         lines.append(
-            f"{pnl_icon} <b>{dname.upper()}</b> <code>#{pos_id}</code>\n"
+            f"{pnl_icon} <b>GOLD SPOT (XAUUSD)</b> <code>#{pos_id}</code>\n"
             f"• <b>Position:</b> <code>{side} {lots:.2f} Lots</code>\n"
             f"• <b>Entry:</b> <code>${entry:,.2f}</code> ➔ <b>Current:</b> <code>${curr:,.2f}</code>\n"
             f"{bar_str}"
             f"{sl_str}"
-            f"• <b>Net PnL:</b> <b>{pnl_sign}${abs(pnl):.2f} USD</b> (~{pnl_sign}₦{abs(naira_pnl):,.0f})\n"
+            f"• <b>Floating PnL:</b> <b>{pnl_sign}${abs(pnl):.2f} USD</b> (~{pnl_sign}₦{abs(naira_pnl):,.0f})\n"
             "────────────────────────────"
         )
 
-    total_naira = total_pnl * LIVE_P2P_RATE
     tot_sign = "+" if total_pnl >= 0 else "-"
+    total_naira = total_pnl * rate
     lines.append(f"💰 <b>Total Floating:</b> <b>{tot_sign}${abs(total_pnl):,.2f} USD</b> (~{tot_sign}₦{abs(total_naira):,.0f})")
 
-    if is_owner(user_id) and items:
+    if is_owner(user_id) and display_items:
         if pending_step == 1:
-            lines.append(f"\n⚠️ <b>SAFETY CLOSE INITIATED</b>: Confirm close for #{pending_pos_id}")
+            lines.append(f"\n⚠️ <b>CONFIRM CLOSE</b> for #{pending_pos_id}")
         elif pending_step == 2:
-            lines.append(f"\n🚨 <b>FINAL EXECUTION WARNING</b>: Tap execute close now for #{pending_pos_id}!")
+            lines.append(f"\n🚨 <b>TAP TO EXECUTE CLOSE</b> for #{pending_pos_id}!")
         else:
             lines.append("⚡ <i>1-Tap Fast Actions (David Exclusive)</i>")
 
     return "\n".join(lines)
 
 
-def render_tracker_text():
-    curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
-    m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
-    cycle_profit = _CACHE.get("cycle_profit", 0.0)
-    split_85 = cycle_profit * 0.85
-    naira_val = split_85 * LIVE_P2P_RATE
+def render_prop_target_text():
+    cap = float(_CACHE.get("capital", 5999.83))
+    eq = float(_CACHE.get("equity", cap))
+    profit = max(0.0, cap - 6000.0)
+    target = 480.0
+    prog_pct = min(100.0, (profit / target) * 100.0) if target > 0 else 0.0
+    filled = int(round(prog_pct / 10))
+    bar_vis = "█" * filled + "░" * (10 - filled)
 
-    text = (
-        f"{get_breadcrumb('cmd_tracker')}\n"
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+    payout_share = profit * 0.85 if profit > 0 else target * 0.85
+    payout_naira = payout_share * rate
+
+    daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+    daily_buffer = max(0.0, eq - daily_floor)
+    total_buffer = 360.0
+
+    return (
+        "🎯 <b>FUNDEDNEXT STELLAR $6,000 PROP TARGET</b>\n"
         "────────────────────────────\n"
-        "⏳ <b>PAYOUT SCHEDULE & EVALUATION GOALS</b>\n"
+        f"• <b>Evaluation Goal:</b> <code>+$480.00 USD</code> (+8.0%)\n"
+        f"• <b>Current Realized Profit:</b> <code>+${profit:,.2f} USD</code>\n"
+        f"• <b>Target Progress:</b> [{bar_vis}] <b>{prog_pct:.1f}%</b>\n"
+        f"• <b>Remaining to Pass:</b> <code>${max(0.0, target - profit):,.2f} USD</code>\n"
         "────────────────────────────\n"
-        f"• <b>Account:</b> {m['name']} (cTrader <code>#{_CACHE.get('account_id', '3028655')}</code>)\n"
-        "• <b>Phase 1 Goal:</b> +$600.00 profit to pass (+10.0%)\n"
-        f"• <b>Cycle Profit:</b> ${cycle_profit:,.2f} USD\n"
-        f"• <b>Your 85% Split:</b> ${split_85:,.2f} USDT (~₦{naira_val:,.0f} NGN)\n"
-        "• <b>1st Payout Reward:</b> +$90.00 bonus + $39.99 fee refund\n"
-        "• <b>Payout Cadence:</b> Every 5 business days (Weekly)\n"
-        "• <b>SLA Speed:</b> 4h avg / 24h max (+$1,000 late penalty)"
+        "💸 <b>PAYOUT PROJECTION (85% SPLIT)</b>\n"
+        f"• <b>Projected Take-Home:</b> <code>${payout_share:,.2f} USDT</code> (~₦{payout_naira:,.0f} NGN)\n"
+        "• <b>Bonus on Pass:</b> +$39.99 Challenge Fee 100% Refunded\n"
+        "────────────────────────────\n"
+        "🛡️ <b>CAPITAL PRESERVATION SENTINEL</b>\n"
+        f"• <b>Daily Drawdown Buffer:</b> <code>${daily_buffer:,.2f} USD</code> (Floor: ${daily_floor:.2f})\n"
+        f"• <b>Max Total Buffer:</b> <code>${total_buffer:,.2f} USD</code> (100% Protected)\n"
+        "• <b>Mode A Risk per Ticket:</b> Max -$50.00 (Max 1 setup active)"
     )
-    return text
+
+
+def render_tracker_text():
+    return render_prop_target_text()
+
+
+def render_copier_status_text():
+    from src.integrations.telegram_gold_copier import STATE_FILE
+    state = {}
+    if STATE_FILE.exists():
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    watermark = state.get("last_processed_post_id", "Cold-Start Watermark Active")
+    active_pos = state.get("active_positions", [])
+    executed_keys = state.get("executed_signal_keys", [])
+
+    return (
+        "⚙️ <b>TELEGRAM GOLD COPIER STATUS (MODE A)</b>\n"
+        "────────────────────────────\n"
+        "• <b>Engine:</b> 🟢 <b>ONLINE (0-Latency MTProto Push + 2s Poller)</b>\n"
+        "• <b>Source Channel:</b> <code>t.me/XAUUSD_GOLD_TRADING_FOREX</code>\n"
+        "• <b>Asset:</b> <code>Spot Gold (XAUUSD • symbolId 41)</code>\n"
+        "• <b>Execution Mode:</b> <b>Mode A (2 Tickets: TP1 & TP2)</b>\n"
+        "  └ Ticket 1: <code>0.05 lot</code> ➔ TP1 (+8 pts / +$40 USD)\n"
+        "  └ Ticket 2: <code>0.05 lot</code> ➔ TP2 (+10 pts / +$50 USD)\n"
+        "• <b>Breakeven Shield:</b> Entry + 0.30pt buffer automatically locked on TP1\n"
+        "• <b>Anti-Chase Guard:</b> <code>2.50 pts max slippage</code>\n"
+        "• <b>Spread Filter:</b> <code>1.50 pts max spread</code>\n"
+        "• <b>Daily Floor:</b> <code>$5,650.00 USD</code> circuit breaker\n"
+        f"• <b>Watermark:</b> <code>{watermark}</code>\n"
+        f"• <b>Signals Handled:</b> {len(executed_keys)} executed | {len(active_pos)} active in state"
+    )
+
+
+def render_emergency_close_text():
+    return (
+        "🛑 <b>EMERGENCY COMMAND: CLOSE ALL GOLD TRADES</b>\n"
+        "────────────────────────────\n"
+        "This will <b>immediately flatten all open XAUUSD tickets</b> on cTrader at current market price and secure your account in 100% Cash.\n\n"
+        "⚠️ <i>Tap confirm below to execute emergency liquidation:</i>"
+    )
+
+
+def render_copier_history_text():
+    closed_deals = _CACHE.get("closed_deals", [])
+    if not closed_deals and ctrader_client:
+        try:
+            closed_deals = ctrader_client.get_closed_deals(days=7) or []
+            _CACHE["closed_deals"] = closed_deals
+        except Exception:
+            pass
+
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+    gold_deals = [
+        d for d in closed_deals
+        if "XAU" in str(d.get("symbol_name") or d.get("symbol") or "XAUUSD").upper()
+        or d.get("symbolId") == 41
+    ]
+    deals_to_show = gold_deals if gold_deals else closed_deals
+
+    total_realized = sum(float(d.get("profit", 0.0)) for d in deals_to_show)
+    wins = [d for d in deals_to_show if float(d.get("profit", 0.0)) > 0]
+    win_rate = (len(wins) / len(deals_to_show) * 100.0) if deals_to_show else 100.0
+    tot_sign = "+" if total_realized >= 0 else "-"
+    tot_naira = total_realized * rate
+
+    lines = [
+        "📜 <b>GOLD COPIER TRADE HISTORY (MODE A)</b>\n",
+        "────────────────────────────\n",
+        f"• <b>Total Closed Deals:</b> {len(deals_to_show)}\n",
+        f"• <b>Win Rate:</b> <b>{win_rate:.1f}%</b> ({len(wins)}W / {len(deals_to_show)-len(wins)}L)\n",
+        f"• <b>Net Realized Profit:</b> <b>{tot_sign}${abs(total_realized):,.2f} USD</b> (~{tot_sign}₦{abs(tot_naira):,.0f})\n",
+        "────────────────────────────\n"
+    ]
+
+    for d in deals_to_show[:5]:
+        pnl = float(d.get("profit", 0.0))
+        p_icon = "🎯" if pnl >= 0 else "🛑"
+        sign = "+" if pnl >= 0 else "-"
+        deal_id = d.get("deal_id") or d.get("dealId", "---")
+        sym = d.get("symbol_name") or "XAUUSD"
+        lines.append(f"{p_icon} <b>{sym}</b> #{deal_id}: {sign}${abs(pnl):.2f}\n")
+
+    if not deals_to_show:
+        lines.append("<i>No closed Gold deals in the last 7 days. Armed for next session!</i>\n")
+
+    return "".join(lines)
 
 
 def render_morning_briefing_text():
-    capital = _CACHE.get("capital", 5993.38)
-    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
-    buffer_left = _CACHE.get("buffer", 360.0)
+    capital = float(_CACHE.get("capital", 5999.83))
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+    daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+    equity = float(_CACHE.get("equity", capital))
+    buffer_left = max(0.0, equity - daily_floor)
     naira_cap = capital * rate
     naira_buf = buffer_left * rate
     naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
@@ -1590,44 +1684,52 @@ def render_morning_briefing_text():
     num_trades = len(items)
 
     curr_profit = max(0.0, capital - 6000.0)
-    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=480.0)
+
+    gold_p = float(_CACHE.get("gold_price", 0.0))
+    if gold_p <= 0:
+        gold_p = float(_CACHE.get("gold_bid", 4165.81))
 
     lines = [
-        "🌅 <b>MORNING BRIEF • BTCUSD 24/7 & M1 SCALPER (1m)</b>\n",
+        "🌅 <b>MORNING BRIEF • GOLD (XAUUSD) COPIER (MODE A)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} ({naira_buf_str})\n",
-        f"{payout_bar} • ⏳ 14 Days to Payout\n",
+        f"{payout_bar} • 💸 <b>Payout Target:</b> +$480.00 USD\n",
     ]
     if num_trades == 0:
-        lines.append("⚪ <b>Trades:</b> 0 Open (100% Cash • 0% Overnight Risk)\n")
+        lines.append("⚪ <b>Trades:</b> 0 Open (100% Cash • 0% Exposure)\n")
     else:
         total_pnl = sum(float(p.get("floating_pnl", p.get("profit", 0.0))) for p in items)
         pnl_sign = "+" if total_pnl >= 0 else "-"
         lines.append(f"🟢 <b>Trades:</b> {num_trades} Active ({pnl_sign}${abs(total_pnl):,.2f})\n")
 
-    btc_p = _CACHE.get("btc-usd_price", _CACHE.get("btc_price", 84420.0))
-    lines.append(f"🪙 <b>Primary Asset:</b> BTCUSD (${btc_p:,.2f}) actively scanning 24/7\n")
-    lines.append("📡 <b>US Radar:</b> SPY, QQQ, DIA, IWM armed for market open (2:30 PM WAT)")
+    lines.append(f"🟡 <b>Gold Spot:</b> <code>${gold_p:,.2f}</code> | 0-Latency MTProto Push armed\n")
+    lines.append("⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)")
     return "".join(lines)
 
 
 def render_nightly_summary_text():
-    capital = _CACHE.get("capital", 5993.38)
-    rate = _CACHE.get("live_p2p_rate", LIVE_P2P_RATE)
-    buffer_left = _CACHE.get("buffer", 360.0)
+    capital = float(_CACHE.get("capital", 5999.83))
+    rate = float(_CACHE.get("live_p2p_rate", LIVE_P2P_RATE))
+    daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+    equity = float(_CACHE.get("equity", capital))
+    buffer_left = max(0.0, equity - daily_floor)
     naira_cap = capital * rate
-    naira_buf = buffer_left * rate
     naira_cap_str = f"~₦{naira_cap/1e6:.1f}M" if naira_cap >= 1e6 else f"~₦{naira_cap:,.0f}"
-    naira_buf_str = f"~₦{naira_buf/1e3:.0f}k" if naira_buf < 1e6 else f"~₦{naira_buf/1e6:.1f}M"
 
     curr_profit = max(0.0, capital - 6000.0)
-    payout_bar = render_payout_progress_bar(curr_profit, target_profit=300.0)
+    payout_bar = render_payout_progress_bar(curr_profit, target_profit=480.0)
+
+    gold_p = float(_CACHE.get("gold_price", 0.0))
+    if gold_p <= 0:
+        gold_p = float(_CACHE.get("gold_bid", 4165.81))
 
     lines = [
-        "🌙 <b>NIGHT WRAP • BTCUSD 24/7 & M1 SCALPER (1m)</b>\n",
+        "🌙 <b>NIGHT WRAP • GOLD (XAUUSD) COPIER (MODE A)</b>\n",
         f"💰 <b>Balance:</b> ${capital:,.2f} ({naira_cap_str}) | 🛡️ <b>Buffer:</b> ${buffer_left:,.2f} (100% Safe)\n",
-        f"{payout_bar} • ⏳ 14 Days to Payout\n",
+        f"{payout_bar} • 💸 <b>Payout Target:</b> +$480.00 USD\n",
         "⚪ <b>Positions:</b> 100% Cash Buffer Intact\n",
-        "🎯 <b>Primary 24/7 Asset:</b> BTCUSD continuous microstructure scanning active"
+        f"🟡 <b>Gold Spot:</b> <code>${gold_p:,.2f}</code> • Copier armed for next session\n",
+        "⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)"
     ]
     return "".join(lines)
 
@@ -1735,17 +1837,19 @@ def render_p2p_rate_text():
 
 def render_trade_logic_text():
     text = (
-        "🔍 <b>M1 RAPID SCALPER • BTCUSD & DUAL-ENGINE STRATEGY LOGIC</b>\n"
+        "🔍 <b>GOLD (XAUUSD) COPIER • MODE A STRATEGY LOGIC</b>\n"
         "────────────────────────────\n"
-        "• <b>Primary Asset:</b> BTCUSD (24/7 Bitcoin Spot Scalper via Jev Microstructure)\n"
-        "• <b>US Indices:</b> SPY, QQQ, DIA, IWM (M1 Oversold Dip Mean-Reversion)\n"
-        "• <b>Timeframe:</b> 1-Minute candles (rapid turnover, max 12m hold)\n"
-        "• <b>Trade Frequency:</b> ~150 trades per week (~21 trades/day, 4.2m avg hold)\n"
-        "• <b>Entry Rule:</b> Buys oversold dip below 1.50σ of 20-bar rolling mean + Order Flow Rejection\n"
-        "• <b>Exit Rule:</b> Closes at +0.60% profit or touch of mean (max 12m hold)\n"
-        "• <b>Position Sizing:</b> 0.02 lots BTC (~$30 max risk / 0.50% account)\n"
-        "• <b>Risk Limit:</b> 0.50% tight broker stop • Max 2 concurrent positions\n"
-        "• <b>Track Record:</b> 95.5% win rate • 100% automated on cTrader #3028655"
+        "• <b>Primary Asset:</b> Spot Gold (XAUUSD • symbolId 41)\n"
+        "• <b>Signal Source:</b> @XAUUSD_GOLD_TRADING_FOREX (0-Latency MTProto Push)\n"
+        "• <b>Execution:</b> Mode A (2 Split Tickets: TP1 & TP2, 0.05 lot each)\n"
+        "  └ Ticket 1: Take Profit 1 (+8 pts / +$40 USD)\n"
+        "  └ Ticket 2: Take Profit 2 (+10 pts / +$50 USD)\n"
+        "• <b>Breakeven Shield:</b> Upon TP1 hit, Ticket 2 moves to Entry + 0.30pt buffer\n"
+        "• <b>Protective Stop:</b> Hard broker stop clamped to max 10.0 pts (-$50/ticket)\n"
+        "• <b>Anti-Chase Filter:</b> 2.50 pts max price deviation from entry\n"
+        "• <b>Spread Filter:</b> Rejects executions if broker spread > 1.50 pts\n"
+        "• <b>Daily Drawdown Floor:</b> Circuit breaker strictly halts if equity <= $5,650\n"
+        "• <b>Target:</b> +$480.00 USD (8.0% FundedNext Stellar 1-Step)"
     )
     return text
 
@@ -2489,6 +2593,81 @@ def handle_update(update: dict):
             executor.submit(async_send_pdf, chat_id)
             return
 
+        elif data == "cmd_copier_status":
+            new_text = render_copier_status_text()
+            markup = {
+                "inline_keyboard": [
+                    [{"text": "⚡ Refresh Status", "callback_data": "cmd_copier_status"}],
+                    [{"text": "🟡 View Gold Radar", "callback_data": "cmd_signals"}],
+                    [{"text": "🏠 Overview", "callback_data": "cmd_overview"}]
+                ]
+            }
+        elif data == "cmd_emergency_close":
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            new_text = render_emergency_close_text()
+            markup = get_emergency_close_markup()
+        elif data == "cmd_confirm_emergency_close":
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            ack_callback(cq_id, "🛑 Emergency Close: Flattening all trades...")
+            enriched = _CACHE.get("enriched_positions", [])
+            positions = _CACHE.get("positions", [])
+            items = enriched if enriched else positions
+            closed_cnt = 0
+            for p in items:
+                pos_id = p.get("position_id") or p.get("positionId")
+                if pos_id:
+                    try:
+                        ctrader_client.close_position(int(pos_id))
+                        closed_cnt += 1
+                    except Exception as ce:
+                        print(f"[!] Error emergency closing position #{pos_id}: {ce}")
+            _CACHE["enriched_positions"] = []
+            _CACHE["positions"] = []
+            bal = ctrader_client.get_balance()
+            if bal:
+                _CACHE["capital"] = bal.get("balance", _CACHE.get("capital", 5999.83))
+                _CACHE["equity"] = bal.get("equity", _CACHE.get("equity", 5999.83))
+                _CACHE["free_margin"] = bal.get("freeMargin", _CACHE.get("free_margin", 5999.83))
+            save_telemetry_snapshot()
+            new_text = (
+                "🛑 <b>EMERGENCY CLOSE COMPLETED</b>\n"
+                "────────────────────────────\n"
+                f"• <b>Trades Flattened:</b> <code>{closed_cnt} open positions</code>\n"
+                f"• <b>Account Balance:</b> <code>${_CACHE['capital']:,.2f} USD</code>\n"
+                "• <b>Status:</b> <code>100% Cash Buffer Secured</code> ✅"
+            )
+            markup = get_menu_for_user(user_id)
+        elif data == "cmd_pause_copier":
+            if not is_owner(user_id):
+                ack_callback(cq_id, "🔒 Owner-only feature.")
+                return
+            guardian.trigger_kill_switch("Manual pause from Telegram Gold Command Center")
+            ack_callback(cq_id, "⏸️ Copier paused.")
+            new_text = (
+                "⏸️ <b>GOLD COPIER PAUSED</b>\n"
+                "────────────────────────────\n"
+                "• <b>Status:</b> 🔴 <code>COPIER PAUSED</code>\n"
+                "• New Telegram signals will be ignored until resumed.\n\n"
+                "Tap below when you want to resume signal copying:"
+            )
+            markup = {"inline_keyboard": [
+                [{"text": "🟢 Resume Copier", "callback_data": "cmd_ask_resume"}],
+                [{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
+            ]}
+        elif data == "cmd_copier_history":
+            new_text = render_copier_history_text()
+            markup = {
+                "inline_keyboard": [
+                    [{"text": "⚡ Refresh History", "callback_data": "cmd_copier_history"}],
+                    [{"text": "🟡 View Gold Radar", "callback_data": "cmd_signals"}],
+                    [{"text": "🏠 Main Menu", "callback_data": "cmd_overview"}]
+                ]
+            }
+
         # Emergency Kill Switch
         elif data == "cmd_ask_kill_switch":
             new_text = (
@@ -2881,19 +3060,19 @@ def handle_update(update: dict):
 
         if any(cmd == text for cmd in ["/ai", "/ask", "💬 ask ai coach", "ask ai coach", "ask ai", "ai coach", "coach"]):
             welcome_msg = (
-                "🤖 <b>NEXTGEN AI COACH</b>\n"
+                "🤖 <b>NEXTGEN AI COACH • GOLD COMMAND CENTER</b>\n"
                 "────────────────────────────\n"
                 "I am your 24/7 trading and risk intelligence assistant.\n\n"
                 "<b>Live Account Telemetry:</b>\n"
-                "• <b>Account:</b> FundedNext Stellar 1-Step ($6,000) #3028655\n"
-                "• <b>Universe:</b> BTCUSD (24/7 Spot) + SPY, QQQ, DIA, IWM\n"
-                "• <b>Strategy:</b> 1m Scalper with strict risk controls\n"
-                "• <b>Safety Buffer:</b> $180 daily limit (100% intact)\n"
-                "• <b>History:</b> Live closed deals, win rate, and profit\n\n"
-                "💬 <b>Ask any question directly in chat!</b> For example:\n"
+                "• <b>Account:</b> FundedNext Stellar $6,000 (#5942153)\n"
+                "• <b>Asset:</b> Spot Gold (XAUUSD • symbolId 41)\n"
+                "• <b>Strategy:</b> Telegram Copier Mode A (2 Tickets: TP1 & TP2)\n"
+                "• <b>Safety Buffer:</b> Daily Drawdown Floor $5,650.00 (100% Intact)\n"
+                "• <b>Target:</b> +$480.00 USD (8.0% challenge pass)\n\n"
+                "💬 <b>Ask any question directly in chat or send a voice note!</b> For example:\n"
+                "• <i>'When do you think is our next trade?'</i>\n"
+                "• <i>'How does Mode A 2-ticket execution work?'</i>\n"
                 "• <i>'What trades have we taken recently?'</i>\n"
-                "• <i>'What is our win rate and profit?'</i>\n"
-                "• <i>'How close are we to our next dip trade?'</i>\n"
                 "• <i>'How does our risk buffer protect the account?'</i>"
             )
             api_call("sendMessage", {
@@ -2930,22 +3109,20 @@ def handle_update(update: dict):
                 }
             })
         # Multi-intent check (e.g. 'live rader active trades over view')
-        matched_radar = any(w in text for w in ["radar", "rader", "signal", "signals", "dip"])
+        matched_radar = any(w in text for w in ["radar", "rader", "signal", "signals", "dip", "gold", "xauusd"])
         matched_trades = any(w in text for w in ["trade", "trades", "position", "positions"])
         matched_overview = any(w in text for w in ["overview", "over view", "profile", "account", "status"])
 
         if matched_radar and matched_trades and matched_overview:
+            gold_p = float(_CACHE.get("gold_price", _CACHE.get("gold_bid", 4165.81)))
             composite_text = (
                 "⚡ <b>AGENTQUANT LIVE MASTER SNAPSHOT</b>\n"
                 "────────────────────────────\n"
                 f"👤 <b>TRADER:</b> David • Funded Pro ($6,000 Capital)\n"
-                f"💰 <b>EQUITY:</b> <code>${_CACHE.get('equity', 6000.0):,.2f} USD</code> (~₦{_CACHE.get('capital', 6000.0)*LIVE_P2P_RATE:,.0f})\n"
+                f"💰 <b>EQUITY:</b> <code>${_CACHE.get('equity', 5999.83):,.2f} USD</code> (~₦{_CACHE.get('capital', 5999.83)*LIVE_P2P_RATE:,.0f})\n"
                 f"📊 <b>ACTIVE TRADES:</b> <code>0 Open (100% Cash Cushion)</code>\n"
-                f"📡 <b>5-ASSET INSTITUTIONAL RADAR:</b>\n"
-                f"• SPY: <code>${_CACHE.get('spy_price', 757.39):.2f}</code> | QQQ: <code>${_CACHE.get('qqq_price', 704.54):.2f}</code>\n"
-                f"• AAPL: <code>${_CACHE.get('aapl_price', 331.34):.2f}</code> | NVDA: <code>${_CACHE.get('nvda_price', 212.17):.2f}</code>\n"
-                f"• GLD: <code>${_CACHE.get('gld_price', 394.15):.2f}</code> (Macro Hedge)\n"
-                "🎯 <b>STRATEGY ENGINE:</b> <code>[ ATLAS-QUANT TRIAD // ACTIVE SCANNING ]</code>\n"
+                f"🟡 <b>GOLD RADAR (XAUUSD):</b> <code>${gold_p:,.2f}</code>\n"
+                "🎯 <b>STRATEGY ENGINE:</b> <code>[ TELEGRAM GOLD COPIER // MODE A ]</code>\n"
                 "────────────────────────────\n"
                 "✨ <i>All metrics updated in sub-20ms.</i>"
             )
@@ -2968,20 +3145,47 @@ def handle_update(update: dict):
                 "parse_mode": "HTML",
                 "reply_markup": get_balance_markup(),
             })
-        elif any(cmd in text for cmd in ["/signals", "/radar", "📡 live radar", "radar", "rader", "live radar", "live rader", "signals", "signal", "dip", "dips"]):
+        elif any(cmd in text for cmd in ["/signals", "/radar", "/gold", "🟡 gold radar", "gold radar", "gold", "xauusd", "radar", "rader", "live radar", "live rader", "signals", "signal", "dip", "dips"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_signals_text(),
+                "text": render_gold_radar_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_radar_markup(),
             })
-        elif any(cmd in text for cmd in ["/trades", "📊 active trades", "trades", "trade", "active trades", "active trade", "positions", "position", "open trades", "orders"]):
+        elif any(cmd in text for cmd in ["/trades", "⚡ active gold trades", "active gold trades", "📊 active trades", "trades", "trade", "active trades", "active trade", "positions", "position", "open trades", "orders"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
                 "text": render_trades_text(user_id=user_id),
                 "parse_mode": "HTML",
                 "reply_markup": get_trades_markup(user_id=user_id),
             })
+        elif any(cmd in text for cmd in ["/copier", "⚙️ copier status", "copier status", "mode a", "copier"]):
+            api_call("sendMessage", {
+                "chat_id": chat_id,
+                "text": render_copier_status_text(),
+                "parse_mode": "HTML",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "🔄 Refresh Status", "callback_data": "cmd_copier_status"}],
+                        [{"text": "🔙 Back to Menu", "callback_data": "cmd_overview"}]
+                    ]
+                }
+            })
+        elif any(cmd in text for cmd in ["/emergency", "/closeall", "🛑 emergency close", "emergency close"]):
+            if not is_owner(user_id):
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": OWNER_ONLY_DENIAL,
+                    "parse_mode": "HTML",
+                    "reply_markup": get_keyboard_for_user(user_id)
+                })
+            else:
+                api_call("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": render_emergency_close_text(),
+                    "parse_mode": "HTML",
+                    "reply_markup": get_emergency_close_markup()
+                })
         elif any(cmd in text for cmd in ["/withdraw", "💸 withdraw", "withdraw", "payout", "claim"]):
             curr_key = _CACHE.get("active_model_key", "stellar_1step_6k")
             m = ACCOUNTS_CONFIG.get(curr_key, ACCOUNTS_CONFIG["stellar_1step_6k"])
@@ -3005,19 +3209,24 @@ def handle_update(update: dict):
                 "parse_mode": "HTML",
                 "reply_markup": get_models_markup(),
             })
-        elif any(cmd in text for cmd in ["/tracker", "/goals", "⏳ payout", "goals", "tracker", "goal"]):
+        elif any(cmd in text for cmd in ["/tracker", "/target", "/goals", "🎯 prop target", "prop target", "target", "⏳ payout", "goals", "tracker", "goal"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_tracker_text(),
+                "text": render_prop_target_text(),
                 "parse_mode": "HTML",
                 "reply_markup": get_tracker_markup(),
             })
-        elif any(cmd in text for cmd in ["/history", "/hist", "📜 history", "history", "hist", "trade history", "past trades", "closed trades"]):
+        elif any(cmd in text for cmd in ["/history", "/hist", "📜 copier history", "copier history", "📜 history", "history", "hist", "trade history", "past trades", "closed trades"]):
             api_call("sendMessage", {
                 "chat_id": chat_id,
-                "text": render_history_7d_text(),
+                "text": render_copier_history_text(),
                 "parse_mode": "HTML",
-                "reply_markup": get_history_markup("7d")
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "🔄 Refresh History", "callback_data": "cmd_copier_history"}],
+                        [{"text": "🔙 Back to Menu", "callback_data": "cmd_overview"}]
+                    ]
+                }
             })
         elif any(cmd in text for cmd in ["/p2p", "/naira", "🏦 binance p2p", "p2p", "naira", "rate", "exchange"]):
             api_call("sendMessage", {

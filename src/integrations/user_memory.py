@@ -17,10 +17,10 @@ MEMORY_FILE = Path("cache/user_memory.json")
 DEFAULT_MEMORY = {
     "account_profile": {
         "broker": "cTrader (FundedNext)",
-        "account_id": "3028655",
+        "account_id": "5942153",
         "model": "Stellar 1-Step ($6,000)",
         "initial_capital": 6000.0,
-        "profit_target": 600.0,
+        "profit_target": 480.0,
         "daily_loss_limit": 180.0,
         "max_trailing_drawdown": 360.0,
         "payout_split": "85% to David",
@@ -31,17 +31,22 @@ DEFAULT_MEMORY = {
         "partner": "Cha Cha (Trading Partner)",
     },
     "strategy_rules": {
-        "universe": ["SPY (SPX500)", "QQQ (NDX100)", "DIA (US30)", "IWM (US2000)"],
+        "universe": ["Spot Gold (XAUUSD • symbolId 41)"],
+        "strategy_name": "Telegram Gold Copier (Mode A: TP1 & TP2)",
+        "signal_source": "t.me/XAUUSD_GOLD_TRADING_FOREX (0-Latency MTProto Push)",
         "max_concurrent_positions": 2,
-        "position_size": "0.10 lots / $25 max risk per trade",
-        "stop_loss_type": "Server-side hard stop loss (-$25)",
-        "overnight_holding": "APPROVED - Hold through night with hard server stops. Flatten on Friday afternoon before weekend market close.",
+        "position_size": "0.05 lot per ticket (TP1 +8 pts / TP2 +10 pts)",
+        "stop_loss_type": "Server-side hard stop clamped to max 10.0 pts (-$50/ticket)",
+        "breakeven_shield": "Automatic Breakeven (+0.30pt commission buffer) moved on Ticket 2 when Ticket 1 hits TP1",
+        "anti_chase_guard": "2.50 pts max price deviation limit from signal entry",
+        "spread_filter": "Max 1.50 pts broker spread limit",
+        "circuit_breaker": "Daily Drawdown Floor $5,650.00 USD strict equity halt",
         "ai_execution_policy": "STRICTLY READ-ONLY - AI Coach has ZERO order execution or trade modification ability. All execution is strictly algorithmic."
     },
     "learned_lessons": [
-        "Gold Trade Autopsy: Closed trade smashed full TP target overnight at 08:15 WAT without ever triggering stop loss. Overnight holding with server stops is mathematically superior.",
-        "Drawdown Cushion Discipline: Two simultaneous maximum losses (-$50 total) leaves a massive $130 cushion against the $180 daily stop.",
-        "Patience on Dips: Only execute mean-reversion entries when price reaches the 1.25 sigma lower band or RSI drops below 36."
+        "Gold Telegram Copier: Mode A (2 Tickets: TP1 & TP2, 0.05 lot each) provides optimal balance between high win-rate banking (+8 pts) and runner extraction (+10 pts) with automatic breakeven shield.",
+        "Breakeven Shield Discipline: Moving Ticket 2 to Entry + 0.30pt buffer upon TP1 hit completely eliminates risk on the runner while covering cTrader commissions.",
+        "Anti-Chase Guard: Rejecting entries slipped > 2.50 pts from channel call prevents chasing late spikes and protects prop firm drawdown."
     ],
     "user_notes": []
 }

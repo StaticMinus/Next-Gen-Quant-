@@ -55,72 +55,59 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     pass
 
                 enriched = _CACHE.get("enriched_positions", [])
+                gold_positions = [
+                    p for p in enriched
+                    if "XAU" in str(p.get("symbol_name") or p.get("symbol") or p.get("symbolName") or "XAUUSD").upper()
+                    or p.get("symbolId") == 41
+                ]
+                gold_p = float(_CACHE.get("gold_price", _CACHE.get("gld_price", 4200.0)))
+                gold_ask = float(_CACHE.get("gold_ask", gold_p + 0.35))
+                gold_spread = round(abs(gold_ask - gold_p), 2)
+                cap = float(_CACHE.get("capital", 6000.0))
+                eq = float(_CACHE.get("equity", cap))
+                profit = max(0.0, cap - 6000.0)
+                target_prog = min(100.0, (profit / 480.0) * 100.0)
+                account_id = os.getenv("CTRADER_ACCOUNT_ID", "5942153")
+
                 payload = {
-                    "capital": _CACHE.get("capital", 6000.0),
-                    "equity": _CACHE.get("equity", 6000.0),
-                    "free_margin": _CACHE.get("free_margin", 5704.31),
+                    "account_id": account_id,
+                    "mode": "Mode A (2 Tickets: TP1 + TP2)",
+                    "capital": cap,
+                    "equity": eq,
+                    "free_margin": float(_CACHE.get("free_margin", 5900.0)),
                     "buffer": 360.0,
                     "daily_buffer": 180.0,
-                    "active_positions": enriched,
-                    "has_active_trade": len(enriched) > 0,
-                    "gld_price": _CACHE.get("gld_price", 4332.46),
-                    "gld_mean": _CACHE.get("gld_mean_5d", 4340.00),
-                    "gld_dip": _CACHE.get("gld_lower_band", 4330.00),
-                    "gld_dist": _CACHE.get("gld_dist", 2.26),
-                    "gld_dist_pct": _CACHE.get("gld_dist_pct", 0.05),
-                    "spy_price": _CACHE.get("spy_price", 764.29),
-                    "spy_mean": _CACHE.get("spy_mean_5d", 764.13),
-                    "spy_dip": _CACHE.get("spy_lower_band", 758.45),
-                    "spy_dist": _CACHE.get("spy_dist", 5.84),
-                    "spy_dist_pct": _CACHE.get("spy_dist_pct", 0.76),
-                    "qqq_price": _CACHE.get("qqq_price", 704.54),
-                    "qqq_mean": _CACHE.get("qqq_mean_5d", 707.20),
-                    "qqq_dip": _CACHE.get("qqq_lower_band", 704.68),
-                    "qqq_dist": _CACHE.get("qqq_dist", -0.14),
-                    "qqq_dist_pct": _CACHE.get("qqq_dist_pct", 0.0),
-                    "aapl_price": _CACHE.get("aapl_price", 331.34),
-                    "aapl_mean": _CACHE.get("aapl_mean_5d", 330.50),
-                    "aapl_dip": _CACHE.get("aapl_lower_band", 318.50),
-                    "aapl_dist": _CACHE.get("aapl_dist", 12.84),
-                    "aapl_dist_pct": _CACHE.get("aapl_dist_pct", 3.9),
-                    "nvda_price": _CACHE.get("nvda_price", 212.17),
-                    "nvda_mean": _CACHE.get("nvda_mean_5d", 212.00),
-                    "nvda_dip": _CACHE.get("nvda_lower_band", 210.27),
-                    "nvda_dist": _CACHE.get("nvda_dist", 1.90),
-                    "nvda_dist_pct": _CACHE.get("nvda_dist_pct", 0.9),
-                    "msft_price": _CACHE.get("msft_price", 495.20),
-                    "msft_mean": _CACHE.get("msft_mean_5d", 494.80),
-                    "msft_dip": _CACHE.get("msft_lower_band", 486.50),
-                    "msft_dist": _CACHE.get("msft_dist", 8.70),
-                    "msft_dist_pct": _CACHE.get("msft_dist_pct", 1.75),
-                    "meta_price": _CACHE.get("meta_price", 612.40),
-                    "meta_mean": _CACHE.get("meta_mean_5d", 610.90),
-                    "meta_dip": _CACHE.get("meta_lower_band", 598.20),
-                    "meta_dist": _CACHE.get("meta_dist", 14.20),
-                    "meta_dist_pct": _CACHE.get("meta_dist_pct", 2.31),
-                    "payout_days": _CACHE.get("days_until_payout", 5),
-                    "account_id": _CACHE.get("account_id", "3028655"),
+                    "daily_floor": float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0")),
+                    "active_positions": gold_positions,
+                    "has_active_trade": len(gold_positions) > 0,
+                    "gold_price": gold_p,
+                    "gold_ask": gold_ask,
+                    "gold_spread": gold_spread,
+                    "target_progress": round(target_prog, 1),
+                    "target_profit": 480.0,
+                    "current_profit": round(profit, 2),
                     "live_p2p_rate": _CACHE.get("live_p2p_rate", LIVE_P2P_RATE),
                     "wallet_address": _CACHE.get("wallet_address", "⚠️ NO WALLET LINKED — Use /setwallet in Telegram"),
                 }
             except Exception as e:
+                account_id = os.getenv("CTRADER_ACCOUNT_ID", "5942153")
                 payload = {
+                    "account_id": account_id,
+                    "mode": "Mode A (2 Tickets: TP1 + TP2)",
                     "capital": 6000.0,
-                    "equity": 5997.47,
-                    "free_margin": 5704.31,
+                    "equity": 6000.0,
+                    "free_margin": 6000.0,
                     "buffer": 360.0,
                     "daily_buffer": 180.0,
+                    "daily_floor": 5650.0,
                     "active_positions": [],
                     "has_active_trade": False,
-                    "gld_price": 4332.46,
-                    "spy_price": 764.29,
-                    "qqq_price": 704.54,
-                    "aapl_price": 331.34,
-                    "nvda_price": 212.17,
-                    "msft_price": 495.20,
-                    "meta_price": 612.40,
-                    "payout_days": 5,
-                    "account_id": "3028655",
+                    "gold_price": 4200.0,
+                    "gold_ask": 4200.35,
+                    "gold_spread": 0.35,
+                    "target_progress": 0.0,
+                    "target_profit": 480.0,
+                    "current_profit": 0.0,
                     "live_p2p_rate": 1518.40,
                     "wallet_address": "⚠️ NO WALLET LINKED — Use /setwallet in Telegram",
                 }
