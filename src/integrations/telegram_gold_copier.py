@@ -27,8 +27,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -502,6 +504,13 @@ def start_copier_daemon(interval_sec: int = 2, dry_run: bool = False):
         except Exception as e:
             logger.error(f"Unexpected error in Gold Copier loop: {e}")
             time.sleep(5)
+
+
+def parse_gold_signal(text: str, current_spot: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """Convenience helper to parse and validate a raw Telegram signal string."""
+    copier = TelegramGoldCopier(dry_run=True)
+    sig, _ = copier.parse_and_validate_signal(text, current_spot=current_spot)
+    return sig
 
 
 if __name__ == "__main__":

@@ -1,0 +1,73 @@
+name: AgentQuant Cloud Trader (GitHub Actions)
+
+on:
+  schedule:
+    # Runs continuously every 6 hours Monday through Friday during active Forex market weeks
+    - cron: '0 */6 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'start_live_copier'
+        type: choice
+        options:
+          - start_live_copier
+          - diagnostic_check_only
+      duration_hours:
+        description: 'Runner duration in hours (max 5.8 to fit within 6h GitHub Actions job limit)'
+        required: true
+        default: '5.8'
+
+permissions:
+  contents: read
+
+jobs:
+  cloud_copier:
+    name: Cloud Gold Copier & Command Center
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install System & Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run AgentQuant Cloud Trader
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+          # Telegram Configuration
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_CHANNEL_HANDLE: ${{ secrets.TELEGRAM_CHANNEL_HANDLE || 'XAUUSD_GOLD_TRADING_FOREX' }}
+          # cTrader Execution Credentials
+          CTRADER_ACCOUNT_ID: ${{ secrets.CTRADER_ACCOUNT_ID }}
+          CTRADER_ACCESS_TOKEN: ${{ secrets.CTRADER_ACCESS_TOKEN }}
+          CTRADER_ENVIRONMENT: ${{ secrets.CTRADER_ENVIRONMENT || 'demo' }}
+          CTRADER_MCP_URL: ${{ secrets.CTRADER_MCP_URL || 'https://mcp.ctrader.com/trading/mcp' }}
+          # Execution Rules
+          GOLD_COPIER_TICKET_MODE: ${{ secrets.GOLD_COPIER_TICKET_MODE || 'TWO_TICKETS' }}
+          GOLD_COPIER_LOT_SIZE: ${{ secrets.GOLD_COPIER_LOT_SIZE || '0.05' }}
+          DAILY_DRAWDOWN_FLOOR: ${{ secrets.DAILY_DRAWDOWN_FLOOR || '5650.0' }}
+          AI_SIGNAL_EXTRACTION_ENABLED: "true"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'nex-agi/nex-n2.5-mini:free' }}
+        run: |
+          ACTION="${{ inputs.action || 'start_live_copier' }}"
+          DURATION="${{ inputs.duration_hours || '5.8' }}"
+          echo "Starting AgentQuant Cloud Runner with action=$ACTION, duration=$DURATION hours..."
+          python scripts/run_github_actions_copier.py --action "$ACTION" --duration-hours "$DURATION"
