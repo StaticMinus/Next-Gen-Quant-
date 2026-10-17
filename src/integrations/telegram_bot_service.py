@@ -1398,7 +1398,8 @@ def render_overview_text():
 
     account_id = os.getenv("CTRADER_ACCOUNT_ID", "5942153")
     ticket_mode = os.getenv("GOLD_COPIER_TICKET_MODE", "TWO_TICKETS")
-    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.05")
+    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")
+    total_lot_vol = float(lot_size) * 2
 
     if num_trades == 0:
         pos_block = "• <b>Exposure:</b> <code>0 Open Trades (100% Cash Cushion)</code>"
@@ -1427,11 +1428,11 @@ def render_overview_text():
         "────────────────────────────\n"
         "⚙️ <b>STRATEGY & EXECUTION (MODE A):</b>\n"
         f"• <b>Engine:</b> <b>Gold Telegram Copier (Mode A: TP1 + TP2)</b>\n"
-        f"• <b>Lot Allocation:</b> <code>2x {lot_size} lots</code> (0.10 total volume)\n"
-        "• <b>Ticket 1:</b> Closes at TP1 (+10 pts / +$50 profit)\n"
-        "• <b>Ticket 2:</b> Runs to TP2 (+20 pts / +$100 profit)\n"
+        f"• <b>Lot Allocation:</b> <code>2x {lot_size} lots</code> ({total_lot_vol:.2f} total volume)\n"
+        f"• <b>Ticket 1:</b> Closes at TP1 (+10 pts / +${float(lot_size)*1000:.0f} profit)\n"
+        f"• <b>Ticket 2:</b> Runs to TP2 (+20 pts / +${float(lot_size)*2000:.0f} profit)\n"
         "• <b>Breakeven Shield:</b> SL moved to Entry + 0.30pt buffer when TP1 hits\n"
-        "• <b>Risk Cap:</b> Max 10 pts Stop Loss ($50/ticket risk ceiling)\n"
+        f"• <b>Risk Cap:</b> Max 10 pts Stop Loss (${float(lot_size)*1000:.0f}/ticket risk ceiling)\n"
         "────────────────────────────\n"
         f"{pos_block}\n"
         f"{payout_bar}\n"
@@ -1638,6 +1639,10 @@ def render_copier_status_text():
     active_pos = state.get("active_positions", [])
     executed_keys = state.get("executed_signal_keys", [])
 
+    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")
+    tp1_usd = float(lot_size) * 1000.0  # +10 pts on Gold
+    tp2_usd = float(lot_size) * 2000.0  # +20 pts on Gold
+
     return (
         "⚙️ <b>TELEGRAM GOLD COPIER STATUS (MODE A)</b>\n"
         "────────────────────────────\n"
@@ -1645,8 +1650,8 @@ def render_copier_status_text():
         "• <b>Source Channel:</b> <code>t.me/XAUUSD_GOLD_TRADING_FOREX</code>\n"
         "• <b>Asset:</b> <code>Spot Gold (XAUUSD • symbolId 41)</code>\n"
         "• <b>Execution Mode:</b> <b>Mode A (2 Tickets: TP1 & TP2)</b>\n"
-        "  └ Ticket 1: <code>0.05 lot</code> ➔ TP1 (+8 pts / +$40 USD)\n"
-        "  └ Ticket 2: <code>0.05 lot</code> ➔ TP2 (+10 pts / +$50 USD)\n"
+        f"  └ Ticket 1: <code>{lot_size} lot</code> ➔ TP1 (+10 pts / +${tp1_usd:,.0f} USD)\n"
+        f"  └ Ticket 2: <code>{lot_size} lot</code> ➔ TP2 (+20 pts / +${tp2_usd:,.0f} USD)\n"
         "• <b>Breakeven Shield:</b> Entry + 0.30pt buffer automatically locked on TP1\n"
         "• <b>Anti-Chase Guard:</b> <code>2.50 pts max slippage</code>\n"
         "• <b>Spread Filter:</b> <code>1.50 pts max spread</code>\n"
@@ -1880,16 +1885,21 @@ def render_p2p_rate_text():
 
 
 def render_trade_logic_text():
+    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")
+    tp1_usd = float(lot_size) * 1000.0
+    tp2_usd = float(lot_size) * 2000.0
+    sl_usd = float(lot_size) * 1000.0
+
     text = (
         "🔍 <b>GOLD (XAUUSD) COPIER • MODE A STRATEGY LOGIC</b>\n"
         "────────────────────────────\n"
         "• <b>Primary Asset:</b> Spot Gold (XAUUSD • symbolId 41)\n"
         "• <b>Signal Source:</b> @XAUUSD_GOLD_TRADING_FOREX (0-Latency MTProto Push)\n"
-        "• <b>Execution:</b> Mode A (2 Split Tickets: TP1 & TP2, 0.05 lot each)\n"
-        "  └ Ticket 1: Take Profit 1 (+8 pts / +$40 USD)\n"
-        "  └ Ticket 2: Take Profit 2 (+10 pts / +$50 USD)\n"
+        f"• <b>Execution:</b> Mode A (2 Split Tickets: TP1 & TP2, {lot_size} lot each)\n"
+        f"  └ Ticket 1: Take Profit 1 (+10 pts / +${tp1_usd:,.0f} USD)\n"
+        f"  └ Ticket 2: Take Profit 2 (+20 pts / +${tp2_usd:,.0f} USD)\n"
         "• <b>Breakeven Shield:</b> Upon TP1 hit, Ticket 2 moves to Entry + 0.30pt buffer\n"
-        "• <b>Protective Stop:</b> Hard broker stop clamped to max 10.0 pts (-$50/ticket)\n"
+        f"• <b>Protective Stop:</b> Hard broker stop clamped to max 10.0 pts (-${sl_usd:,.0f}/ticket)\n"
         "• <b>Anti-Chase Filter:</b> 2.50 pts max price deviation from entry\n"
         "• <b>Spread Filter:</b> Rejects executions if broker spread > 1.50 pts\n"
         "• <b>Daily Drawdown Floor:</b> Circuit breaker strictly halts if equity <= $5,650\n"

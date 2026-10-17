@@ -35,8 +35,8 @@ DEFAULT_MEMORY = {
         "strategy_name": "Telegram Gold Copier (Mode A: TP1 & TP2)",
         "signal_source": "t.me/XAUUSD_GOLD_TRADING_FOREX (0-Latency MTProto Push)",
         "max_concurrent_positions": 2,
-        "position_size": "0.05 lot per ticket (TP1 +8 pts / TP2 +10 pts)",
-        "stop_loss_type": "Server-side hard stop clamped to max 10.0 pts (-$50/ticket)",
+        "position_size": "0.07 lot per ticket (TP1 +10 pts / TP2 +20 pts, 0.14 lot total)",
+        "stop_loss_type": "Server-side hard stop clamped to max 10.0 pts (-$70/ticket, $140 max daily risk)",
         "breakeven_shield": "Automatic Breakeven (+0.30pt commission buffer) moved on Ticket 2 when Ticket 1 hits TP1",
         "anti_chase_guard": "2.50 pts max price deviation limit from signal entry",
         "spread_filter": "Max 1.50 pts broker spread limit",
@@ -44,7 +44,7 @@ DEFAULT_MEMORY = {
         "ai_execution_policy": "STRICTLY READ-ONLY - AI Coach has ZERO order execution or trade modification ability. All execution is strictly algorithmic."
     },
     "learned_lessons": [
-        "Gold Telegram Copier: Mode A (2 Tickets: TP1 & TP2, 0.05 lot each) provides optimal balance between high win-rate banking (+8 pts) and runner extraction (+10 pts) with automatic breakeven shield.",
+        "Gold Telegram Copier: Mode A (2 Tickets: TP1 & TP2, 0.07 lot each = 0.14 lot total) provides maximum safe velocity to pass the $6,000 challenge in 4-6 winning trading days while strictly respecting the $180 daily drawdown floor.",
         "Breakeven Shield Discipline: Moving Ticket 2 to Entry + 0.30pt buffer upon TP1 hit completely eliminates risk on the runner while covering cTrader commissions.",
         "Anti-Chase Guard: Rejecting entries slipped > 2.50 pts from channel call prevents chasing late spikes and protects prop firm drawdown."
     ],

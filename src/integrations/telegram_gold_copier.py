@@ -53,8 +53,8 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 CHANNEL_URL = "https://t.me/s/XAUUSD_GOLD_TRADING_FOREX"
 STATE_FILE = ROOT_DIR / "cache" / "gold_copier_state.json"
 
-DEFAULT_LOT_SIZE = 0.05
-MAX_SL_DISTANCE_POINTS = 10.0  # Max $10.00 price distance ($50 risk per 0.05 lot ticket)
+DEFAULT_LOT_SIZE = float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07"))
+MAX_SL_DISTANCE_POINTS = 10.0  # Max $10.00 price distance ($70 risk per 0.07 lot ticket)
 MAX_SLIPPAGE_TOLERANCE = 2.50   # Max $2.50 price deviation to prevent chasing late entries
 
 
