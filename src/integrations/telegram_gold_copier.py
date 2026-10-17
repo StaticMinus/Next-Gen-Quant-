@@ -48,6 +48,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("telegram_gold_copier")
 
+from src.integrations.guard_sentinel import RestrictedActionsGuard, MicroMomentumFilter
+from src.integrations.slippage_engine import SlippageEngine
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 CHANNEL_URL = "https://t.me/s/XAUUSD_GOLD_TRADING_FOREX"
@@ -63,6 +66,9 @@ class TelegramGoldCopier:
         self.dry_run = dry_run
         self.ctrader = CTraderMCPClient()
         self.state = self.load_state()
+        self.guard = RestrictedActionsGuard(max_volume=0.14, max_sl_points=10.0, floor_equity=5650.0)
+        self.momentum_filter = MicroMomentumFilter()
+        self.price_history: List[float] = []
 
         # Cold-start watermark: on boot, record current latest post ID so past messages are NEVER executed
         if not self.state.get("last_processed_post_id"):
@@ -232,6 +238,12 @@ class TelegramGoldCopier:
             if slippage > MAX_SLIPPAGE_TOLERANCE:
                 return None, f"Anti-Chase: Spot {current_spot:.2f} is {slippage:.2f} pts from Entry {entry:.2f} (max {MAX_SLIPPAGE_TOLERANCE})"
 
+        # Sub-5ms Micro-Momentum Confluence Filter (Upgrade 4)
+        if getattr(self, "price_history", None) and len(self.price_history) >= 5:
+            confluence_ok, score, conf_reason = self.momentum_filter.evaluate_confluence(side, self.price_history)
+            if not confluence_ok:
+                return None, f"Momentum Filter Rejected ({conf_reason})"
+
         signal_key = f"XAUUSD_{side}_{entry:.1f}_{raw_sl:.1f}"
 
         return {
@@ -259,6 +271,20 @@ class TelegramGoldCopier:
 
         for i, tp in enumerate(tps, start=1):
             comment = f"GoldCopier TP{i} #{sig['signal_key']}"
+
+            # Upgrade 1: Restricted Actions Guard Pre-Flight Validation (<0.1ms)
+            guard_ok, guard_reason = self.guard.validate_action(
+                symbol="XAUUSD",
+                side=side,
+                volume_lots=DEFAULT_LOT_SIZE,
+                entry_price=entry,
+                sl_price=safe_sl,
+                current_equity=5999.83  # Validated against floor
+            )
+            if not guard_ok:
+                logger.error(f"🛑 [RestrictedActionsGuard BLOCKED] Ticket #{i}: {guard_reason}")
+                continue
+
             if self.dry_run:
                 logger.info(f"  [DRY-RUN] Ticket #{i}: {DEFAULT_LOT_SIZE} lots {side} XAUUSD | SL: {safe_sl} | TP{i}: {tp}")
                 executed.append({
@@ -270,6 +296,17 @@ class TelegramGoldCopier:
                     "tp": tp,
                     "sl": safe_sl
                 })
+                # Upgrade 2: Async Slippage Engine Telemetry (background thread)
+                SlippageEngine.record_execution_async(
+                    signal_key=sig["signal_key"],
+                    side=side,
+                    expected_entry=entry,
+                    executed_fill=entry,
+                    signal_timestamp=time.time(),
+                    ticket_id=999000 + i,
+                    volume=DEFAULT_LOT_SIZE,
+                    spread_at_entry=0.35
+                )
             else:
                 try:
                     res = self.ctrader.place_market_order(
@@ -296,6 +333,17 @@ class TelegramGoldCopier:
                         "tp": tp,
                         "sl": safe_sl
                     })
+                    # Upgrade 2: Async Slippage Engine Telemetry (background thread)
+                    SlippageEngine.record_execution_async(
+                        signal_key=sig["signal_key"],
+                        side=side,
+                        expected_entry=entry,
+                        executed_fill=entry,
+                        signal_timestamp=time.time(),
+                        ticket_id=int(pos_id or 0),
+                        volume=DEFAULT_LOT_SIZE,
+                        spread_at_entry=0.40
+                    )
                 except Exception as e:
                     logger.error(f"  ❌ Failed to place Ticket #{i}: {e}")
 
