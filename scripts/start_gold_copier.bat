@@ -3,8 +3,9 @@ title Telegram Gold Signal Copier (cTrader)
 echo ========================================================
 echo   Telegram Gold (XAUUSD) Copier for cTrader
 echo   Channel: t.me/XAUUSD_GOLD_TRADING_FOREX
-echo   Strategy: 3 Split Tickets (0.05 lot each = 0.15 lot)
-echo   Protection: Capped SL + Auto-Breakeven on TP1
+echo   Strategy: 2 Split Tickets (0.05 lot each = 0.10 lot total)
+echo   Targets: TP1 (Bank Profit) + TP2 (Auto-Breakeven on TP1)
+echo   Protection: 10-Point Safe SL Clamp + Anti-Chase Guard
 echo ========================================================
 cd /d "C:\Users\David\Music\Trade\AgentQuant-main"
 

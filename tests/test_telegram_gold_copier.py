@@ -109,7 +109,7 @@ class TestTelegramGoldCopier(unittest.TestCase):
         self.assertIsNone(sig)
         self.assertIn("Anti-Chase", reason)
 
-    def test_execute_creates_three_tickets(self):
+    def test_execute_creates_two_tickets_tp1_tp2(self):
         sig = {
             "symbol": "XAUUSD",
             "side": "SELL",
@@ -120,14 +120,50 @@ class TestTelegramGoldCopier(unittest.TestCase):
         }
         with patch.object(self.copier, "send_telegram_alert"):
             trades = self.copier.execute_copier_signal(sig)
-            self.assertEqual(len(trades), 3)
+            self.assertEqual(len(trades), 2, "Must execute exactly 2 tickets for TP1 and TP2 only")
             self.assertEqual(trades[0]["ticket"], 1)
             self.assertEqual(trades[0]["tp"], 4272.0)
             self.assertEqual(trades[1]["ticket"], 2)
             self.assertEqual(trades[1]["tp"], 4270.0)
-            self.assertEqual(trades[2]["ticket"], 3)
-            self.assertEqual(trades[2]["tp"], 4260.0)
             self.assertIn("XAUUSD_SELL_4280.0_4386.0", self.copier.state["executed_signal_keys"])
+
+
+    def test_parses_signal_with_promotional_vip_footer(self):
+        # Post 828 from channel: valid signal with VIP promo footer
+        msg = (
+            "#XAUUSD   SELL  4371 🚀\n"
+            "¹/TAKE PROFIT      4 363 🔘\n"
+            "²/TAKE PROFIT     4 355 🔘\n"
+            "3/TAKE PROFIT     4 348-44 🔘\n"
+            "STOP LOSS         4 381 🔘\n"
+            "Regular Quantity ❤️\n"
+            "Join Our Accounts Management Service & VIP PREMIUM ROOM\n"
+            "https://t.me/Gold_vip_Handel"
+        )
+        sig, reason = self.copier.parse_and_validate_signal(msg, current_spot=4371.0)
+        self.assertEqual(reason, "OK")
+        self.assertIsNotNone(sig)
+        self.assertEqual(sig["side"], "SELL")
+        self.assertEqual(sig["entry"], 4371.0)
+        self.assertEqual(sig["safe_sl"], 4381.0)
+        self.assertEqual(sig["tps"][0], 4363.0)
+        self.assertEqual(sig["tps"][1], 4355.0)
+
+    def test_execute_creates_three_tickets_when_configured(self):
+        sig = {
+            "symbol": "XAUUSD",
+            "side": "SELL",
+            "entry": 4280.0,
+            "safe_sl": 4290.0,
+            "tps": [4272.0, 4270.0, 4260.0],
+            "signal_key": "XAUUSD_SELL_4280.0_4386.0"
+        }
+        with patch.dict("os.environ", {"GOLD_COPIER_TICKET_MODE": "THREE_TICKETS"}):
+            with patch.object(self.copier, "send_telegram_alert"):
+                trades = self.copier.execute_copier_signal(sig)
+                self.assertEqual(len(trades), 3, "Must execute 3 tickets in THREE_TICKETS mode")
+                self.assertEqual(trades[2]["ticket"], 3)
+                self.assertEqual(trades[2]["tp"], 4260.0)
 
 
 if __name__ == "__main__":

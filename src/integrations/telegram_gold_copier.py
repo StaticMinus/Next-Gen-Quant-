@@ -148,35 +148,34 @@ class TelegramGoldCopier:
     def parse_and_validate_signal(self, text: str, current_spot: Optional[float] = None) -> Tuple[Optional[Dict[str, Any]], str]:
         """
         Parses text for Gold signal signature, filters out promo/spam/celebration messages,
-        and enforces anti-chase price tolerance.
+        and enforces anti-chase price tolerance. Prioritizes signal syntax over footer promo links.
         """
-        text_lower = text.lower()
-
-        # 1. Filter Spam / Promo Posts
-        spam_keywords = ["shering", "profit share", "daily return", "vip", "dubbel", "investment", "double"]
-        for kw in spam_keywords:
-            if kw in text_lower:
-                return None, f"Promo/Spam filtered ({kw})"
-
-        # 2. Filter Celebration / Result Posts (e.g. 'TP1 HIT', 'BOOM')
-        if any(k in text_lower for k in ["hit", "running", "zero loss", "boom", "congratulations"]):
-            if not ("stop loss" in text_lower or "sl" in text_lower):
-                return None, "Celebration update filtered"
-
-        # 2.5 Normalize broken space digits inside numbers (e.g. '4 355' -> '4355', '40 62' -> '4062')
+        # 1. Normalize broken space digits inside numbers (e.g. '4 355' -> '4355', '40 62' -> '4062')
         text_normalized = re.sub(r"(\d{1,2})\s+(\d{2,3})\b", r"\1\2", text)
+        # Normalize range digits e.g. '4348-44' -> '4348'
+        text_normalized = re.sub(r"(\d{4})-\d{2,4}", r"\1", text_normalized)
 
-        # 3. Clean text for regex
+        # 2. Clean text for regex
         text_clean = re.sub(r"[^\w\s\./#:\-@]", " ", text_normalized)
 
-        # Match Action (BUY/SELL) and 4-digit Entry Price (allowing words like NOW, MORE, GOLD, XAUUSD, @ in between)
+        # 3. Match Action (BUY/SELL) and 4-digit Entry Price
         m_side = re.search(r"(BUY|SELL)(?:\s+(?:NOW|MORE|GOLD|XAUUSD|AT|@))*[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if not m_side:
             # Also check if format is 'GOLD/XAUUSD (BUY|SELL) 4xxx'
             m_side = re.search(r"(?:GOLD|XAUUSD)[\s:\-@]+(BUY|SELL)[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
-            if not m_side:
-                return None, "No Action and 4-digit Entry found"
 
+        # If no valid trading signal signature is present, apply spam/celebration filters
+        if not m_side:
+            text_lower = text.lower()
+            spam_keywords = ["shering", "profit share", "daily return", "vip", "dubbel", "investment", "double", "account management", "tournament"]
+            for kw in spam_keywords:
+                if kw in text_lower:
+                    return None, f"Promo/Spam filtered ({kw})"
+            if any(k in text_lower for k in ["hit", "running", "zero loss", "boom", "congratulations"]):
+                return None, "Celebration update filtered"
+            return None, "No Action and 4-digit Entry found"
+
+        # Signal signature found! Extract parameters
         side = m_side.group(1).upper()
         entry = float(m_side.group(2))
 
@@ -190,13 +189,11 @@ class TelegramGoldCopier:
         # Match Take Profits (or fallback to standard targets if minimal format)
         tp_matches = re.findall(r"(?:TAKE\s*PROFIT|TP)\s*(?:[123¹²³]|\d)?[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if not tp_matches:
-            # Fallback search for numeric targets
             potential_tps = re.findall(r"\b4\d{3}(?:\.\d+)?\b", text_clean)
             tp_matches = [p for p in potential_tps if float(p) != entry and float(p) != raw_sl]
 
         tps = [float(x) for x in tp_matches][:3]
         if not tps:
-            # Default institutional targets for minimal calls like '#XAUUSD SELL 4359'
             if side == "BUY":
                 tps = [entry + 8.0, entry + 10.0, entry + 20.0]
             else:
@@ -216,7 +213,7 @@ class TelegramGoldCopier:
             # Safe Clamped Stop Loss (max 10 points risk)
             safe_sl = min(raw_sl, entry + MAX_SL_DISTANCE_POINTS)
 
-        # 4. Anti-Chase / Price Slippage Guard (only if live current_spot is provided)
+        # Anti-Chase / Price Slippage Guard (only if live current_spot is provided)
         if current_spot is not None:
             slippage = abs(current_spot - entry)
             if slippage > MAX_SLIPPAGE_TOLERANCE:
@@ -235,14 +232,17 @@ class TelegramGoldCopier:
         }, "OK"
 
     def execute_copier_signal(self, sig: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Executes 3 split tickets (0.05 lot each) on cTrader for TP1, TP2, TP3."""
+        """Executes split tickets on cTrader based on GOLD_COPIER_TICKET_MODE (TWO_TICKETS or THREE_TICKETS)."""
         side = sig["side"]
         entry = sig["entry"]
         safe_sl = sig["safe_sl"]
-        tps = sig["tps"]
+
+        ticket_mode = os.getenv("GOLD_COPIER_TICKET_MODE", "TWO_TICKETS").upper()
+        max_targets = 3 if ticket_mode == "THREE_TICKETS" else 2
+        tps = sig["tps"][:max_targets]
 
         executed = []
-        logger.info(f"🚀 Executing 3-ticket Gold Copier orders: {side} {sig['symbol']} @ {entry} | Safe SL: {safe_sl} | TPs: {tps}")
+        logger.info(f"🚀 Executing {len(tps)}-ticket Gold Copier orders ({ticket_mode}): {side} {sig['symbol']} @ {entry} | Safe SL: {safe_sl} | TPs: {tps}")
 
         for i, tp in enumerate(tps, start=1):
             comment = f"GoldCopier TP{i} #{sig['signal_key']}"
@@ -291,28 +291,14 @@ class TelegramGoldCopier:
         self.state.setdefault("executed_signal_keys", []).append(sig["signal_key"])
         self.save_state()
 
-        # Send Rich Telegram Alert
-        alert_msg = (
-            f"⚡ <b>GOLD SIGNAL COPIED (cTrader)</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📌 <b>Symbol:</b> <code>XAUUSD (Gold)</code>\n"
-            f"🎯 <b>Action:</b> <b>{side}</b> @ <code>{entry:.2f}</code>\n"
-            f"🛡️ <b>FundedNext Safe SL:</b> <code>{safe_sl:.2f}</code> (Capped at -$50 risk/ticket)\n\n"
-            f"🎟️ <b>Ticket #1 (0.05 lot):</b> TP1 @ <code>{tps[0]:.2f}</code>\n"
-        )
-        if len(tps) > 1:
-            alert_msg += f"🎟️ <b>Ticket #2 (0.05 lot):</b> TP2 @ <code>{tps[1]:.2f}</code>\n"
-        if len(tps) > 2:
-            alert_msg += f"🎟️ <b>Ticket #3 (0.05 lot):</b> TP3 @ <code>{tps[2]:.2f}</code> (Runner)\n"
-
-        alert_msg += (
-            f"\n🔒 <b>Breakeven Engine:</b> Armed. When Ticket #1 hits TP1, Stop Loss on remaining tickets shifts to Entry."
-        )
+        # Send Minimalist 1-Line Telegram Alert
+        tps_str = f"TP1: {tps[0]:.2f}" + (f" | TP2: {tps[1]:.2f}" if len(tps) > 1 else "")
+        alert_msg = f"🟢 <b>{side} Gold @ {entry:.2f}</b> | {tps_str} | SL: {safe_sl:.2f}"
         self.send_telegram_alert(alert_msg)
         return executed
 
     def manage_active_positions_breakeven(self):
-        """Monitors active copier positions and moves SL to Breakeven when TP1 hits."""
+        """Monitors active copier positions and moves SL to Breakeven (+0.30 pt buffer) when TP1 hits."""
         active = self.state.get("active_positions", [])
         if not active:
             return
@@ -333,17 +319,20 @@ class TelegramGoldCopier:
                 # If t1 is no longer in live positions, it closed (likely hit TP1)
                 if t1_id and t1_id not in live_pos_ids:
                     entry_price = t1.get("entry")
-                    logger.info(f"🎯 Ticket #1 (#{t1_id}) closed! Moving remaining tickets to Breakeven @ {entry_price}...")
+                    side = t1.get("side", "BUY")
+                    # Commission buffer (+0.30 pts on BUY, -0.30 pts on SELL) to cover broker fee
+                    be_price = round(entry_price + 0.30 if side == "BUY" else entry_price - 0.30, 2)
+                    logger.info(f"🎯 Ticket #1 (#{t1_id}) closed! Moving remaining tickets to Breakeven @ {be_price}...")
 
                     for rem in remaining_tickets:
                         rem_id = rem.get("positionId")
                         if rem_id and rem_id in live_pos_ids and not rem.get("be_locked"):
                             try:
-                                self.ctrader.amend_position(rem_id, stop_loss=entry_price)
+                                self.ctrader.amend_position(rem_id, stop_loss=be_price)
                                 rem["be_locked"] = True
-                                logger.info(f"  🛡️ Ticket #{rem.get('ticket')} (#{rem_id}) SL moved to Breakeven {entry_price}")
+                                logger.info(f"  🛡️ Ticket #{rem.get('ticket')} (#{rem_id}) SL moved to Breakeven {be_price}")
                                 self.send_telegram_alert(
-                                    f"🛡️ <b>BREAKEVEN LOCKED:</b> Ticket #{rem.get('ticket')} SL moved to Entry (<code>{entry_price}</code>). Trade is now 100% risk-free!"
+                                    f"🛡️ <b>TP1 Banked!</b> Ticket #{rem.get('ticket')} SL moved to Breakeven @ <code>{be_price:.2f}</code> (+Commission Buffer)"
                                 )
                             except Exception as ae:
                                 logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
@@ -359,24 +348,45 @@ class TelegramGoldCopier:
         if not text:
             return False
 
-        # Freshness check: reject messages older than 5 minutes
+        # 1. Weekend check: Gold market closed from Friday 22:00 UTC to Sunday 22:00 UTC
+        from datetime import timezone
+        now_utc = datetime.now(timezone.utc)
+        weekday = now_utc.weekday()  # 4=Friday, 5=Saturday, 6=Sunday
+        hour = now_utc.hour
+        if weekday == 5 or (weekday == 4 and hour >= 22) or (weekday == 6 and hour < 22):
+            logger.info(f"⏸️ [WEEKEND FILTER] Market is closed (UTC {now_utc.strftime('%A %H:%M')}). Ignoring signal.")
+            return False
+
+        # 2. Freshness check: reject messages older than 5 minutes
         if msg_datetime:
             try:
-                from datetime import timezone
                 dt = datetime.fromisoformat(msg_datetime.replace("Z", "+00:00"))
-                age_seconds = (datetime.now(timezone.utc) - dt).total_seconds()
+                age_seconds = (now_utc - dt).total_seconds()
                 if age_seconds > 300:
                     logger.debug(f"⏭️ Skipping stale message ({post_id}): posted {age_seconds:.0f}s ago (> 300s max allowed)")
                     return False
-        # Strict Daily Loss Circuit Breaker: If equity dropped below $5,880 ($120 loss), block all trades for today
-        bal_data = self.ctrader.get_balance()
-        if bal_data:
-            current_bal = bal_data.get("equity") or bal_data.get("balance") or 6000.0
-            if current_bal <= 5880.0:
-                logger.warning(f"🛑 [DAILY DRAWDOWN CIRCUIT BREAKER] Current equity ${current_bal:.2f} is at daily safety threshold. All execution locked until midnight reset.")
+            except Exception as e:
+                logger.debug(f"Could not parse msg_datetime '{msg_datetime}': {e}")
+
+        # 3. Concurrency check: Max 1 active signal setup (2 tickets = 0.10 lots).
+        # Only allow a second signal entry if the active trade has already reached Breakeven!
+        active = self.state.get("active_positions", [])
+        if active:
+            unlocked = [p for p in active if not p.get("be_locked")]
+            if unlocked:
+                logger.info("⏸️ [CONCURRENCY GUARD] An active Gold trade is currently open and has not yet hit Breakeven. Skipping new signal.")
                 return False
 
-        # Fetch live spot price on cTrader
+        # 4. Strict Daily Loss Circuit Breaker: Enforce configurable daily loss limit
+        bal_data = self.ctrader.get_balance()
+        if bal_data:
+            current_bal = bal_data.get("equity") or bal_data.get("balance") or 5840.0
+            daily_floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
+            if current_bal <= daily_floor:
+                logger.warning(f"🛑 [DAILY DRAWDOWN CIRCUIT BREAKER] Current equity ${current_bal:.2f} is at safety floor (${daily_floor:.2f}). All execution locked until reset.")
+                return False
+
+        # 5. Fetch live spot price and spread on cTrader
         spot_data = self.ctrader.get_spot_price("XAUUSD")
         if not spot_data or not spot_data.get("bid"):
             if not self.ctrader.initialize():
@@ -385,20 +395,28 @@ class TelegramGoldCopier:
             spot_data = self.ctrader.get_spot_price("XAUUSD") or {}
 
         current_spot = float(spot_data.get("bid", 0.0))
+        ask_spot = float(spot_data.get("ask", 0.0))
         if current_spot <= 0:
             logger.warning("Could not obtain live XAUUSD spot price.")
             return False
 
-        # Validate signal
+        # 6. Spread check: broker spread must be <= 1.50 points
+        if ask_spot > 0:
+            spread_pts = abs(ask_spot - current_spot)
+            if spread_pts > 1.50:
+                logger.warning(f"⚠️ [SPREAD FILTER] Gold spread is {spread_pts:.2f} pts (> 1.50 max allowed). Skipping trade to prevent slippage.")
+                return False
+
+        # 7. Validate signal syntax & anti-chase tolerance
         sig, reason = self.parse_and_validate_signal(text, current_spot=current_spot)
         if not sig:
             return False
 
-        # Check if this signal was already executed
+        # 8. Deduplication check: verify signal key has not already been executed
         if sig["signal_key"] in self.state.get("executed_signal_keys", []):
             return False
 
-        # Execute
+        # 9. Execute orders
         logger.info(f"✨ [0-LATENCY SIGNAL DETECTED] ({post_id or 'PUSH'}): {sig['side']} {sig['symbol']} @ {sig['entry']}")
         self.execute_copier_signal(sig)
         if post_id:
