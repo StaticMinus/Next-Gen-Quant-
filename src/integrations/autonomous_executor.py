@@ -305,12 +305,12 @@ class AutonomousExecutionEngine:
                 last_bar = df.iloc[-1]
                 o = float(last_bar["open"])
                 h = float(last_bar["high"])
-                l = float(last_bar["low"])
+                low_val = float(last_bar["low"])
                 c = float(last_bar["close"])
-                rng = h - l
+                rng = h - low_val
                 if rng <= 0:
                     return True, 0.0, "FLAT_BAR"
-                lower_wick = min(o, c) - l
+                lower_wick = min(o, c) - low_val
                 wick_ratio = lower_wick / rng
 
                 # Solid red falling knife check: on red candle (c < o), require at least 25% buyer absorption wick

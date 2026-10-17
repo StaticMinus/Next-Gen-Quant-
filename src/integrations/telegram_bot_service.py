@@ -1335,7 +1335,7 @@ def get_trades_markup(user_id: Optional[str] = None, pending_pos_id: Optional[in
             else:
                 keyboard.append([
                     {"text": f"🛡️ BE {short_name}", "callback_data": f"cmd_sl_be_{pos_id}"},
-                    {"text": f"💰 Bank 50%", "callback_data": f"cmd_bank_half_{pos_id}"}
+                    {"text": "💰 Bank 50%", "callback_data": f"cmd_bank_half_{pos_id}"}
                 ])
                 keyboard.append([
                     {"text": f"❌ Close {short_name} (Tap 1/3)", "callback_data": f"cmd_close_tap1_{pos_id}"}

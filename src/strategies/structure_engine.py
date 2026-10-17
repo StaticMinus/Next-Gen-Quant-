@@ -87,19 +87,19 @@ class StructureEngine:
                 continue
 
             bar = d.iloc[i]
-            o, h, l, c = bar["open"], bar["high"], bar["low"], bar["close"]
+            o, h, low_val, c = bar["open"], bar["high"], bar["low"], bar["close"]
             p_low = bar["prior_low"]
             p_high = bar["prior_high"]
-            c_range = max(h - l, 1e-6)
+            c_range = max(h - low_val, 1e-6)
 
             # ── 1. CHECK BULLISH LIQUIDITY SWEEP ──
             if allowed_side in ("BOTH", "BUY_ONLY"):
                 # Low pierced prior swing low, but candle closed back ABOVE prior swing low
-                if l < p_low and c >= p_low:
-                    lower_wick = (min(o, c) - l) / c_range
+                if low_val < p_low and c >= p_low:
+                    lower_wick = (min(o, c) - low_val) / c_range
                     if lower_wick >= self.min_wick_ratio:
                         # Sweep detected at bar i! Now verify displacement in bars i+1 to i+3
-                        sweep_price = l
+                        sweep_price = low_val
                         disp_found = False
                         break_lvl = p_high
                         disp_bar_idx = i
