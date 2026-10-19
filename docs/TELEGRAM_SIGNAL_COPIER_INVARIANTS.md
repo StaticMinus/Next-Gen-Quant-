@@ -48,3 +48,8 @@
 ## 8. False Alert Suppression & Twin-Ticket Sizing Invariants
 - **Zero False-Alert Mandate:** Automated execution alerts (`NEW SIGNAL EXECUTED`, `Trailing Stop Advanced`) MUST NEVER be transmitted to the live Telegram chat when operating in `dry_run=True` mode, during local testing, or during backtest sweeps. Only broker-acknowledged live fills generate order alerts.
 - **Twin-Ticket 0.07 Sizing:** For multi-target setups, both Ticket 1 (Banker) and Ticket 2 (Runner) are sized at precisely 0.07 lots each (`0.07 lots x 2 = 0.14 lots total`). Single-target scalp setups execute as 0.07 lots total.
+
+## 9. Multi-Channel Signal Invariants
+- **Pending Order Support:** The copier must recognize `BUY STOP`, `SELL STOP`, `BUY LIMIT`, and `SELL LIMIT` notations alongside direct market calls.
+- **Deepest Target Binding:** In multi-target setups (ForexGDP, Learn2Trade), Ticket 1 executes at TP1, and Ticket 2 strictly targets the deepest target (`tps[-1]`), protected by a 30-pip ratcheting trailing stop once profit exceeds +40 pips.
+- **Broker Asset Whitelist:** Orders are only placed if the instrument is an active tradeable asset on the cTrader broker with live spot feed. Unrecognized or non-FX equity symbols are safely bypassed.
