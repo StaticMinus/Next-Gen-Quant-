@@ -157,10 +157,13 @@ class CTraderMCPClient:
         if data and isinstance(data, dict):
             digits = data.get("moneyDigits", 2)
             div = 10 ** digits
+            bal_val = data.get("balance") or 0
+            eq_val = data.get("equity") or 0
+            fm_val = data.get("freeMargin") or 0
             return {
-                "balance": data.get("balance", 0) / div,
-                "equity": data.get("equity", 0) / div,
-                "freeMargin": data.get("freeMargin", 0) / div,
+                "balance": float(bal_val) / div,
+                "equity": float(eq_val) / div,
+                "freeMargin": float(fm_val) / div,
                 "raw": data
             }
         return {"balance": 6000.0, "equity": 6000.0, "freeMargin": 6000.0, "raw": None}
@@ -205,13 +208,17 @@ class CTraderMCPClient:
             p = data["prices"][0]
             # S&P and indices/gold are 5 decimal digits
             div = 100000.0
+            bid_v = p.get("bid")
+            ask_v = p.get("ask")
+            high_v = p.get("high")
+            low_v = p.get("low")
             return {
                 "symbol": symbol,
                 "symbolId": sym_id,
-                "bid": p.get("bid", 0) / div,
-                "ask": p.get("ask", 0) / div,
-                "high": p.get("high", 0) / div,
-                "low": p.get("low", 0) / div,
+                "bid": (float(bid_v) / div) if bid_v is not None else 0.0,
+                "ask": (float(ask_v) / div) if ask_v is not None else 0.0,
+                "high": (float(high_v) / div) if high_v is not None else 0.0,
+                "low": (float(low_v) / div) if low_v is not None else 0.0,
                 "timestamp": p.get("timestamp")
             }
         return None
@@ -601,15 +608,16 @@ class CTraderMCPClient:
             else:
                 continue
 
-            low = b.get("low", 0) / div
+            low_val = b.get("low") or 0
+            low = float(low_val) / div
             if "open" in b and "high" in b and "close" in b:
-                open_p = b.get("open", 0) / div
-                high_p = b.get("high", 0) / div
-                close_p = b.get("close", 0) / div
+                open_p = float(b.get("open") or 0) / div
+                high_p = float(b.get("high") or 0) / div
+                close_p = float(b.get("close") or 0) / div
             else:
-                open_p = (b.get("low", 0) + b.get("deltaOpen", 0)) / div
-                high_p = (b.get("low", 0) + b.get("deltaHigh", 0)) / div
-                close_p = (b.get("low", 0) + b.get("deltaClose", 0)) / div
+                open_p = (float(b.get("low") or 0) + float(b.get("deltaOpen") or 0)) / div
+                high_p = (float(b.get("low") or 0) + float(b.get("deltaHigh") or 0)) / div
+                close_p = (float(b.get("low") or 0) + float(b.get("deltaClose") or 0)) / div
 
             records.append({
                 "timestamp": dt,
@@ -773,11 +781,11 @@ class CTraderMCPClient:
                     gross_pnl = (entry_p - exit_p) * lots * mult
 
                 # Factor in broker commissions and swaps (provided in cents/currency sub-units)
-                total_commission = sum(float(d.get("commission", 0)) for d in p_deals) / 100.0
-                total_swap = sum(float(d.get("swap", 0)) for d in p_deals) / 100.0
+                total_commission = sum(float(d.get("commission") or 0) for d in p_deals) / 100.0
+                total_swap = sum(float(d.get("swap") or 0) for d in p_deals) / 100.0
                 net_pnl = gross_pnl + total_commission + total_swap
 
-                exit_ts = int(exit_deal.get("executionTimestamp", 0)) / 1000.0
+                exit_ts = int(exit_deal.get("executionTimestamp") or 0) / 1000.0
                 exit_time_str = datetime.fromtimestamp(exit_ts).strftime("%b %d, %H:%M")
 
                 closed.append({

@@ -168,7 +168,7 @@ class MultiChannelSignalParser:
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             return None
-        model = os.getenv("OPENROUTER_MODEL", "nex-agi/nex-n2.5-mini:free")
+        model = os.getenv("OPENROUTER_MODEL", "nex-agi/nex-n2.5-mini")
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
