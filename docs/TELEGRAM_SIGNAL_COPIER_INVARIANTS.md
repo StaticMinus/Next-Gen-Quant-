@@ -53,3 +53,7 @@
 - **Pending Order Support:** The copier must recognize `BUY STOP`, `SELL STOP`, `BUY LIMIT`, and `SELL LIMIT` notations alongside direct market calls.
 - **Deepest Target Binding:** In multi-target setups (ForexGDP, Learn2Trade), Ticket 1 executes at TP1, and Ticket 2 strictly targets the deepest target (`tps[-1]`), protected by a 30-pip ratcheting trailing stop once profit exceeds +40 pips.
 - **Broker Asset Whitelist:** Orders are only placed if the instrument is an active tradeable asset on the cTrader broker with live spot feed. Unrecognized or non-FX equity symbols are safely bypassed.
+
+## 10. Cloud Runner Freshness & Continuous Session Invariant
+- **Stale Container Prohibition:** A GitHub Actions cloud runner must never continue executing an obsolete commit after parser or copier updates are merged into `main`. The deployment pipeline must ensure the active runner is always executing the latest HEAD.
+- **Round-the-Clock Session Coverage:** Trading signals frequently arrive during the Tokyo open (00:00–04:00 UTC) and London open (07:00–10:00 UTC). Cloud runners must maintain uninterrupted monitoring throughout these sessions so that early-morning setups are never missed.
