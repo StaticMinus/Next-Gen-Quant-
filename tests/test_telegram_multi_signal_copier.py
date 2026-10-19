@@ -16,6 +16,17 @@ def test_parser_ssfgold_direct():
     assert sig["tps"] == [4199.76]
     assert sig["type"] == "DIRECT_EXECUTION"
 
+def test_parser_ssfgold_pending_stop():
+    text = "XAUUSD BUY STOP 4177.4  SL:  4167.4 TP:  4197.4 --Trade by William"
+    sig = MultiChannelSignalParser.parse_message(text, "ssfgold")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4177.4
+    assert sig["sl"] == 4167.4
+    assert sig["tps"] == [4197.4]
+    assert sig["type"] == "DIRECT_EXECUTION"
+
 def test_parser_forexgdp_gold():
     text = """🔽Gold Signal
 SELL XAUUSD now at any price between 4173 till 4183

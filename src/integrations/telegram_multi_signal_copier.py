@@ -77,8 +77,8 @@ class MultiChannelSignalParser:
         if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower):
             return None
 
-        # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76"
-        m_ssf = re.search(r"\b(XAUUSD|GOLD)\s+(BUY|SELL)\s+([\d\.]+)\s+SL:\s*([\d\.]+)\s+TP:\s*([\d\.]+)", text_clean, re.IGNORECASE)
+        # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
+        m_ssf = re.search(r"\b(XAUUSD|GOLD)\s+(BUY|SELL)(?:\s+(?:STOP|LIMIT|NOW))?\s+([\d\.]+)\s+SL:\s*([\d\.]+)\s+TP:\s*([\d\.]+)", text_clean, re.IGNORECASE)
         if m_ssf:
             side = m_ssf.group(2).upper()
             entry = float(m_ssf.group(3))
