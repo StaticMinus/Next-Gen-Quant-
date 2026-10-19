@@ -86,7 +86,7 @@ def main():
 
     account_id = os.getenv("CTRADER_ACCOUNT_ID", "5942153")
     ticket_mode = os.getenv("GOLD_COPIER_TICKET_MODE", "TWO_TICKETS")
-    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.05")
+    lot_size = os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")
 
     logger.info("=" * 60)
     logger.info("AGENTQUANT CLOUD ACTIONS RUNNER INITIATED")
@@ -119,9 +119,10 @@ def main():
         "AGENTQUANT CLOUD RUNNER: LIVE 🚀",
         f"<b>Environment:</b> GitHub Actions Cloud (Ubuntu VM)\n"
         f"<b>cTrader Account:</b> <code>{account_id}</code>\n"
-        f"<b>Execution Mode:</b> Mode A (2 Tickets: TP1 + TP2 @ {lot_size} lots)\n"
-        f"<b>Breakeven Shield:</b> Triggered at TP1 (+0.30pt buffer)\n"
-        f"<b>Status:</b> Actively listening to VIP signals in real-time.\n"
+        f"<b>Engine:</b> Universal Multi-Channel Copier (Gold & Forex)\n"
+        f"<b>Channels:</b> SureShotFX, ForexGDP, Learn2Trade, AnabelSignals\n"
+        f"<b>Protection:</b> Auto-Breakeven + Anti-Chase + Conflict Shield\n"
+        f"<b>Status:</b> Actively monitoring all signal channels 24/5 in real-time.\n"
         f"<i>Your laptop does NOT need to be powered on.</i>"
     )
 

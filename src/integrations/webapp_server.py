@@ -55,10 +55,9 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     pass
 
                 enriched = _CACHE.get("enriched_positions", [])
-                gold_positions = [
+                all_active_positions = [
                     p for p in enriched
-                    if "XAU" in str(p.get("symbol_name") or p.get("symbol") or p.get("symbolName") or "XAUUSD").upper()
-                    or p.get("symbolId") == 41
+                    if p.get("positionId") is not None
                 ]
                 gold_p = float(_CACHE.get("gold_price", _CACHE.get("gld_price", 4200.0)))
                 gold_ask = float(_CACHE.get("gold_ask", gold_p + 0.35))
@@ -71,15 +70,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
                 payload = {
                     "account_id": account_id,
-                    "mode": "Mode A (2 Tickets: TP1 + TP2)",
+                    "mode": "Multi-Channel Copier (Gold + Forex)",
                     "capital": cap,
                     "equity": eq,
                     "free_margin": float(_CACHE.get("free_margin", 5900.0)),
                     "buffer": 360.0,
                     "daily_buffer": 180.0,
                     "daily_floor": float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0")),
-                    "active_positions": gold_positions,
-                    "has_active_trade": len(gold_positions) > 0,
+                    "active_positions": all_active_positions,
+                    "has_active_trade": len(all_active_positions) > 0,
                     "gold_price": gold_p,
                     "gold_ask": gold_ask,
                     "gold_spread": gold_spread,
@@ -225,15 +224,15 @@ def launch_server_in_thread(port=None):
     t = threading.Thread(target=start_webapp_server, kwargs={"port": server_port}, daemon=True, name="WebAppServer")
     t.start()
 def launch_gold_copier_thread():
-    """Launches the 24/7 Telegram Gold Copier inside a daemon thread."""
+    """Launches the 24/7 Universal Multi-Channel Signal Copier inside a daemon thread."""
     try:
-        from src.integrations.telegram_gold_copier import start_copier_daemon
-        t = threading.Thread(target=start_copier_daemon, kwargs={"interval_sec": 2, "dry_run": False}, daemon=True, name="GoldCopierDaemon")
+        from src.integrations.telegram_multi_signal_copier import start_multi_copier_daemon
+        t = threading.Thread(target=start_multi_copier_daemon, kwargs={"interval_sec": 15, "dry_run": False}, daemon=True, name="MultiSignalCopierDaemon")
         t.start()
-        print("[+] Telegram Gold Copier daemon thread started successfully (2s interval).")
+        print("[+] Universal Multi-Channel Signal Copier daemon thread started successfully (15s interval).")
         return t
     except Exception as e:
-        print(f"[!] Warning: Could not start Gold Copier daemon thread: {e}")
+        print(f"[!] Warning: Could not start Multi-Channel Signal Copier daemon thread: {e}")
         return None
 
 

@@ -1,10 +1,11 @@
 @echo off
-title AgentQuant Master Launcher - Gold Command Center & Copier
+title AgentQuant Master Launcher - Command Center & Multi Copier
 echo ========================================================
-echo   AgentQuant Pro: Gold Command Center + Copier (cTrader)
+echo   AgentQuant Pro: Command Center + Multi-Channel Copier
 echo   Account: FundedNext Stellar $6,000 (#5942153)
-echo   Asset: Spot Gold (XAUUSD • symbolId 41)
-echo   Strategy: Mode A (2 Tickets: TP1 & TP2 • 0.05 lot each)
+echo   Assets: Spot Gold (XAUUSD) + Forex (EURUSD, GBPUSD, AUDNZD, EURJPY)
+echo   Channels: SureShotFX, ForexGDP, Learn2Trade, AnabelSignals
+echo   Strategy: Automated Breakeven + Anti-Chase + Conflict Shield
 echo   Target: +$480.00 USD (+8.0%% Challenge Pass)
 echo ========================================================
 cd /d "C:\Users\David\Music\Trade\AgentQuant-main"
@@ -12,13 +13,13 @@ cd /d "C:\Users\David\Music\Trade\AgentQuant-main"
 echo [1/2] Starting Telegram Mobile Command Center & WebApp...
 start "AgentQuant Telegram Bot" .venv\Scripts\python.exe -m src.integrations.telegram_bot_service
 
-echo [2/2] Starting 0-Latency Telegram Gold Signal Copier...
-start "AgentQuant Gold Copier" .venv\Scripts\python.exe -m src.integrations.telegram_gold_copier
+echo [2/2] Starting 0-Latency Multi-Channel Signal Copier...
+start "AgentQuant Multi Copier" .venv\Scripts\python.exe src/integrations/telegram_multi_signal_copier.py
 
 echo.
 echo ========================================================
 echo   Both services are now running live in background!
-echo   - Check Telegram (@YourBot) for the Gold Command Center.
-echo   - Copier is armed for Monday London Open signals.
+echo   - Check Telegram (@YourBot) for the Mobile Command Center.
+echo   - Multi-Channel Copier is armed across Gold & Forex groups.
 echo ========================================================
 timeout /t 5

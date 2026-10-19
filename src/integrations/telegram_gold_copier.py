@@ -352,10 +352,13 @@ class TelegramGoldCopier:
         self.state.setdefault("executed_signal_keys", []).append(sig["signal_key"])
         self.save_state()
 
-        # Send Minimalist 1-Line Telegram Alert
-        tps_str = f"TP1: {tps[0]:.2f}" + (f" | TP2: {tps[1]:.2f}" if len(tps) > 1 else "")
-        alert_msg = f"🟢 <b>{side} Gold @ {entry:.2f}</b> | {tps_str} | SL: {safe_sl:.2f}"
-        self.send_telegram_alert(alert_msg)
+        # Send Minimalist 1-Line Telegram Alert (LIVE ONLY)
+        if not self.dry_run:
+            tps_str = f"TP1: {tps[0]:.2f}" + (f" | TP2: {tps[1]:.2f}" if len(tps) > 1 else "")
+            alert_msg = f"🟢 <b>{side} Gold @ {entry:.2f}</b> | {tps_str} | SL: {safe_sl:.2f}"
+            self.send_telegram_alert(alert_msg)
+        else:
+            logger.info(f"🧪 [SIMULATION] Dry-run signal executed for Gold {side} - skipping live Telegram broadcast.")
         return executed
 
     def manage_active_positions_breakeven(self):

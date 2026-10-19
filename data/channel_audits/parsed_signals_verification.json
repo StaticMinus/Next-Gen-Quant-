@@ -1,0 +1,264 @@
+{
+  "ssfgold": [
+    {
+      "channel": "ssfgold",
+      "symbol": "XAUUSD",
+      "side": "BUY",
+      "entry_min": 4179.76,
+      "entry_max": 4179.76,
+      "entry_mid": 4179.76,
+      "sl": 4169.76,
+      "tps": [
+        4199.76
+      ],
+      "type": "DIRECT_EXECUTION",
+      "post_id": "ssfgold/18408"
+    },
+    {
+      "channel": "ssfgold",
+      "symbol": "XAUUSD",
+      "side": "BUY",
+      "entry_min": 4179.76,
+      "entry_max": 4179.76,
+      "entry_mid": 4179.76,
+      "sl": 4169.76,
+      "tps": [
+        4199.76
+      ],
+      "type": "DIRECT_EXECUTION",
+      "post_id": "ssfgold/18409"
+    },
+    {
+      "channel": "ssfgold",
+      "symbol": "XAUUSD",
+      "side": "BUY",
+      "entry_min": 4179.76,
+      "entry_max": 4179.76,
+      "entry_mid": 4179.76,
+      "sl": 4169.76,
+      "tps": [
+        4199.76
+      ],
+      "type": "DIRECT_EXECUTION",
+      "post_id": "ssfgold/18410"
+    },
+    {
+      "channel": "ssfgold",
+      "symbol": "XAUUSD",
+      "side": "BUY",
+      "entry_min": 4179.76,
+      "entry_max": 4179.76,
+      "entry_mid": 4179.76,
+      "sl": 4169.76,
+      "tps": [
+        4199.76
+      ],
+      "type": "DIRECT_EXECUTION",
+      "post_id": "ssfgold/18411"
+    }
+  ],
+  "forexgdpfree": [
+    {
+      "channel": "forexgdpfree",
+      "symbol": "AUDNZD",
+      "side": "SELL",
+      "entry_min": 1.2348,
+      "entry_max": 1.2375,
+      "entry_mid": 1.2361499999999999,
+      "sl": 1.2436,
+      "tps": [
+        1.23,
+        1.2235,
+        1.216
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2667"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "XAUUSD",
+      "side": "SELL",
+      "entry_min": 4173.0,
+      "entry_max": 4183.0,
+      "entry_mid": 4178.0,
+      "sl": 4205.0,
+      "tps": [
+        4153.0,
+        4130.0,
+        4110.0
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2669"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "XAUUSD",
+      "side": "SELL",
+      "entry_min": 4173.0,
+      "entry_max": 4183.0,
+      "entry_mid": 4178.0,
+      "sl": 4205.0,
+      "tps": [
+        4153.0,
+        4130.0,
+        4110.0
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2670"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "EURJPY",
+      "side": "SELL",
+      "entry_min": 177.78,
+      "entry_max": 178.05,
+      "entry_mid": 177.91500000000002,
+      "sl": 178.7,
+      "tps": [
+        177.3,
+        176.6,
+        175.8
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2674"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "EURJPY",
+      "side": "SELL",
+      "entry_min": 177.78,
+      "entry_max": 178.05,
+      "entry_mid": 177.91500000000002,
+      "sl": 178.7,
+      "tps": [
+        177.3,
+        176.6,
+        175.8
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2675"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "EURJPY",
+      "side": "SELL",
+      "entry_min": 177.78,
+      "entry_max": 178.05,
+      "entry_mid": 177.91500000000002,
+      "sl": 178.7,
+      "tps": [
+        177.3,
+        176.6,
+        175.8
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2681"
+    },
+    {
+      "channel": "forexgdpfree",
+      "symbol": "CADJPY",
+      "side": "SELL",
+      "entry_min": 111.4,
+      "entry_max": 111.65,
+      "entry_mid": 111.525,
+      "sl": 112.3,
+      "tps": [
+        110.93,
+        110.3,
+        109.5
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "forexgdpfree/2684"
+    }
+  ],
+  "learn2tradenews": [
+    {
+      "channel": "learn2tradenews",
+      "symbol": "NZDUSD",
+      "side": "SELL",
+      "entry_min": 0.569,
+      "entry_max": 0.5715,
+      "entry_mid": 0.5702499999999999,
+      "sl": 0.576,
+      "tps": [
+        0.558
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22032"
+    },
+    {
+      "channel": "learn2tradenews",
+      "symbol": "USDNOK",
+      "side": "BUY",
+      "entry_min": 9.46,
+      "entry_max": 9.5,
+      "entry_mid": 9.48,
+      "sl": 9.42,
+      "tps": [
+        9.62,
+        9.75
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22033"
+    },
+    {
+      "channel": "learn2tradenews",
+      "symbol": "XAUUSD",
+      "side": "SELL",
+      "entry_min": 4210.0,
+      "entry_max": 4230.0,
+      "entry_mid": 4220.0,
+      "sl": 4265.0,
+      "tps": [
+        4130.0
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22036"
+    },
+    {
+      "channel": "learn2tradenews",
+      "symbol": "GBPUSD",
+      "side": "SELL",
+      "entry_min": 1.3255,
+      "entry_max": 1.3285,
+      "entry_mid": 1.327,
+      "sl": 1.335,
+      "tps": [
+        1.314,
+        1.305
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22037"
+    },
+    {
+      "channel": "learn2tradenews",
+      "symbol": "EURUSD",
+      "side": "SELL",
+      "entry_min": 1.136,
+      "entry_max": 1.1385,
+      "entry_mid": 1.1372499999999999,
+      "sl": 1.143,
+      "tps": [
+        1.1265
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22041"
+    },
+    {
+      "channel": "learn2tradenews",
+      "symbol": "GBPCHF",
+      "side": "SELL",
+      "entry_min": 1.096,
+      "entry_max": 1.098,
+      "entry_mid": 1.097,
+      "sl": 1.105,
+      "tps": [
+        1.084,
+        1.07
+      ],
+      "type": "ZONE_EXECUTION",
+      "post_id": "learn2tradenews/22042"
+    }
+  ],
+  "XAUUSD_GOLD_TRADING_FOREX": []
+}

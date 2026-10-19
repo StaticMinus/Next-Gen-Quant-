@@ -61,7 +61,7 @@ jobs:
           CTRADER_MCP_URL: ${{ secrets.CTRADER_MCP_URL || 'https://mcp.ctrader.com/trading/mcp' }}
           # Execution Rules
           GOLD_COPIER_TICKET_MODE: ${{ secrets.GOLD_COPIER_TICKET_MODE || 'TWO_TICKETS' }}
-          GOLD_COPIER_LOT_SIZE: ${{ secrets.GOLD_COPIER_LOT_SIZE || '0.05' }}
+          GOLD_COPIER_LOT_SIZE: ${{ secrets.GOLD_COPIER_LOT_SIZE || '0.07' }}
           DAILY_DRAWDOWN_FLOOR: ${{ secrets.DAILY_DRAWDOWN_FLOOR || '5650.0' }}
           AI_SIGNAL_EXTRACTION_ENABLED: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
