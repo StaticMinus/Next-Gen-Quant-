@@ -57,3 +57,18 @@
 ## 10. Cloud Runner Freshness & Continuous Session Invariant
 - **Stale Container Prohibition:** A GitHub Actions cloud runner must never continue executing an obsolete commit after parser or copier updates are merged into `main`. The deployment pipeline must ensure the active runner is always executing the latest HEAD.
 - **Round-the-Clock Session Coverage:** Trading signals frequently arrive during the Tokyo open (00:00–04:00 UTC) and London open (07:00–10:00 UTC). Cloud runners must maintain uninterrupted monitoring throughout these sessions so that early-morning setups are never missed.
+
+## 11. Directional Target Coherence Invariant
+- **Mathematical Side Coherence:** Take Profit targets and Stop Losses must be strictly coherent with order side:
+  * **BUY Orders:** Every TP target must be strictly greater than entry (`TP > entry`), and SL must be strictly lower than entry (`SL < entry`).
+  * **SELL Orders:** Every TP target must be strictly less than entry (`TP < entry`), and SL must be strictly higher than entry (`SL > entry`).
+- **Inverted Signal Neutralization:** Any signal where targets are inverted (e.g., `SELL 4145` with TP `4150`) is flagged as `is_valid: False` and blocked immediately before broker transmission.
+- **Paywalled / Missing SL Prohibition:** Signals hiding stop losses behind marketing prompts (e.g., `STOP LOSS VIP GROUP`) are strictly rejected. The copier never assumes unbounded risk on promotional free-channel bait.
+
+## 12. Signal Rejection Transparency Invariant
+- **Zero Silent-Drops Mandate:** When a signal is parsed from a target channel but rejected by pre-flight validation (Inverted Targets, Paywalled SL, Anti-Chase Slippage, or Conflict Shield), the copier must NEVER silently drop the message.
+- **User Explanation Alert:** The copier must immediately transmit a clear Telegram notification to David's personal bot detailing:
+  * Channel Source and Post ID
+  * Attempted Action and Price
+  * Specific Failure Reason (e.g. `Inverted Take Profit`, `Anti-Chase Limit Exceeded`, `Opposing Position Active`)
+  * Affirmation that capital was safely protected from toxic execution.

@@ -120,7 +120,7 @@ def main():
         f"<b>Environment:</b> GitHub Actions Cloud (Ubuntu VM)\n"
         f"<b>cTrader Account:</b> <code>{account_id}</code>\n"
         f"<b>Engine:</b> Universal Multi-Channel Copier (Gold & Forex)\n"
-        f"<b>Channels:</b> SureShotFX, ForexGDP, Learn2Trade, AnabelSignals\n"
+        f"<b>Channels:</b> 25 Verified High-Signal Channels (Gold, Forex, Indices, Crypto)\n"
         f"<b>Protection:</b> Auto-Breakeven + Anti-Chase + Conflict Shield\n"
         f"<b>Status:</b> Actively monitoring all signal channels 24/5 in real-time.\n"
         f"<i>Your laptop does NOT need to be powered on.</i>"

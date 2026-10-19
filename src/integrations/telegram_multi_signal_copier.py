@@ -46,11 +46,32 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 
 CHANNELS_CONFIG = [
+    # Top Tier 1: Gold Specialists & Multi-Signal
     {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"]},
     {"id": "forexgdpfree", "name": "ForexGDP Free", "enabled": True, "assets": ["ALL"]},
     {"id": "learn2tradenews", "name": "Learn 2 Trade", "enabled": True, "assets": ["ALL"]},
     {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["ALL"]},
     {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Gold Scalper", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"]},
+    {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "ForexSignalsTelegram", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"]},
+    {"id": "PrimeGoldSignals", "name": "Prime Gold Signals", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"]},
+    {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "pipchasers", "name": "PipChasers", "enabled": True, "assets": ["ALL"]},
+    {"id": "EliteForexTradingSignals", "name": "Elite Forex Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "GoldEliteTrading", "name": "Gold Elite Traders", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "prosignalsfxx", "name": "ProSignalsFx", "enabled": True, "assets": ["ALL"]},
+    {"id": "gold_signals_official", "name": "GoldSignals Official", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "forexsignalsdaily", "name": "Forex Signals Daily", "enabled": True, "assets": ["ALL"]},
+    {"id": "ForexProfitSignals", "name": "ForexPro Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "ImperialForexSignals", "name": "Imperial Forex Signals", "enabled": True, "assets": ["ALL"]},
+    {"id": "XAUUSD_Gold_Signals", "name": "Crown Gold Signals", "enabled": True, "assets": ["XAUUSD"]},
+    {"id": "GreenForexSignals", "name": "Green M15 Signals", "enabled": True, "assets": ["ALL"]},
 ]
 
 HEADERS = {
@@ -63,18 +84,89 @@ class MultiChannelSignalParser:
 
     @classmethod
     def clean_text(cls, raw: str) -> str:
-        t = raw.replace("&#33;", "!").replace("&#036;", "$").replace("&amp;", "&").replace("&#39;", "'").replace("&#092;", "/")
+        # Standardize HTML entities
+        t = (raw.replace("&#33;", "!")
+                .replace("&#036;", "$")
+                .replace("&amp;", "&")
+                .replace("&#39;", "'")
+                .replace("&#092;", "/")
+                .replace("&nbsp;", " "))
+        # Strip commas in formatted numbers e.g. 4,172.50 -> 4172.50
+        t = re.sub(r'(\d+),(\d+)', r'\1\2', t)
+        # Normalize en-dash and em-dash to regular hyphen
+        t = t.replace("–", "-").replace("—", "-")
+        # Clean unicode emojis and directional arrows
+        t = re.sub(r'[➡️👉►▶️|]', ' ', t)
+        t = re.sub(r'[🎯🚫✅🔘🚀✔️🟢🔴🔷♦️⭐️🥇📊📈📉💐🍀👑✍️⭕💡🔥🔗📞📍🛑📡]', ' ', t)
+        # Strip trailing dot after letters e.g. "GOLD." -> "GOLD "
+        t = re.sub(r'([A-Za-z]+)\.', r'\1 ', t)
         return t
 
     @classmethod
+    def normalize_symbol(cls, raw_sym: str) -> str:
+        s = raw_sym.upper().replace("/", "").replace("#", "").replace("-", "").strip()
+        if s in ["GOLD", "XAU"]:
+            return "XAUUSD"
+        if s in ["CRUDEOIL", "OIL", "USOIL", "WTI"]:
+            return "USOIL"
+        if s in ["BTC", "BITCOIN"]:
+            return "BTCUSD"
+        return s
+
+    @classmethod
+    def validate_directional_coherence(cls, sig: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+        """
+        Directional Target Coherence Invariant:
+        Ensures Take Profit targets and Stop Losses are mathematically valid for the order side.
+        - BUY: TP must be > entry, SL must be < entry
+        - SELL: TP must be < entry, SL must be > entry
+        - Rejects signals where stop loss was paywalled (e.g. VIP GROUP)
+        """
+        if sig.get("sl_paywalled"):
+            return False, "Provider paywalled Stop Loss (e.g. 'VIP GROUP') without a numerical exit level"
+
+        side = sig.get("side", "").upper()
+        entry = sig.get("entry_mid", 0.0)
+        tps = sig.get("tps", [])
+        sl = sig.get("sl")
+
+        if not side or entry <= 0:
+            return False, "Missing side or entry price"
+
+        if side == "BUY":
+            if sl is not None and sl >= entry:
+                return False, f"Inverted Stop Loss: BUY SL ({sl}) >= Entry ({entry})"
+            for idx, tp in enumerate(tps):
+                if tp <= entry:
+                    return False, f"Inverted Take Profit: BUY TP{idx+1} ({tp}) <= Entry ({entry})"
+        elif side == "SELL":
+            if sl is not None and sl <= entry:
+                return False, f"Inverted Stop Loss: SELL SL ({sl}) <= Entry ({entry})"
+            for idx, tp in enumerate(tps):
+                if tp >= entry:
+                    return False, f"Inverted Take Profit: SELL TP{idx+1} ({tp}) >= Entry ({entry})"
+
+        return True, None
+
+    @classmethod
     def parse_message(cls, text: str, channel: str) -> Optional[Dict[str, Any]]:
+        sig = cls._raw_parse_message(text, channel)
+        if not sig:
+            return None
+        valid, err = cls.validate_directional_coherence(sig)
+        sig["is_valid"] = valid
+        sig["validation_error"] = err
+        return sig
+
+    @classmethod
+    def _raw_parse_message(cls, text: str, channel: str) -> Optional[Dict[str, Any]]:
         text_clean = cls.clean_text(text)
         text_lower = text_clean.lower()
 
         # Hard filters: locked teasers, tournament spam, recaps
         if any(w in text_lower for w in ["locked", "tournament", "weekend market brief", "week ahead", "bonus"]):
             return None
-        if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower):
+        if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower or "stop loss" in text_lower):
             return None
 
         # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
@@ -154,53 +246,188 @@ class MultiChannelSignalParser:
             }
 
         # 4. ANABELSIGNALS FORMAT:
-        # Supports both (signal) with explicit SL, and (forecast) with entry level + target/goal
-        m_ana_header = re.search(r"✍️([A-Z0-9]+)\s+.*?\s+(BUY|SELL)", text_clean, re.IGNORECASE)
-        m_ana_sl = re.search(r"(?:Stop\s*Loss|My\s*Stop\s*Loss|Recommended\s*Stop\s*Loss|Safe\s*Stop\s*Loss)\s*-\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_ana_target = re.search(r"(?:Target|Goal)\s*-\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        if channel == "anabelsignals" or "✍️" in text_clean or "anabel" in text_lower:
+            m_ana_header = re.search(r"(?:✍️)?([A-Z0-9]+)\s+.*?\s+(BUY|SELL)", text_clean, re.IGNORECASE)
+            m_ana_sl = re.search(r"(?:Stop\s*Loss|My\s*Stop\s*Loss|Recommended\s*Stop\s*Loss|Safe\s*Stop\s*Loss)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            m_ana_target = re.search(r"(?:Target|Goal)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
 
-        if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target)):
-            raw_sym = m_ana_header.group(1).upper()
-            if "GOLD" in raw_sym:
-                raw_sym = "XAUUSD"
-            side = m_ana_header.group(2).upper()
-            entry = float(m_ana_level.group(1)) if m_ana_level else None
-            tp = float(m_ana_target.group(1)) if m_ana_target else None
+            if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target)):
+                raw_sym = m_ana_header.group(1).upper()
+                if "GOLD" in raw_sym:
+                    raw_sym = "XAUUSD"
+                side = m_ana_header.group(2).upper()
+                entry = float(m_ana_level.group(1)) if m_ana_level else None
+                tp = float(m_ana_target.group(1)) if m_ana_target else None
 
-            if m_ana_sl:
-                sl = float(m_ana_sl.group(1))
-                if not entry:
-                    entry = sl + 10.0 if side == "SELL" else sl - 10.0
-            else:
-                # Forecast without written SL: attach safe clamped Stop Loss
-                if entry and tp:
-                    dist = abs(tp - entry)
-                    sl = (entry - dist) if side == "BUY" else (entry + dist)
+                if m_ana_sl:
+                    sl = float(m_ana_sl.group(1))
+                    if not entry:
+                        entry = sl + 10.0 if side == "SELL" else sl - 10.0
                 else:
-                    sl = (entry - 10.0) if side == "BUY" else (entry + 10.0)
+                    if entry and tp:
+                        dist = abs(tp - entry)
+                        sl = (entry - dist) if side == "BUY" else (entry + dist)
+                    else:
+                        sl = (entry - 10.0) if side == "BUY" else (entry + 10.0)
 
-            tps = [tp] if tp else []
+                tps = [tp] if tp else []
+                return {
+                    "channel": channel,
+                    "symbol": raw_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": round(sl, 5),
+                    "tps": tps,
+                    "type": "ANABEL_DIRECT"
+                }
+
+        # --- UNIVERSAL EXPANDED MULTI-CHANNEL PARSER ---
+        # Detect direction/side
+        side = None
+        m_action = re.search(r"\b(BUY\s+NOW|SELL\s+NOW|BUY\s+STOP|SELL\s+STOP|BUY\s+LIMIT|SELL\s+LIMIT|BUY|SELL|LONG|SHORT)\b", text_clean, re.IGNORECASE)
+        if m_action:
+            act = m_action.group(1).upper()
+            side = "BUY" if "BUY" in act or "LONG" in act else "SELL"
+
+        # Detect symbol using known asset and currency combinations
+        sym_match = re.search(
+            r"(?:#|\b)((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|CRUDE\s*OIL|BTCUSD|BTC|(?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY)[/_\-\s](?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY))\b",
+            text_clean, re.IGNORECASE
+        )
+        detected_sym = "XAUUSD"
+        if sym_match:
+            cand = sym_match.group(1).replace(" ", "").replace("-", "").replace("/", "").replace("_", "")
+            detected_sym = cls.normalize_symbol(cand)
+
+        # Standardized parameter tags
+        m_entry_tag = re.search(r"(?:Entry(?:\s*Level)?|CURRENT\s*PRICE|Precio(?:\s*de\s*referencia)?|Precio|BUY\s*AREA|SELL\s*AREA)\s*[:=\-@]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_sl_tag = re.search(r"(?:Stop\s*Loss|Stoploss|SL|Safe\s*Stop\s*Loss|Recommended\s*Stop\s*Loss)\s*[:=\-]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_tp_tag = re.findall(r"(?:Take\s*Profit|Target(?:\s*Level)?|TP\d?|Goal)\s*(?:[123¹²³]|\d(?!\d))?\s*[:=\-]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+
+        # 5. TAG STRUCTURED FORMAT (EliteTradingSignals, ProSignalsFx, xauusd_signals, TopTradingSignals, BestForexSignals)
+        if m_entry_tag and m_sl_tag and side:
+            entry = float(m_entry_tag.group(1))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
             return {
                 "channel": channel,
-                "symbol": raw_sym,
+                "symbol": detected_sym,
                 "side": side,
                 "entry_min": entry,
                 "entry_max": entry,
                 "entry_mid": entry,
-                "sl": round(sl, 5),
+                "sl": sl,
                 "tps": tps,
-                "type": "ANABEL_DIRECT"
+                "type": "TAG_STRUCTURED"
             }
 
-        # 5. LEGACY DIRECT FORMAT: "BUY GOLD 4280 SL 4270 TP 4288"
+        # 6. ZONE RANGE FORMAT (PrimeGoldSignals, EliteForexTradingSignals)
+        m_zone = re.search(r"(?:between\s+(\d+(?:\.\d+)?)\s+till\s+(\d+(?:\.\d+)?)|[\(@]?\s*(\d+(?:\.\d+)?)\s*[\-]\s*(\d+(?:\.\d+)?)\)?)", text_clean, re.IGNORECASE)
+        if m_zone and side and m_sl_tag:
+            if m_zone.group(1) and m_zone.group(2):
+                e1, e2 = float(m_zone.group(1)), float(m_zone.group(2))
+            else:
+                e1, e2 = float(m_zone.group(3)), float(m_zone.group(4))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": min(e1, e2),
+                "entry_max": max(e1, e2),
+                "entry_mid": (e1 + e2) / 2.0,
+                "sl": sl,
+                "tps": tps,
+                "type": "ZONE_EXECUTION"
+            }
+
+        # 7. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
+        m_at_price = re.search(r"(?:@|AT)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        if m_at_price and side and m_sl_tag:
+            entry = float(m_at_price.group(1))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": entry,
+                "entry_max": entry,
+                "entry_mid": entry,
+                "sl": sl,
+                "tps": tps,
+                "type": "DIRECT_AT"
+            }
+
+        m_direct = re.search(
+            r"(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?(?:([A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+)?(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?\s*(\d+(?:\.\d+)?)",
+            text_clean, re.IGNORECASE
+        )
+        if m_direct and side and m_sl_tag:
+            entry = float(m_direct.group(4))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": entry,
+                "entry_max": entry,
+                "entry_mid": entry,
+                "sl": sl,
+                "tps": tps,
+                "type": "DIRECT_AT"
+            }
+
+        # 8. NATURAL LANGUAGE FORMAT (PipChasers)
+        m_nat = re.search(r"(?:current\s*price(?:\s*at)?|trading\s*on|around|level)\s*[:=\-@]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        if m_nat and side and m_sl_tag:
+            entry = float(m_nat.group(1))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": entry,
+                "entry_max": entry,
+                "entry_mid": entry,
+                "sl": sl,
+                "tps": tps,
+                "type": "NATURAL_LANGUAGE"
+            }
+
+        # 9. COMPACT SHORTHAND FORMAT (forexsignalsdaily, ImperialForexSignals, GreenForexSignals)
+        m_short = re.search(r"\b(BUY|SELL)\s+(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        if m_short and m_sl_tag:
+            entry = float(m_short.group(2))
+            sl = float(m_sl_tag.group(1))
+            tps = [float(x) for x in m_tp_tag]
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": m_short.group(1).upper(),
+                "entry_min": entry,
+                "entry_max": entry,
+                "entry_mid": entry,
+                "sl": sl,
+                "tps": tps,
+                "type": "SHORTHAND_DIRECT"
+            }
+
+        # 10. LEGACY DIRECT FORMAT: "BUY GOLD 4280 SL 4270 TP 4288"
         m_legacy = re.search(r"(BUY|SELL)(?:\s+(?:NOW|MORE|GOLD|XAUUSD|AT|@))*[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if m_legacy:
             side = m_legacy.group(1).upper()
             entry = float(m_legacy.group(2))
+            has_vip_sl = bool(re.search(r"(?:STOP\s*LOSS|SL)[\s:\-@]*VIP", text_clean, re.IGNORECASE))
             m_sl = re.search(r"(?:STOP\s*LOSS|SL)[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
             sl = float(m_sl.group(1)) if m_sl else (entry - 10 if side == "BUY" else entry + 10)
-            tp_matches = re.findall(r"(?:TAKE\s*PROFIT|TP)\s*(?:[123¹²³]|\d)?[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            tp_matches = re.findall(r"(?:TAKE\s*PROFIT|TP)(?:\s*[123¹²³]|\s*\d(?!\d))?[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
             tps = [float(x) for x in tp_matches][:3]
             return {
                 "channel": channel,
@@ -211,7 +438,8 @@ class MultiChannelSignalParser:
                 "entry_mid": entry,
                 "sl": sl,
                 "tps": tps,
-                "type": "LEGACY_DIRECT"
+                "type": "LEGACY_DIRECT",
+                "sl_paywalled": has_vip_sl
             }
 
         return None
@@ -224,18 +452,22 @@ class TelegramMultiSignalCopier:
         self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
-        # Cold-start watermark initialization per channel
+        # Cold-start watermark initialization per channel (concurrent, only in live mode)
         watermarks = self.state.setdefault("watermarks", {})
-        for ch in CHANNELS_CONFIG:
-            ch_id = ch["id"]
-            if not watermarks.get(ch_id):
-                try:
-                    msgs = self.fetch_channel_posts(ch_id)
-                    if msgs:
-                        watermarks[ch_id] = msgs[-1]["post_id"]
-                        logger.info(f"🛡️ Cold-start [{ch_id}]: Watermark set to {watermarks[ch_id]}")
-                except Exception as e:
-                    logger.warning(f"Could not set watermark for {ch_id}: {e}")
+        if not self.dry_run:
+            from concurrent.futures import ThreadPoolExecutor
+            def init_wm(ch):
+                ch_id = ch["id"]
+                if not watermarks.get(ch_id):
+                    try:
+                        msgs = self.fetch_channel_posts(ch_id)
+                        if msgs:
+                            watermarks[ch_id] = msgs[-1]["post_id"]
+                            logger.info(f"🛡️ Cold-start [{ch_id}]: Watermark set to {watermarks[ch_id]}")
+                    except Exception as e:
+                        logger.warning(f"Could not set watermark for {ch_id}: {e}")
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                list(executor.map(init_wm, CHANNELS_CONFIG))
         self.save_state()
 
     def load_state(self) -> dict:
@@ -316,6 +548,26 @@ class TelegramMultiSignalCopier:
                 "trailing_activation": 0.40,     # Activate trailing once +40 pips in profit
                 "pip_multiplier": 100.0
             }
+        elif "BTC" in sym:
+            return {
+                "lot_size": float(os.getenv("CRYPTO_COPIER_LOT_SIZE", "0.01")),
+                "max_sl_distance": 500.0,
+                "max_slippage": 50.0,
+                "be_buffer": 20.0,
+                "trailing_distance": 150.0,
+                "trailing_activation": 250.0,
+                "pip_multiplier": 1.0
+            }
+        elif "OIL" in sym or "USOIL" in sym:
+            return {
+                "lot_size": float(os.getenv("OIL_COPIER_LOT_SIZE", "0.10")),
+                "max_sl_distance": 1.50,
+                "max_slippage": 0.25,
+                "be_buffer": 0.10,
+                "trailing_distance": 0.50,
+                "trailing_activation": 0.80,
+                "pip_multiplier": 1.0
+            }
         else:
             return {
                 "lot_size": float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")),
@@ -350,6 +602,12 @@ class TelegramMultiSignalCopier:
                 return None
 
         tps = sig["tps"]
+        # Sanitize targets relative to actual fill entry spot
+        if side == "BUY":
+            tps = [tp for tp in tps if tp > entry]
+        else:
+            tps = [tp for tp in tps if tp < entry]
+
         if not tps:
             # Fallback 1.5:1 R:R target
             dist = abs(entry - safe_sl)
@@ -687,6 +945,20 @@ class TelegramMultiSignalCopier:
                 if not sig:
                     continue
 
+                # 1. Validation Check (Directional Coherence & Integrity)
+                if not sig.get("is_valid", True):
+                    err = sig.get("validation_error", "Unknown validation failure")
+                    logger.warning(f"🚫 [REJECTED MALFORMED SIGNAL] {ch_id} (Post #{pid}): {err}")
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"⚠️ <b>SIGNAL BLOCKED: Malformed / Inverted Signal</b>\n\n"
+                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"📈 <b>Action:</b> {sig.get('side')} {sig.get('symbol')} @ {sig.get('entry_mid')}\n"
+                            f"❌ <b>Reason:</b> {err}\n"
+                            f"🛡️ <b>Protection:</b> Blocked automatically to protect your capital."
+                        )
+                    continue
+
                 symbol = sig["symbol"]
                 side = sig["side"]
                 sig_key = f"{symbol}_{side}_{round(sig['entry_mid'], 2)}_{ch_id}"
@@ -696,6 +968,14 @@ class TelegramMultiSignalCopier:
                     continue
 
                 if self.check_conflicts(symbol, side):
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"🛡️ <b>CONFLICT SHIELD ACTIVATED</b>\n\n"
+                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"📈 <b>Attempted:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
+                            f"⚠️ <b>Reason:</b> Opposing position already active on account.\n"
+                            f"🛡️ <b>Action:</b> Order skipped to avoid hedging conflict."
+                        )
                     continue
 
                 # Verify live spot price and anti-chase
@@ -718,6 +998,15 @@ class TelegramMultiSignalCopier:
 
                 if dist_from_zone > params["max_slippage"]:
                     logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone} from entry zone (max {params['max_slippage']}). Skipping.")
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n\n"
+                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
+                            f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
+                            f"📏 <b>Distance:</b> {dist_from_zone:.2f} pts (Max Allowed: {params['max_slippage']})\n"
+                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing bad market pricing."
+                        )
                     continue
 
                 # Execute order

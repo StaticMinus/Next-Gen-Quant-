@@ -223,4 +223,248 @@ def test_dynamic_trailing_stop_ratchet():
     assert copier.state["active_positions"][0]["sl"] == 2653.00
 
 
+def test_channel_config_all_25_valid():
+    assert len(CHANNELS_CONFIG) == 25
+    ids = [c["id"] for c in CHANNELS_CONFIG]
+    assert len(ids) == len(set(ids)), "Channel IDs must be unique"
+    for c in CHANNELS_CONFIG:
+        assert "id" in c and c["id"]
+        assert "name" in c and c["name"]
+        assert "enabled" in c and isinstance(c["enabled"], bool)
+        assert "assets" in c and isinstance(c["assets"], list)
+
+
+def test_parser_forex_elite_signals():
+    text1 = """BUY AUDNZD @ 1.0713
+
+SL: 1.0600
+TP1: 1.0733
+TP2: 1.0763
+TP3: 1.0813"""
+    sig1 = MultiChannelSignalParser.parse_message(text1, "ForexEliteSignals")
+    assert sig1 is not None
+    assert sig1["symbol"] == "AUDNZD"
+    assert sig1["side"] == "BUY"
+    assert sig1["entry_mid"] == 1.0713
+    assert sig1["sl"] == 1.0600
+    assert 1.0733 in sig1["tps"]
+
+    text2 = """CADJPY BUY NOW @87.653 - 87.453
+
+SL: 87.153
+
+TP1: 87.853
+TP2: 88.653"""
+    sig2 = MultiChannelSignalParser.parse_message(text2, "ForexEliteSignals")
+    assert sig2 is not None
+    assert sig2["symbol"] == "CADJPY"
+    assert sig2["side"] == "BUY"
+    assert sig2["sl"] == 87.153
+    assert sig2["tps"] == [87.853, 88.653]
+
+
+def test_parser_forex_pips_factory_and_prime():
+    text = """🥇SELL GBPUSD @ 1.1585
+
+👉TP1  1.1510
+👉 TP2  1.1450
+Stop Loss: 1.1640"""
+    sig = MultiChannelSignalParser.parse_message(text, "ForexPipsFactory")
+    assert sig is not None
+    assert sig["symbol"] == "GBPUSD"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 1.1585
+    assert sig["sl"] == 1.1640
+
+    prime_text = """13/01
+🔷BUY EURUSD @ 1.11271
+🚫SL- 1.10837
+✅TP- 1.12369"""
+    prime_sig = MultiChannelSignalParser.parse_message(prime_text, "PrimeForexSignals")
+    assert prime_sig is not None
+    assert prime_sig["symbol"] == "EURUSD"
+    assert prime_sig["side"] == "BUY"
+    assert prime_sig["entry_mid"] == 1.11271
+    assert prime_sig["sl"] == 1.10837
+
+
+def test_parser_ultreos_and_prime_gold():
+    text_ultreos = "XAUUSD buy limit 4140 sl 4113.00 tp 4165.00 tp 4196.90 tp 4229.70"
+    sig = MultiChannelSignalParser.parse_message(text_ultreos, "ForexSignalsTelegram")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4140.0
+    assert sig["sl"] == 4113.00
+
+    text_prime_gold = """XAUUSD BUY 4162-4158
+
+TP 4165
+TP 4170
+TP 4175
+
+SL: 4151.00"""
+    sig_pg = MultiChannelSignalParser.parse_message(text_prime_gold, "PrimeGoldSignals")
+    assert sig_pg is not None
+    assert sig_pg["symbol"] == "XAUUSD"
+    assert sig_pg["side"] == "BUY"
+    assert sig_pg["entry_min"] == 4158.0
+    assert sig_pg["entry_max"] == 4162.0
+    assert sig_pg["sl"] == 4151.00
+
+
+def test_parser_pipchasers_natural_language():
+    text = """USDJPY
+
+Nice buy opportunity from the current price at 152.630.
+Take Profit: 154.800
+Stop Loss: 152.000"""
+    sig = MultiChannelSignalParser.parse_message(text, "pipchasers")
+    assert sig is not None
+    assert sig["symbol"] == "USDJPY"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 152.630
+    assert sig["sl"] == 152.000
+    assert sig["tps"] == [154.800]
+
+
+def test_parser_top_tradingsignals_and_oil():
+    text = """📉NZD-USD Free Signal!
+⭕Sell!
+#NZDUSD is rejecting the horizontal supply area after fresh tests.
+Stop Loss: 0.5676
+Take Profit: 0.5649
+Entry: 0.5665"""
+    sig = MultiChannelSignalParser.parse_message(text, "top_tradingsignals")
+    assert sig is not None
+    assert sig["symbol"] == "NZDUSD"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 0.5665
+    assert sig["sl"] == 0.5676
+    assert sig["tps"] == [0.5649]
+
+    oil_text = """CRUDE OIL Free Signal!
+⭕Buy!
+#USOIL is reclaiming demand.
+Stop Loss: 96.61
+Take Profit: 100.54
+Entry: 98.33"""
+    sig_oil = MultiChannelSignalParser.parse_message(oil_text, "top_tradingsignals")
+    assert sig_oil is not None
+    assert sig_oil["symbol"] == "USOIL"
+    assert sig_oil["side"] == "BUY"
+    assert sig_oil["entry_mid"] == 98.33
+    assert sig_oil["sl"] == 96.61
+
+
+def test_parser_structured_tags():
+    text_elite = """#GOLD BULLS ARE STRONG HERE|LONG🟢
+📈GOLD SIGNAL
+✔️Trade Direction: long
+✔️Entry Level: 4,158.26
+✔️Target Level: 4,179.81
+✔️Stop Loss: 4,143.92"""
+    sig = MultiChannelSignalParser.parse_message(text_elite, "elitetrading_signals")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4158.26
+    assert sig["sl"] == 4143.92
+    assert sig["tps"] == [4179.81]
+
+    text_pro = """#EURCAD LOCAL SHORT
+Entry Level: 1.5540
+Target: 1.5480
+Stoploss: 1.5580"""
+    sig_pro = MultiChannelSignalParser.parse_message(text_pro, "prosignalsfxx")
+    assert sig_pro is not None
+    assert sig_pro["symbol"] == "EURCAD"
+    assert sig_pro["side"] == "SELL"
+    assert sig_pro["entry_mid"] == 1.5540
+    assert sig_pro["sl"] == 1.5580
+
+    text_vip = """📊GOLD: Market Is Looking Up! Buy!!
+ENTER: #XAUUSD  long trade
+CURRENT PRICE: 4,172.547
+STOP LOSS: 4,162.734
+TAKE PROFIT: 4,187.490"""
+    sig_vip = MultiChannelSignalParser.parse_message(text_vip, "xauusd_signals")
+    assert sig_vip is not None
+    assert sig_vip["symbol"] == "XAUUSD"
+    assert sig_vip["side"] == "BUY"
+    assert sig_vip["entry_mid"] == 4172.547
+    assert sig_vip["sl"] == 4162.734
+    assert sig_vip["tps"] == [4187.490]
+
+
+def test_parser_crypto_and_compact_formats():
+    btc_text = "#BTCUSD BUY 63300 TP 63400 SL 62200"
+    sig_btc = MultiChannelSignalParser.parse_message(btc_text, "ImperialForexSignals")
+    assert sig_btc is not None
+    assert sig_btc["symbol"] == "BTCUSD"
+    assert sig_btc["side"] == "BUY"
+    assert sig_btc["entry_mid"] == 63300.0
+    assert sig_btc["sl"] == 62200.0
+
+    green_text = "SELL 0.5864 TP 0.5844 SL 0.6000"
+    sig_green = MultiChannelSignalParser.parse_message(green_text, "GreenForexSignals")
+    assert sig_green is not None
+    assert sig_green["side"] == "SELL"
+    assert sig_green["entry_mid"] == 0.5864
+    assert sig_green["sl"] == 0.6000
+
+
+def test_asset_parameters_crypto_and_oil():
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    p_btc = copier.get_asset_parameters("BTCUSD")
+    assert p_btc["lot_size"] == 0.01
+    assert p_btc["max_sl_distance"] == 500.0
+
+    p_oil = copier.get_asset_parameters("USOIL")
+    assert p_oil["lot_size"] == 0.10
+    assert p_oil["max_sl_distance"] == 1.50
+
+
+def test_directional_coherence_guard_inverted_sell():
+    """Validates that a SELL with TP > entry is blocked with is_valid == False."""
+    text_post_1015 = """#XAUUSD  SELL  4145
+🚀 ¹/TAKE PROFIT     4150🔘
+🚀 ²/TAKE PROFIT     4155🔘
+🚀 3/TAKE PROFIT     4165-72
+😊 STOP LOSS         VIP GROUP 🔘
+Regular Quantity ❤️"""
+    sig = MultiChannelSignalParser.parse_message(text_post_1015, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["side"] == "SELL"
+    assert sig["is_valid"] is False
+    assert "VIP GROUP" in sig["validation_error"] or "Inverted Take Profit" in sig["validation_error"]
+
+
+def test_directional_coherence_guard_inverted_buy():
+    """Validates that a BUY with TP < entry is blocked with is_valid == False."""
+    text_bad_buy = "#XAUUSD BUY 4145 SL 4135 TP 4140"
+    sig = MultiChannelSignalParser.parse_message(text_bad_buy, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["side"] == "BUY"
+    assert sig["is_valid"] is False
+    assert "Inverted Take Profit: BUY TP1 (4140.0) <= Entry (4145.0)" in sig["validation_error"]
+
+
+def test_directional_coherence_valid_signals_pass():
+    """Validates that coherent BUY and SELL signals have is_valid == True."""
+    valid_sell = "XAUUSD SELL 4145 SL: 4155 TP: 4135"
+    sig = MultiChannelSignalParser.parse_message(valid_sell, "ssfgold")
+    assert sig is not None
+    assert sig["is_valid"] is True
+    assert sig["validation_error"] is None
+
+    valid_buy = "XAUUSD BUY 4145 SL: 4135 TP: 4155"
+    sig_buy = MultiChannelSignalParser.parse_message(valid_buy, "ssfgold")
+    assert sig_buy is not None
+    assert sig_buy["is_valid"] is True
+    assert sig_buy["validation_error"] is None
+
+
+
+
 
