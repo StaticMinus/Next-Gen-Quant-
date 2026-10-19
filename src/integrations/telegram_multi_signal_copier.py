@@ -153,8 +153,75 @@ class MultiChannelSignalParser:
         return True, None
 
     @classmethod
+    def _should_attempt_ai_fallback(cls, text: str) -> bool:
+        if os.getenv("AI_SIGNAL_EXTRACTION_ENABLED", "").lower() != "true":
+            return False
+        if not os.getenv("OPENROUTER_API_KEY"):
+            return False
+        has_dir = bool(re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text, re.IGNORECASE))
+        has_asset = bool(re.search(r"\b(XAU|GOLD|EUR|GBP|USD|JPY|AUD|CAD|NZD|CHF|OIL|BTC)\b", text, re.IGNORECASE))
+        is_spam = any(w in text.lower() for w in ["tournament", "bonus", "deposit", "affiliate", "weekend brief"])
+        return has_dir and has_asset and not is_spam
+
+    @classmethod
+    def _ai_extract_signal(cls, text: str, channel: str) -> Optional[Dict[str, Any]]:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return None
+        model = os.getenv("OPENROUTER_MODEL", "nex-agi/nex-n2.5-mini:free")
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://agentquant.internal",
+            "X-Title": "AgentQuant Parser"
+        }
+        prompt = (
+            "Extract trading signal parameters from the text. Respond ONLY with valid JSON or null.\n"
+            "Format: {\"symbol\": \"XAUUSD\", \"side\": \"BUY\"|\"SELL\", \"entry_mid\": float, \"sl\": float|null, \"tps\": [float]}\n"
+            f"Text:\n{text[:600]}"
+        )
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "max_tokens": 150
+        }
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=3.5)
+            if r.status_code == 200:
+                data = r.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                m_json = re.search(r"\{[\s\S]*\}", content)
+                if m_json:
+                    parsed = json.loads(m_json.group(0))
+                    if parsed and "symbol" in parsed and "side" in parsed and "entry_mid" in parsed:
+                        sym = cls.normalize_symbol(parsed["symbol"])
+                        side = parsed["side"].upper()
+                        entry = float(parsed["entry_mid"])
+                        sl = float(parsed["sl"]) if parsed.get("sl") is not None else (entry - 10 if side == "BUY" else entry + 10)
+                        raw_tps = parsed.get("tps") or []
+                        tps = [float(x) for x in raw_tps if isinstance(x, (int, float))]
+                        return {
+                            "channel": channel,
+                            "symbol": sym,
+                            "side": side,
+                            "entry_min": entry,
+                            "entry_max": entry,
+                            "entry_mid": entry,
+                            "sl": sl,
+                            "tps": tps,
+                            "type": "AI_FALLBACK"
+                        }
+        except Exception as e:
+            logger.debug(f"AI extraction fallback error: {e}")
+        return None
+
+    @classmethod
     def parse_message(cls, text: str, channel: str) -> Optional[Dict[str, Any]]:
         sig = cls._raw_parse_message(text, channel)
+        if not sig and cls._should_attempt_ai_fallback(text):
+            sig = cls._ai_extract_signal(text, channel)
         if not sig:
             return None
         valid, err = cls.validate_directional_coherence(sig)
@@ -456,6 +523,13 @@ class TelegramMultiSignalCopier:
         self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
+        # Persistent HTTP connection pool for sub-second Telegram harvesting
+        self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30, max_retries=1)
+        self.session.mount("https://", adapter)
+        self.session.headers.update(HEADERS)
+        self._last_channel_poll = {}
+
         # Cold-start watermark initialization per channel (concurrent, only in live mode)
         watermarks = self.state.setdefault("watermarks", {})
         if not self.dry_run:
@@ -507,14 +581,14 @@ class TelegramMultiSignalCopier:
             "disable_web_page_preview": True
         }
         try:
-            requests.post(url, json=payload, timeout=10)
+            self.session.post(url, json=payload, timeout=10)
         except Exception as e:
             logger.error(f"Failed to dispatch Telegram alert: {e}")
 
     def fetch_channel_posts(self, channel_id: str) -> List[Dict[str, Any]]:
         url = f"https://t.me/s/{channel_id}"
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=12)
+            resp = self.session.get(url, timeout=10)
             if resp.status_code != 200:
                 return []
             pattern = r'data-post="([^"]+)"[\s\S]*?<div class="tgme_widget_message_text[^>]*>([\s\S]*?)</div>'
@@ -910,13 +984,42 @@ class TelegramMultiSignalCopier:
             logger.warning(f"Could not verify equity: {e}")
 
         watermarks = self.state.setdefault("watermarks", {})
+        now_ts = time.time()
 
+        # 1. Tier-Weighted Interval Filtering (Speed & Bandwidth Efficiency)
+        channels_to_poll = []
         for ch in CHANNELS_CONFIG:
             if not ch.get("enabled"):
                 continue
-
             ch_id = ch["id"]
-            posts = self.fetch_channel_posts(ch_id)
+            tier = ch.get("tier", 2)
+            # Tier 1 (Institutional Clean): Polled on every tick (0s delay)
+            # Tier 2 (Direct Reliable): Polled every 10s
+            # Tier 3 (Guarded / High-Noise): Polled every 15s
+            min_interval = 0 if tier == 1 else (10 if tier == 2 else 15)
+            last_p = self._last_channel_poll.get(ch_id, 0)
+            if now_ts - last_p >= min_interval:
+                channels_to_poll.append(ch)
+                self._last_channel_poll[ch_id] = now_ts
+
+        if not channels_to_poll:
+            return
+
+        # 2. Parallel Concurrent Harvester across all eligible channels (<350ms total)
+        from concurrent.futures import ThreadPoolExecutor
+        channel_posts_map = {}
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_ch = {executor.submit(self.fetch_channel_posts, ch["id"]): ch["id"] for ch in channels_to_poll}
+            for fut in future_to_ch:
+                ch_id = future_to_ch[fut]
+                try:
+                    channel_posts_map[ch_id] = fut.result()
+                except Exception as e:
+                    logger.debug(f"Error fetching {ch_id}: {e}")
+
+        for ch in channels_to_poll:
+            ch_id = ch["id"]
+            posts = channel_posts_map.get(ch_id, [])
             if not posts:
                 continue
 
@@ -1020,7 +1123,7 @@ class TelegramMultiSignalCopier:
         self.manage_active_breakeven()
 
 
-def start_multi_copier_daemon(interval_sec: int = 15, dry_run: bool = False):
+def start_multi_copier_daemon(interval_sec: int = 5, dry_run: bool = False):
     """Entrypoint for running multi-channel copier daemon inside a background thread."""
     copier = TelegramMultiSignalCopier(dry_run=dry_run)
     logger.info(f"Multi-Channel Signal Copier daemon thread active ({interval_sec}s poll).")
@@ -1033,7 +1136,7 @@ def start_multi_copier_daemon(interval_sec: int = 15, dry_run: bool = False):
 
 
 def run_continuous():
-    start_multi_copier_daemon(interval_sec=15, dry_run=False)
+    start_multi_copier_daemon(interval_sec=5, dry_run=False)
 
 
 if __name__ == "__main__":

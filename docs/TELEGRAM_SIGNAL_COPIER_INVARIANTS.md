@@ -84,3 +84,13 @@
   * **New York Session (13:00–21:00 UTC / 14:00–22:00 BST):** 35.4% of daily signal volume.
   * **Tokyo Session (00:00–07:00 UTC / 01:00–08:00 BST):** 19.9% of daily signal volume.
 
+## 14. Speed, Accuracy & Efficiency Invariants
+- **Parallel Connection Pool Mandate:** All channel harvesting must utilize persistent HTTPS connection pooling (`requests.Session` with `HTTPAdapter(pool_connections=30)`) to eliminate redundant TLS handshakes.
+- **Sub-Second Parallel Polling:** Channels must be harvested concurrently using a worker pool (`ThreadPoolExecutor`), maintaining a total cycle latency of under 500 milliseconds across all monitored channels.
+- **Tier-Weighted Execution Cadence:**
+  * Tier 1 channels are evaluated on every rapid 5-second tick.
+  * Tier 2 channels are evaluated every 10 seconds.
+  * Tier 3 channels are evaluated every 15 seconds.
+- **Hybrid AI Fallback Guard:** For unstructured natural-language signals where regex produces no match, the parser triggers an AI extraction fallback to ensure zero high-conviction trades are discarded.
+
+

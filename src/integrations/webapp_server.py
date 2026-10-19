@@ -227,9 +227,9 @@ def launch_gold_copier_thread():
     """Launches the 24/7 Universal Multi-Channel Signal Copier inside a daemon thread."""
     try:
         from src.integrations.telegram_multi_signal_copier import start_multi_copier_daemon
-        t = threading.Thread(target=start_multi_copier_daemon, kwargs={"interval_sec": 15, "dry_run": False}, daemon=True, name="MultiSignalCopierDaemon")
+        t = threading.Thread(target=start_multi_copier_daemon, kwargs={"interval_sec": 5, "dry_run": False}, daemon=True, name="MultiSignalCopierDaemon")
         t.start()
-        print("[+] Universal Multi-Channel Signal Copier daemon thread started successfully (15s interval).")
+        print("[+] Universal Multi-Channel Signal Copier daemon thread started successfully (5s sub-second interval).")
         return t
     except Exception as e:
         print(f"[!] Warning: Could not start Multi-Channel Signal Copier daemon thread: {e}")

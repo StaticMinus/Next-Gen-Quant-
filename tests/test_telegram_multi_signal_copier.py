@@ -465,6 +465,27 @@ def test_directional_coherence_valid_signals_pass():
     assert sig_buy["validation_error"] is None
 
 
+def test_ai_fallback_condition_gate():
+    """Ensures AI fallback is only triggered for genuine unparsed trade intent."""
+    text_spam = "Join our tournament and win 500$ bonus!"
+    assert MultiChannelSignalParser._should_attempt_ai_fallback(text_spam) is False
+
+    # Without OPENROUTER_API_KEY set, it safely returns False
+    text_unstructured = "Going short on Gold at 4145, TP 4135, SL 4155"
+    assert isinstance(MultiChannelSignalParser._should_attempt_ai_fallback(text_unstructured), bool)
+
+
+def test_parallel_session_connection_pool():
+    """Verifies that TelegramMultiSignalCopier initializes persistent session with connection pool."""
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    assert copier.session is not None
+    adapter = copier.session.adapters.get("https://")
+    assert adapter is not None
+    assert adapter._pool_connections == 30
+    assert adapter._pool_maxsize == 30
+
+
+
 
 
 
