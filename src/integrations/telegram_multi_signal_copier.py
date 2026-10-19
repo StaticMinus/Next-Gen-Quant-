@@ -131,7 +131,8 @@ class MultiChannelSignalParser:
 
         if m_l2t_sym and m_l2t_entry and m_l2t_sl:
             raw_sym = m_l2t_sym.group(1).upper().replace("/", "")
-            if "GOLD" in raw_sym: raw_sym = "XAUUSD"
+            if "GOLD" in raw_sym:
+                raw_sym = "XAUUSD"
             raw_side = m_l2t_sym.group(2).upper()
             side = "BUY" if raw_side in ["BUY", "LONG"] else "SELL"
             e1 = float(m_l2t_entry.group(1).replace(",", ""))
@@ -161,7 +162,8 @@ class MultiChannelSignalParser:
 
         if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target)):
             raw_sym = m_ana_header.group(1).upper()
-            if "GOLD" in raw_sym: raw_sym = "XAUUSD"
+            if "GOLD" in raw_sym:
+                raw_sym = "XAUUSD"
             side = m_ana_header.group(2).upper()
             entry = float(m_ana_level.group(1)) if m_ana_level else None
             tp = float(m_ana_target.group(1)) if m_ana_target else None
