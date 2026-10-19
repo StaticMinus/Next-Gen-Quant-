@@ -120,7 +120,7 @@ class MultiChannelSignalParser:
                     "entry_max": entry_max,
                     "entry_mid": entry_mid,
                     "sl": sl,
-                    "tps": targets[:3],
+                    "tps": targets,
                     "type": "ZONE_EXECUTION"
                 }
 
@@ -148,7 +148,7 @@ class MultiChannelSignalParser:
                 "entry_max": entry_max,
                 "entry_mid": entry_mid,
                 "sl": sl,
-                "tps": tps[:3],
+                "tps": tps,
                 "type": "ZONE_EXECUTION"
             }
 
