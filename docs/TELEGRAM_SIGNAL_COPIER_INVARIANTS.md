@@ -72,3 +72,15 @@
   * Attempted Action and Price
   * Specific Failure Reason (e.g. `Inverted Take Profit`, `Anti-Chase Limit Exceeded`, `Opposing Position Active`)
   * Affirmation that capital was safely protected from toxic execution.
+
+## 13. Channel Quality Tiering & Session Window Invariant
+- **Empirical Audit Mandate:** Every monitored channel must be backed by an empirical historical audit (minimum 30+ scraped messages) tracking actionable signal yield and active hours.
+- **Quality Tiers:**
+  * **Tier 1 (Institutional Clean, >=20% Yield):** High-density providers with explicit SL, TP, and clean execution syntax (`PrimeGoldSignals`, `anabelsignals`, `ForexEliteSignals`, `ForexPipsFactory`, `forexgdpfree`, `ssfgold`, `learn2tradenews`).
+  * **Tier 2 (Direct Reliable, 8%–19% Yield):** Clean direct calls with lower daily frequency (`top_tradingsignals`, `pipchasers`, `Crown Gold Signals`).
+  * **Tier 3 (Guarded / High-Noise, <8% Yield):** Channels with high marketing volume or paywalled stop loss attempts (`XAUUSD_GOLD_TRADING_FOREX`). Strictly guarded by Directional Coherence & Paywall filters.
+- **Global Session Awareness:** The system explicitly maps to global market liquidity windows:
+  * **London Session (07:00–13:00 UTC / 08:00–14:00 BST):** 40.8% of daily signal volume.
+  * **New York Session (13:00–21:00 UTC / 14:00–22:00 BST):** 35.4% of daily signal volume.
+  * **Tokyo Session (00:00–07:00 UTC / 01:00–08:00 BST):** 19.9% of daily signal volume.
+

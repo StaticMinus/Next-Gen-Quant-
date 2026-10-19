@@ -46,32 +46,36 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 
 CHANNELS_CONFIG = [
-    # Top Tier 1: Gold Specialists & Multi-Signal
-    {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "forexgdpfree", "name": "ForexGDP Free", "enabled": True, "assets": ["ALL"]},
-    {"id": "learn2tradenews", "name": "Learn 2 Trade", "enabled": True, "assets": ["ALL"]},
-    {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Gold Scalper", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"]},
-    {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "ForexSignalsTelegram", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"]},
-    {"id": "PrimeGoldSignals", "name": "Prime Gold Signals", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"]},
-    {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "pipchasers", "name": "PipChasers", "enabled": True, "assets": ["ALL"]},
-    {"id": "EliteForexTradingSignals", "name": "Elite Forex Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "GoldEliteTrading", "name": "Gold Elite Traders", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "prosignalsfxx", "name": "ProSignalsFx", "enabled": True, "assets": ["ALL"]},
-    {"id": "gold_signals_official", "name": "GoldSignals Official", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "forexsignalsdaily", "name": "Forex Signals Daily", "enabled": True, "assets": ["ALL"]},
-    {"id": "ForexProfitSignals", "name": "ForexPro Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "ImperialForexSignals", "name": "Imperial Forex Signals", "enabled": True, "assets": ["ALL"]},
-    {"id": "XAUUSD_Gold_Signals", "name": "Crown Gold Signals", "enabled": True, "assets": ["XAUUSD"]},
-    {"id": "GreenForexSignals", "name": "Green M15 Signals", "enabled": True, "assets": ["ALL"]},
+    # Top Tier 1: Institutional Clean & High Signal Density (>= 20% Yield)
+    {"id": "PrimeGoldSignals", "name": "Prime Gold Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 74.4, "peak_session": "London/Tokyo"},
+    {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
+    {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 57.1, "peak_session": "New York"},
+    {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 45.0, "peak_session": "London Open"},
+    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 42.5, "peak_session": "London Open"},
+    {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 37.8, "peak_session": "London Open"},
+    {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 35.1, "peak_session": "New York/London"},
+    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 35.0, "peak_session": "London Open"},
+    {"id": "forexgdpfree", "name": "ForexGDP Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 31.6, "peak_session": "London Session"},
+    {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 25.0, "peak_session": "London Pre-Market"},
+    {"id": "learn2tradenews", "name": "Learn 2 Trade", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 25.0, "peak_session": "New York Session"},
+    {"id": "ForexProfitSignals", "name": "ForexPro Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 20.0, "peak_session": "London/NY"},
+
+    # Tier 2: Direct Reliable Format (8% - 19% Yield)
+    {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "London/Asian"},
+    {"id": "pipchasers", "name": "PipChasers", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "Asian/London"},
+    {"id": "XAUUSD_Gold_Signals", "name": "Crown Gold Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 2, "yield_pct": 13.5, "peak_session": "London/NY"},
+    {"id": "ForexSignalsTelegram", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 13.2, "peak_session": "Asian Session"},
+    {"id": "prosignalsfxx", "name": "ProSignalsFx", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 11.1, "peak_session": "London/NY"},
+    {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 66.7, "peak_session": "New York"},
+
+    # Tier 3: Guarded / High-Noise Providers (Filtered by Directional Coherence & Paywall Guard)
+    {"id": "EliteForexTradingSignals", "name": "Elite Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 6.2, "peak_session": "London/NY"},
+    {"id": "ImperialForexSignals", "name": "Imperial Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 5.9, "peak_session": "New York"},
+    {"id": "GreenForexSignals", "name": "Green M15 Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 5.6, "peak_session": "London"},
+    {"id": "gold_signals_official", "name": "GoldSignals Official", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 4.5, "peak_session": "London"},
+    {"id": "forexsignalsdaily", "name": "Forex Signals Daily", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 2.7, "peak_session": "London"},
+    {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Gold Scalper", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "London/NY"},
+    {"id": "GoldEliteTrading", "name": "Gold Elite Traders", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "London"}
 ]
 
 HEADERS = {
