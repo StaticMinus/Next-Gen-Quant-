@@ -655,7 +655,7 @@ Follow these exact steps to get your automated trading system live:
 **Status:** **100% Connected & Verified Live!**
 
 - **Telegram Bot Username:** [`@Nextgeneration9_bot`](https://t.me/Nextgeneration9_bot)
-- **Telegram Bot Token:** `8910148651:AAHP1sSV_Yj5bufYgcvz3SdSjG-ygwBar-o`
+- **Telegram Bot Token:** `[REDACTED_TELEGRAM_BOT_TOKEN]`
 - **User Chat ID:** `8428715579`
 - **Configuration File:** Saved in [`.env`](file:///c:/Users/David/Music/Trade/AgentQuant-main/.env)
 - **Live Verification:** 
@@ -700,7 +700,7 @@ Follow these exact steps to get your automated trading system live:
 
 ### Required GitHub Secrets Setup (While Account is Being Funded):
 To enable the GitHub Actions runner to deliver alerts automatically 24/7 from the cloud, the following secrets must be added in GitHub (`Settings` &rarr; `Secrets and variables` &rarr; `Actions` &rarr; `New repository secret`):
-- `TELEGRAM_BOT_TOKEN`: `8910148651:AAHP1sSV_Yj5bufYgcvz3SdSjG-ygwBar-o`
+- `TELEGRAM_BOT_TOKEN`: `[REDACTED_TELEGRAM_BOT_TOKEN]`
 - `TELEGRAM_CHAT_ID`: `8428715579`
 - Once FundedNext account is ready:
   - `CTRADER_ACCOUNT_ID`: *(from FundedNext cTrader dashboard)*
