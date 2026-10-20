@@ -130,9 +130,22 @@
     * **Crude Oil (`USOIL`):** 1.00 point
 - **Full Downstream Protection:** The synthesized Stop Loss undergoes the identical Rapid Breakeven Armor (+15 pips) and Dynamic Trailing Stop protections, guaranteeing that capital is always strictly guarded.
 
+
 ## 21. Universal Signal Provenance & Clickable Deep-Linking Invariant
 - **Audit-Grade Traceability Directive:** Every signal ingested from Telegram across all 25 channels must capture and persist its origin `post_id` (e.g. `ssfgold/18427`) and formatted URI (`https://t.me/{post_id}`).
 - **Human-in-the-Loop Instant Verification:** Every user-facing Telegram alert—including new order executions, conflict shield blocks, anti-chase skips, and parser malfunction/validation blocks—MUST incorporate a direct clickable link (`<a href="https://t.me/{post_id}">View in Telegram</a>`).
 - **Zero-Friction Auditing:** The operator must be capable of tapping the notification in Telegram and jumping directly into the exact provider message to inspect chart attachments, commentary, or signal revisions without manually searching channel histories.
+
+## 22. Target-Rollover & Ratcheted Late Entry Invariant
+- **Salvaging Extended Scalps Without Destroying Risk:Reward:** When a signal arrives after price has already exceeded the entry zone towards TP1 (`dist_from_zone > max_slippage`), the trade must NOT be discarded if higher valid targets (`TP2`, `TP3`, etc.) remain unreached.
+- **Stop-Loss Ratcheting Requirement:** Entering late at `curr_spot` with the original `Stop Loss` would dangerously expand dollar risk and degrade the Risk-to-Reward ratio (e.g. 1:0.4 R:R). Therefore, late entries MUST ratchet the Stop Loss to the original entry threshold:
+  - For `BUY`: `ratcheted_sl = entry_max` (the upper boundary of the original entry zone).
+  - For `SELL`: `ratcheted_sl = entry_min` (the lower boundary of the original entry zone).
+- **Minimum 1.5:1 R:R Filter:** Calculate:
+  - `ratcheted_risk = abs(curr_spot - ratcheted_sl)`
+  - `remaining_reward = abs(target_tp - curr_spot)` (where `target_tp` is `TP2` or the next valid unreached target).
+  - The trade is ONLY executed if `remaining_reward >= 1.5 * max(ratcheted_risk, be_buffer)`. If reward < 1.5x risk, the trade is skipped with a clear R:R violation alert.
+- **Single-Ticket Runner Allocation:** Since `TP1` has already been met, Ticket 1 (the `TP1` banker) is dropped. The trade executes as a single Ticket (0.07 lots) targeting `target_tp` with `stop_loss = ratcheted_sl`.
+- **Operator Notification:** The broadcast alert must explicitly state that the trade entered under **Invariant 22: Target-Rollover** with the adjusted Ratcheted Stop Loss and remaining reward headroom.
 
 

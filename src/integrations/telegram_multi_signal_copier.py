@@ -13,6 +13,7 @@ Supported Assets:
 - Forex Crosses: EURJPY, GBPJPY, AUDNZD, GBPCHF, USDNOK
 """
 
+import copy
 import json
 import logging
 import os
@@ -860,17 +861,20 @@ class TelegramMultiSignalCopier:
 
             # Telegram broadcast to David (LIVE ONLY - never broadcast simulated dry-run orders)
             if not self.dry_run:
+                is_rollover = sig.get("is_target_rollover", False)
+                rollover_badge = " (Target-Rollover • Invariant 22)" if is_rollover else ""
+                rollover_note = f"\n🎯 <b>Rollover Mode:</b> TP1 passed. Riding momentum to Target {sig.get('rollover_tp')} with Ratcheted SL at {safe_sl}" if is_rollover else ""
                 tps_str = f"TP1: {tps[0]}" + (f" | Runner TP: {tps[-1]} ({len(tps)} targets)" if len(tps) > 1 else "")
                 post_url = sig.get("post_url") or (f"https://t.me/{sig.get('post_id')}" if sig.get("post_id") else None)
                 post_link_str = f"\n🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>" if post_url else ""
                 alert_msg = (
-                    f"⚡ <b>NEW SIGNAL EXECUTED</b>\n"
+                    f"⚡ <b>NEW SIGNAL EXECUTED{rollover_badge}</b>\n"
                     f"📡 <b>Source:</b> {channel}{post_link_str}\n"
                     f"📈 <b>Action:</b> {side} {symbol}\n"
                     f"📍 <b>Fill Price:</b> {entry}\n"
                     f"🛡️ <b>Stop Loss:</b> {safe_sl}\n"
                     f"🎯 <b>Targets:</b> {tps_str}\n"
-                    f"📦 <b>Tickets:</b> {len(executed_orders)} tickets ({total_vol} lots total)"
+                    f"📦 <b>Tickets:</b> {len(executed_orders)} tickets ({total_vol} lots total){rollover_note}"
                 )
                 self.send_telegram_alert(alert_msg)
             else:
@@ -1247,6 +1251,38 @@ class TelegramMultiSignalCopier:
                             dist_from_zone = 0.0
 
                 if dist_from_zone > params["max_slippage"]:
+                    # Invariant 22: Target-Rollover & Ratcheted Late Entry Check
+                    # If TP1 is passed/blocked, check if higher targets (TP2+) still offer >= 1.5:1 R:R with ratcheted SL
+                    candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
+                    rollover_executed = False
+
+                    if candidate_tps:
+                        next_tp = candidate_tps[0]
+                        ratcheted_sl = round(e_max if side == "BUY" else e_min, 5)
+                        ratcheted_risk = abs(curr_spot - ratcheted_sl)
+                        remaining_reward = abs(next_tp - curr_spot)
+
+                        # Enforce minimum risk floor to prevent micro stops smaller than buffer
+                        min_risk_dist = params.get("be_buffer", 0.5)
+                        eff_risk = max(ratcheted_risk, min_risk_dist)
+
+                        if remaining_reward >= (1.5 * eff_risk):
+                            logger.info(
+                                f"🎯 Invariant 22 Target-Rollover: {symbol} spot {curr_spot} passed entry zone, but next target {next_tp} "
+                                f"offers {remaining_reward:.2f} pts reward vs {eff_risk:.2f} pts ratcheted risk (>= 1.5 R:R). Proceeding with ratcheted SL {ratcheted_sl}."
+                            )
+                            rollover_sig = copy.deepcopy(sig)
+                            rollover_sig["sl"] = ratcheted_sl
+                            rollover_sig["tps"] = candidate_tps
+                            rollover_sig["is_target_rollover"] = True
+                            rollover_sig["rollover_tp"] = next_tp
+                            self.execute_signal(rollover_sig, curr_spot)
+                            rollover_executed = True
+
+                    if rollover_executed:
+                        continue
+
+                    # If rollover was not eligible, block with Anti-Chase skip alert
                     orig_sl = sig.get("sl")
                     sl_risk_str = ""
                     if orig_sl:
@@ -1262,7 +1298,7 @@ class TelegramMultiSignalCopier:
                             f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                             f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
                             f"📏 <b>Adverse Distance:</b> +{dist_from_zone:.2f} pts towards TP (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"
-                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing after price has already run away."
+                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing after price has already run away (no valid rollover target with >= 1.5:1 R:R)."
                         )
                     continue
 

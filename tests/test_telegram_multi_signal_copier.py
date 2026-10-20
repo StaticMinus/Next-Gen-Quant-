@@ -663,6 +663,64 @@ def test_signal_alert_contains_telegram_post_deep_link():
     assert "View in Telegram" in sent_alert
 
 
+def test_invariant_22_target_rollover_success():
+    """Verify Invariant 22: when TP1 is passed, rollover to TP2 with ratcheted SL if R:R >= 1.5."""
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    mock_ctrader.get_spot_price.return_value = {"bid": 2654.90, "ask": 2655.00}
+
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=True)
+    copier.check_market_hours = MagicMock(return_value=True)
+    copier.check_conflicts = MagicMock(return_value=False)
+    copier.execute_signal = MagicMock()
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "ssfgold/18500",
+        "post_url": "https://t.me/ssfgold/18500",
+        "text": "GOLD BUY 2650 - 2652\nSL: 2642\nTP1: 2653\nTP2: 2665"
+    }])
+    copier.state["watermarks"] = {"ssfgold": "ssfgold/18499"}
+
+    copier.poll_cycle()
+
+    # execute_signal must be called via rollover
+    assert copier.execute_signal.called
+    sig_arg, spot_arg = copier.execute_signal.call_args[0]
+    assert spot_arg == 2655.00
+    assert sig_arg["is_target_rollover"] is True
+    assert sig_arg["rollover_tp"] == 2665.0
+    assert sig_arg["sl"] == 2652.0  # Ratcheted to entry_max!
+    assert sig_arg["tps"] == [2665.0]
+
+
+def test_invariant_22_target_rollover_rejected_when_rr_insufficient():
+    """Verify Invariant 22 blocks rollover if remaining reward to TP2 is < 1.5x ratcheted risk."""
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    mock_ctrader.get_spot_price.return_value = {"bid": 2654.90, "ask": 2655.00}
+
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=False)
+    copier.check_market_hours = MagicMock(return_value=True)
+    copier.check_conflicts = MagicMock(return_value=False)
+    copier.execute_signal = MagicMock()
+    copier.send_telegram_alert = MagicMock()
+    # TP2 is 2657.0 -> remaining reward is only 2.0 pts vs 3.0 pts risk (R:R 0.67 < 1.5)
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "ssfgold/18501",
+        "post_url": "https://t.me/ssfgold/18501",
+        "text": "GOLD BUY 2650 - 2652\nSL: 2642\nTP1: 2653\nTP2: 2657"
+    }])
+    copier.state["watermarks"] = {"ssfgold": "ssfgold/18500"}
+
+    copier.poll_cycle()
+
+    # Rollover should be rejected; anti-chase skip alert must be sent
+    assert not copier.execute_signal.called
+    assert copier.send_telegram_alert.called
+    sent_alert = copier.send_telegram_alert.call_args[0][0]
+    assert "SIGNAL SKIPPED: Anti-Chase Limit Exceeded" in sent_alert
+    assert "https://t.me/ssfgold/18501" in sent_alert
+
+
 
 
 
