@@ -14,13 +14,15 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.mock_broadcast = self.patcher_broadcast.start()
         self.mock_ctrader = MagicMock()
         self.mock_ctrader.get_spot_price.return_value = {"ask": 709.50, "bid": 709.40}
-        self.engine = AutonomousExecutionEngine(ctrader_client=self.mock_ctrader)
+        self.engine = AutonomousExecutionEngine(ctrader_client=self.mock_ctrader, timeframe="15m")
         self.engine.state = {"last_trades": {}, "execution_history": [], "open_positions_meta": {}}
         # Mock active market session timestamp (Wednesday 11:00 AM EST)
         self.active_dt = pd.Timestamp("2026-09-16 11:00:00", tz="America/New_York")
         import os
+        self.orig_timeframe = os.environ.get("AUTONOMOUS_TIMEFRAME")
         self.orig_trading_enabled = os.environ.get("AUTONOMOUS_TRADING_ENABLED")
         self.orig_decommissioned = os.environ.get("DECOMMISSIONED_AUTO_TRADING")
+        os.environ["AUTONOMOUS_TIMEFRAME"] = "15m"
         os.environ["AUTONOMOUS_TRADING_ENABLED"] = "true"
         os.environ["DECOMMISSIONED_AUTO_TRADING"] = "false"
         from src.integrations.risk_guardian import guardian
@@ -33,6 +35,10 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
     def tearDown(self):
         self.patcher_broadcast.stop()
         import os
+        if self.orig_timeframe is not None:
+            os.environ["AUTONOMOUS_TIMEFRAME"] = self.orig_timeframe
+        elif "AUTONOMOUS_TIMEFRAME" in os.environ:
+            del os.environ["AUTONOMOUS_TIMEFRAME"]
         if self.orig_trading_enabled is not None:
             os.environ["AUTONOMOUS_TRADING_ENABLED"] = self.orig_trading_enabled
         elif "AUTONOMOUS_TRADING_ENABLED" in os.environ:
