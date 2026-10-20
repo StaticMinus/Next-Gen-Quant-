@@ -93,4 +93,15 @@
   * Tier 3 channels are evaluated every 15 seconds.
 - **Hybrid AI Fallback Guard:** For unstructured natural-language signals where regex produces no match, the parser triggers an AI extraction fallback to ensure zero high-conviction trades are discarded.
 
+## 15. Late-Signal & Anti-Chase Protection Invariant
+- **Strict Anti-Chase Enforcement:** If a signal provider publishes a trade call after price has already moved beyond `max_slippage` (2.50 pts for Gold / 12 pips for FX), the trade MUST remain blocked.
+- **Never Widen SL to Chase:** Never chase a late signal if doing so expands the real risk beyond the maximum allowable loss per trade. Entering late degrades the Risk-to-Reward ratio and increases the probability of immediate drawdown on normal market retracements.
+- **Rejection Notification:** Always dispatch a clear explanation specifying the exact entry distance and why capital was preserved so the operator understands why the trade was skipped.
+
+## 16. Trend-Alignment & Counter-Trend Scalp Protection
+- **Multi-Timeframe Trend Coherence:** When executing single-target scalps (e.g. from intraday providers like `ssfgold`), orders must not conflict with dominant higher-timeframe momentum (M15/H1 trend).
+- **Hard Stop-Loss Integrity:** All scalp orders must maintain their strict stop-loss boundaries; never widen stops on counter-trend setups. In high-volatility sessions (e.g. London Open), counter-trend setups must be subject to tighter slippage tolerances.
+
+
+
 

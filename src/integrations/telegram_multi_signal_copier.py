@@ -1104,6 +1104,12 @@ class TelegramMultiSignalCopier:
                     dist_from_zone = curr_spot - e_max
 
                 if dist_from_zone > params["max_slippage"]:
+                    orig_sl = sig.get("sl")
+                    sl_risk_str = ""
+                    if orig_sl:
+                        expanded_risk = abs(curr_spot - orig_sl)
+                        sl_risk_str = f"\n⚠️ <b>Risk Warning:</b> Chasing would expand SL risk to {expanded_risk:.2f} pts"
+
                     logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone} from entry zone (max {params['max_slippage']}). Skipping.")
                     if not self.dry_run:
                         self.send_telegram_alert(
@@ -1111,7 +1117,7 @@ class TelegramMultiSignalCopier:
                             f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
                             f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                             f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
-                            f"📏 <b>Distance:</b> {dist_from_zone:.2f} pts (Max Allowed: {params['max_slippage']})\n"
+                            f"📏 <b>Distance:</b> {dist_from_zone:.2f} pts (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"
                             f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing bad market pricing."
                         )
                     continue
