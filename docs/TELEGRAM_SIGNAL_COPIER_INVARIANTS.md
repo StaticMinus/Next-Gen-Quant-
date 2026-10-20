@@ -111,7 +111,10 @@
 - **Strict Markdown Sanitization:** Markdown files, chat transcripts, session retrospectives, and configuration examples must never record plain-text credentials, bot tokens, or API secrets.
 - **Automated Masking:** All token signatures must be substituted with `[REDACTED_...]` placeholders prior to staging or committing to git.
 
-
-
-
+## 19. Directional Anti-Chase & Discount Scalping Invariant
+- **Directional Asymmetry (No Symmetric Penalization):** Anti-chase limits must strictly operate directionally relative to the Take Profit target.
+  - **Adverse Chase towards TP:** For a BUY, if live spot price has surged above entry towards TP by more than `max_slippage` (2.50 pts Gold / 12 pips FX), the order MUST be blocked to prevent adverse chasing. For a SELL, if spot has collapsed below entry towards TP, it must be blocked.
+  - **Favorable Discount Entries (Dips & Scalps):** For a BUY, if live spot price has dipped below the published entry, this is a **discount / pullback** entry providing a superior Risk-to-Reward ratio (tighter stop, bigger target). As long as market spot has not breached the signal's Stop Loss (+ safety buffer), the trade MUST be accepted and filled at the advantageous discounted price.
+  - **Favorable Premium Entries (Rallies):** For a SELL, if live spot price has rallied above the published entry, it must be accepted at the higher premium price as long as the Stop Loss is intact.
+- **Pre-Entry Stop Loss Invalidation:** If market price has already reached or breached the signal's Stop Loss prior to execution, the signal is considered pre-invalidated and aborted immediately with an invalidation alert.
 

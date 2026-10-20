@@ -1117,14 +1117,56 @@ class TelegramMultiSignalCopier:
                 curr_spot = float(spot["ask"] if side == "BUY" else spot["bid"])
                 params = self.get_asset_parameters(symbol)
 
-                # Check if price is within acceptable distance from entry range
+                # Check if price is within acceptable distance from entry range (Directional Anti-Chase)
                 e_min = sig["entry_min"]
                 e_max = sig["entry_max"]
+                raw_sl = sig.get("sl")
                 dist_from_zone = 0.0
-                if curr_spot < e_min:
-                    dist_from_zone = e_min - curr_spot
-                elif curr_spot > e_max:
-                    dist_from_zone = curr_spot - e_max
+
+                if side == "BUY":
+                    if curr_spot > e_max:
+                        # Price is running away upwards towards TP (Adverse Chasing)
+                        dist_from_zone = curr_spot - e_max
+                    elif curr_spot < e_min:
+                        # Price is at a discount (favorable dip for scalping!)
+                        if raw_sl and curr_spot <= (raw_sl + params["be_buffer"]):
+                            # Price dipped too far and has breached or reached the Stop Loss
+                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
+                            if not self.dry_run:
+                                self.send_telegram_alert(
+                                    f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
+                                    f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                                    f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
+                                    f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
+                                    f"🛡️ <b>SL Level:</b> {raw_sl}\n"
+                                    f"⚠️ <b>Status:</b> Setup aborted because market reached SL prior to entry."
+                                )
+                            continue
+                        else:
+                            # Valid discount scalp entry!
+                            dist_from_zone = 0.0
+                else:  # SELL
+                    if curr_spot < e_min:
+                        # Price is running away downwards towards TP (Adverse Chasing)
+                        dist_from_zone = e_min - curr_spot
+                    elif curr_spot > e_max:
+                        # Price rallied into a premium (favorable rally for selling!)
+                        if raw_sl and curr_spot >= (raw_sl - params["be_buffer"]):
+                            # Price spiked too high and reached Stop Loss
+                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
+                            if not self.dry_run:
+                                self.send_telegram_alert(
+                                    f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
+                                    f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                                    f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
+                                    f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
+                                    f"🛡️ <b>SL Level:</b> {raw_sl}\n"
+                                    f"⚠️ <b>Status:</b> Setup aborted because market reached SL prior to entry."
+                                )
+                            continue
+                        else:
+                            # Valid premium scalp entry!
+                            dist_from_zone = 0.0
 
                 if dist_from_zone > params["max_slippage"]:
                     orig_sl = sig.get("sl")
@@ -1133,15 +1175,15 @@ class TelegramMultiSignalCopier:
                         expanded_risk = abs(curr_spot - orig_sl)
                         sl_risk_str = f"\n⚠️ <b>Risk Warning:</b> Chasing would expand SL risk to {expanded_risk:.2f} pts"
 
-                    logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone} from entry zone (max {params['max_slippage']}). Skipping.")
+                    logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone:.2f} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
                     if not self.dry_run:
                         self.send_telegram_alert(
                             f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n\n"
                             f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
                             f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                             f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
-                            f"📏 <b>Distance:</b> {dist_from_zone:.2f} pts (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"
-                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing bad market pricing."
+                            f"📏 <b>Adverse Distance:</b> +{dist_from_zone:.2f} pts towards TP (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"
+                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing after price has already run away."
                         )
                     continue
 

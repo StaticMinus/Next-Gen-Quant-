@@ -104,10 +104,22 @@ class TestTelegramGoldCopier(unittest.TestCase):
             "TP3: 4260\n"
             "SL: 4386"
         )
-        # Price has already dumped to 4253.0 (> 2.50 pts from 4280)
+        # Price has already dumped to 4253.0 (> 2.50 pts from 4280 towards TP)
         sig, reason = self.copier.parse_and_validate_signal(msg, current_spot=4253.0)
         self.assertIsNone(sig)
         self.assertIn("Anti-Chase", reason)
+
+    def test_anti_chase_allows_discount_entry(self):
+        msg = (
+            "#XAUUSD  BUY  4250\n"
+            "TP1: 4258\n"
+            "SL: 4240"
+        )
+        # Price dipped to 4246.0 (4.0 pts below entry, but safely above SL 4240)
+        sig, reason = self.copier.parse_and_validate_signal(msg, current_spot=4246.0)
+        self.assertEqual(reason, "OK")
+        self.assertIsNotNone(sig)
+        self.assertEqual(sig["side"], "BUY")
 
     def test_execute_creates_two_tickets_tp1_tp2(self):
         sig = {

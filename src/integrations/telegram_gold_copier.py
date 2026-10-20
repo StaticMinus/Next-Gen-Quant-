@@ -232,11 +232,26 @@ class TelegramGoldCopier:
             # Safe Clamped Stop Loss (max 10 points risk)
             safe_sl = min(raw_sl, entry + MAX_SL_DISTANCE_POINTS)
 
-        # Anti-Chase / Price Slippage Guard (only if live current_spot is provided)
+        # Directional Anti-Chase / Scalp Price Protection Guard
         if current_spot is not None:
-            slippage = abs(current_spot - entry)
-            if slippage > MAX_SLIPPAGE_TOLERANCE:
-                return None, f"Anti-Chase: Spot {current_spot:.2f} is {slippage:.2f} pts from Entry {entry:.2f} (max {MAX_SLIPPAGE_TOLERANCE})"
+            if side == "BUY":
+                if current_spot > entry:
+                    chase_dist = current_spot - entry
+                    if chase_dist > MAX_SLIPPAGE_TOLERANCE:
+                        return None, f"Anti-Chase: Spot {current_spot:.2f} is {chase_dist:.2f} pts above Entry {entry:.2f} (chasing towards TP, max {MAX_SLIPPAGE_TOLERANCE})"
+                elif current_spot < entry:
+                    # Discount / Dip entry! Check if SL was breached
+                    if current_spot <= safe_sl:
+                        return None, f"Signal Invalidation: Spot {current_spot:.2f} has reached or breached SL {safe_sl:.2f}"
+            else:  # SELL
+                if current_spot < entry:
+                    chase_dist = entry - current_spot
+                    if chase_dist > MAX_SLIPPAGE_TOLERANCE:
+                        return None, f"Anti-Chase: Spot {current_spot:.2f} is {chase_dist:.2f} pts below Entry {entry:.2f} (chasing downwards towards TP, max {MAX_SLIPPAGE_TOLERANCE})"
+                elif current_spot > entry:
+                    # Premium / Pullback entry! Check if SL was breached
+                    if current_spot >= safe_sl:
+                        return None, f"Signal Invalidation: Spot {current_spot:.2f} has reached or breached SL {safe_sl:.2f}"
 
         # Sub-5ms Micro-Momentum Confluence Filter (Upgrade 4)
         if getattr(self, "price_history", None) and len(self.price_history) >= 5:

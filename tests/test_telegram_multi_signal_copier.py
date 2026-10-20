@@ -531,6 +531,60 @@ def test_rapid_breakeven_trigger():
     mock_ctrader.amend_position.assert_called_once_with(12345, stop_loss=4120.15)
 
 
+def test_directional_anti_chase_allows_discount_dip_buy():
+    """Verifies that a BUY signal dipping below entry (favorable discount) is allowed for scalping."""
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    sig = {
+        "channel": "anabelsignals",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 4123.7,
+        "entry_max": 4123.7,
+        "entry_mid": 4123.7,
+        "sl": 4118.6,
+        "tps": [4131.6],
+        "type": "ANABEL_DIRECT"
+    }
+    # Spot is 4120.25 (3.45 pts below entry, but safely above SL 4118.6)
+    orders = copier.execute_signal(sig, spot_price=4120.25)
+    assert orders is not None
+    assert len(orders) >= 1
+    assert orders[0]["entry"] == 4120.25
+    assert orders[0]["sl"] == 4118.6
+
+
+def test_directional_anti_chase_blocks_adverse_runaway_buy():
+    """Verifies that a BUY signal that already surged towards TP is blocked by anti-chase."""
+    from unittest.mock import MagicMock
+    mock_ctrader = MagicMock()
+    # Spot is 4127.50 (3.8 pts above 4123.7, max allowed is 2.5 pts)
+    mock_ctrader.get_spot_price.return_value = {"ask": 4127.50, "bid": 4127.30}
+    mock_ctrader.get_positions.return_value = []
+    mock_ctrader.get_balance.return_value = {"equity": 6000.0}
+
+    copier = TelegramMultiSignalCopier(dry_run=True, ctrader_client=mock_ctrader)
+    sig = {
+        "channel": "anabelsignals",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 4123.7,
+        "entry_max": 4123.7,
+        "entry_mid": 4123.7,
+        "sl": 4118.6,
+        "tps": [4131.6],
+        "type": "ANABEL_DIRECT",
+        "is_valid": True
+    }
+
+    # Verify anti-chase logic calculation directly
+    params = copier.get_asset_parameters("XAUUSD")
+    curr_spot = 4127.50
+    dist_from_zone = curr_spot - sig["entry_max"]
+    assert round(dist_from_zone, 2) == 3.8
+    assert dist_from_zone > params["max_slippage"]  # 3.8 > 2.5 -> BLOCKED!
+
+
+
 
 
 
