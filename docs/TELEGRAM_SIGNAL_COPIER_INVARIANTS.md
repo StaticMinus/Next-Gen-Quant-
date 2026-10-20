@@ -102,6 +102,16 @@
 - **Multi-Timeframe Trend Coherence:** When executing single-target scalps (e.g. from intraday providers like `ssfgold`), orders must not conflict with dominant higher-timeframe momentum (M15/H1 trend).
 - **Hard Stop-Loss Integrity:** All scalp orders must maintain their strict stop-loss boundaries; never widen stops on counter-trend setups. In high-volatility sessions (e.g. London Open), counter-trend setups must be subject to tighter slippage tolerances.
 
+## 17. Universal Multi-Channel Profit Protection Invariant
+- **Cross-Channel Uniformity:** The Rapid Breakeven Armor (+15 pips) and Micro-Banker (+20 pips) rules apply universally across ALL 25 monitored channels, regardless of provider tier or signal format.
+- **Zero Green-to-Red Mandate:** No trade across any asset class that achieves +15 pips of floating profit may ever be permitted to close at a loss. As soon as +15 pips is touched, the broker stop-loss must ratchet to Breakeven (+ commission cushion).
+- **Universal Single-Target Splitting:** Any signal providing only a single distant take-profit target must be automatically decomposed into a dual-ticket structure: Ticket 1 securing realized cash at +20 pips, and Ticket 2 riding the swing.
+
+## 18. Zero-Leak Credential Isolation Invariant
+- **Strict Markdown Sanitization:** Markdown files, chat transcripts, session retrospectives, and configuration examples must never record plain-text credentials, bot tokens, or API secrets.
+- **Automated Masking:** All token signatures must be substituted with `[REDACTED_...]` placeholders prior to staging or committing to git.
+
+
 
 
 
