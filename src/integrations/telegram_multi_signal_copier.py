@@ -665,7 +665,8 @@ class TelegramMultiSignalCopier:
                 clean_text = re.sub(r'<br\s*/?>', '\n', raw_html)
                 clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
                 if clean_text:
-                    messages.append({"post_id": pid, "text": clean_text})
+                    post_url = f"https://t.me/{pid}"
+                    messages.append({"post_id": pid, "post_url": post_url, "text": clean_text})
             return messages
         except Exception as e:
             logger.error(f"Error fetching channel {channel_id}: {e}")
@@ -860,9 +861,11 @@ class TelegramMultiSignalCopier:
             # Telegram broadcast to David (LIVE ONLY - never broadcast simulated dry-run orders)
             if not self.dry_run:
                 tps_str = f"TP1: {tps[0]}" + (f" | Runner TP: {tps[-1]} ({len(tps)} targets)" if len(tps) > 1 else "")
+                post_url = sig.get("post_url") or (f"https://t.me/{sig.get('post_id')}" if sig.get("post_id") else None)
+                post_link_str = f"\n🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>" if post_url else ""
                 alert_msg = (
                     f"⚡ <b>NEW SIGNAL EXECUTED</b>\n"
-                    f"📡 <b>Source:</b> {channel}\n"
+                    f"📡 <b>Source:</b> {channel}{post_link_str}\n"
                     f"📈 <b>Action:</b> {side} {symbol}\n"
                     f"📍 <b>Fill Price:</b> {entry}\n"
                     f"🛡️ <b>Stop Loss:</b> {safe_sl}\n"
@@ -1135,12 +1138,16 @@ class TelegramMultiSignalCopier:
 
             for p in new_posts:
                 pid = p["post_id"]
+                post_url = p.get("post_url") or f"https://t.me/{pid}"
                 watermarks[ch_id] = pid
                 self.save_state()
 
                 sig = MultiChannelSignalParser.parse_message(p["text"], ch_id)
                 if not sig:
                     continue
+
+                sig["post_id"] = pid
+                sig["post_url"] = post_url
 
                 # 1. Validation Check (Directional Coherence & Integrity)
                 if not sig.get("is_valid", True):
@@ -1150,6 +1157,7 @@ class TelegramMultiSignalCopier:
                         self.send_telegram_alert(
                             f"⚠️ <b>SIGNAL BLOCKED: Malformed / Inverted Signal</b>\n\n"
                             f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
                             f"📈 <b>Action:</b> {sig.get('side')} {sig.get('symbol')} @ {sig.get('entry_mid')}\n"
                             f"❌ <b>Reason:</b> {err}\n"
                             f"🛡️ <b>Protection:</b> Blocked automatically to protect your capital."
@@ -1169,6 +1177,7 @@ class TelegramMultiSignalCopier:
                         self.send_telegram_alert(
                             f"🛡️ <b>CONFLICT SHIELD ACTIVATED</b>\n\n"
                             f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
                             f"📈 <b>Attempted:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                             f"⚠️ <b>Reason:</b> Opposing position already active on account.\n"
                             f"🛡️ <b>Action:</b> Order skipped to avoid hedging conflict."
@@ -1203,6 +1212,7 @@ class TelegramMultiSignalCopier:
                                 self.send_telegram_alert(
                                     f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
                                     f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                                    f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
                                     f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                                     f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
                                     f"🛡️ <b>SL Level:</b> {raw_sl}\n"
@@ -1225,6 +1235,7 @@ class TelegramMultiSignalCopier:
                                 self.send_telegram_alert(
                                     f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
                                     f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                                    f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
                                     f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                                     f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
                                     f"🛡️ <b>SL Level:</b> {raw_sl}\n"
@@ -1247,6 +1258,7 @@ class TelegramMultiSignalCopier:
                         self.send_telegram_alert(
                             f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n\n"
                             f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
+                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
                             f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
                             f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
                             f"📏 <b>Adverse Distance:</b> +{dist_from_zone:.2f} pts towards TP (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"

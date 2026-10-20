@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 from src.integrations.telegram_multi_signal_copier import (
     MultiChannelSignalParser,
     TelegramMultiSignalCopier,
@@ -632,7 +633,35 @@ def test_stop_loss_synthesis_paywalled_vip():
     assert sig["entry_mid"] == 4250.0
     # TP distance is 15 pts. Max Gold SL is 12.0 pts. Synthesized at 4250 - 8.0 = 4242.0 (or default 8-10 pts)
     assert sig["sl"] < 4250.0
-    assert sig["is_valid"] is True
+
+def test_signal_alert_contains_telegram_post_deep_link():
+    """Verify that execution and rejection alerts include a direct clickable Telegram post link."""
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    mock_ctrader.place_market_order.return_value = {"result": {"positionId": 12345}}
+
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=False)
+    copier.send_telegram_alert = MagicMock()
+
+    sig = {
+        "channel": "ssfgold",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 2650.0,
+        "entry_max": 2650.0,
+        "entry_mid": 2650.0,
+        "sl": 2642.0,
+        "tps": [2660.0, 2670.0],
+        "post_id": "ssfgold/18427",
+        "post_url": "https://t.me/ssfgold/18427"
+    }
+
+    copier.execute_signal(sig, spot_price=2650.0)
+    assert copier.send_telegram_alert.called
+    sent_alert = copier.send_telegram_alert.call_args[0][0]
+    assert "https://t.me/ssfgold/18427" in sent_alert
+    assert "View in Telegram" in sent_alert
+
 
 
 

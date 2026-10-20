@@ -33,6 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip setuptools wheel
+          pip install pyarrow fastparquet
           pip install -e ".[dev,llm]"
 
       - name: Run linter (ruff)
@@ -78,6 +79,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
+          pip install pyarrow fastparquet
           pip install -e ".[dev,llm]"
 
       - name: Verify tool registry

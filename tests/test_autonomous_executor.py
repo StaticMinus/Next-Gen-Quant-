@@ -15,6 +15,7 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         self.mock_ctrader = MagicMock()
         self.mock_ctrader.get_spot_price.return_value = {"ask": 709.50, "bid": 709.40}
         self.engine = AutonomousExecutionEngine(ctrader_client=self.mock_ctrader)
+        self.engine.state = {"last_trades": {}, "execution_history": [], "open_positions_meta": {}}
         # Mock active market session timestamp (Wednesday 11:00 AM EST)
         self.active_dt = pd.Timestamp("2026-09-16 11:00:00", tz="America/New_York")
         import os
@@ -238,7 +239,7 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
 
         # Record position entered 95 minutes ago (5700s)
         self.engine.state["open_positions_meta"] = {
-            "778": {"entry_time": now - 5700, "entry_price": 5000.0, "symbol": "SPX500"}
+            "778": {"entry_time": now - 5700, "entry_price": 5000.0, "symbol": "SPX500", "breakeven_locked": True}
         }
         positions = [
             {"positionId": 778, "symbolId": 113, "symbolName": "SPX500", "entryPrice": 5000.0, "tradeSide": "BUY"}
@@ -495,7 +496,8 @@ class TestAutonomousExecutionEngine(unittest.TestCase):
         mock_df = pd.DataFrame({"close": prices, "open": prices, "high": prices, "low": prices}, index=idx)
         self.mock_ctrader.get_spot_price.return_value = {"ask": 490.00, "bid": 489.90}
 
-        with patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
+        test_univ = [{"ticker": "SPY", "ctrader_symbol": "SPX500", "name": "S&P 500 Index", "target_lots": None, "max_risk_usd": 25.0}]
+        with patch("src.integrations.autonomous_executor.TARGET_UNIVERSE", test_univ), patch("src.integrations.autonomous_executor.fetch_intraday_bars", return_value=mock_df):
             # Evaluated at 11:45:30 (30 seconds after close -> Fresh!)
             fresh_eval_time = idx[-1] + pd.Timedelta(minutes=15, seconds=30)
             trades_fresh = self.engine.run_cycle(dry_run=True, dt_override=fresh_eval_time)

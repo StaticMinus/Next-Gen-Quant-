@@ -130,3 +130,9 @@
     * **Crude Oil (`USOIL`):** 1.00 point
 - **Full Downstream Protection:** The synthesized Stop Loss undergoes the identical Rapid Breakeven Armor (+15 pips) and Dynamic Trailing Stop protections, guaranteeing that capital is always strictly guarded.
 
+## 21. Universal Signal Provenance & Clickable Deep-Linking Invariant
+- **Audit-Grade Traceability Directive:** Every signal ingested from Telegram across all 25 channels must capture and persist its origin `post_id` (e.g. `ssfgold/18427`) and formatted URI (`https://t.me/{post_id}`).
+- **Human-in-the-Loop Instant Verification:** Every user-facing Telegram alert—including new order executions, conflict shield blocks, anti-chase skips, and parser malfunction/validation blocks—MUST incorporate a direct clickable link (`<a href="https://t.me/{post_id}">View in Telegram</a>`).
+- **Zero-Friction Auditing:** The operator must be capable of tapping the notification in Telegram and jumping directly into the exact provider message to inspect chart attachments, commentary, or signal revisions without manually searching channel histories.
+
+
