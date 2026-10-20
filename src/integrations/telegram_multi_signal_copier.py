@@ -609,9 +609,11 @@ class TelegramMultiSignalCopier:
         if "XAU" in sym or "GOLD" in sym:
             return {
                 "lot_size": float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")),
-                "max_sl_distance": 10.0,
+                "max_sl_distance": 12.0,          # 12.0 pts Gold tolerance
                 "max_slippage": 2.50,
                 "be_buffer": 0.30,
+                "scalp_tp1_dist": 2.00,           # 20 pips micro-banker for scalps
+                "scalp_be_activation": 1.50,      # Lock BE at +15 pips gain
                 "trailing_distance": 3.00,       # 30 pips / 3.0 pts Gold
                 "trailing_activation": 4.00,     # Activate trailing once +4.0 pts in profit
                 "pip_multiplier": 1.0
@@ -622,6 +624,8 @@ class TelegramMultiSignalCopier:
                 "max_sl_distance": 0.60,
                 "max_slippage": 0.15,
                 "be_buffer": 0.02,
+                "scalp_tp1_dist": 0.20,           # 20 pips
+                "scalp_be_activation": 0.15,      # 15 pips
                 "trailing_distance": 0.30,       # 30 pips
                 "trailing_activation": 0.40,     # Activate trailing once +40 pips in profit
                 "pip_multiplier": 100.0
@@ -632,6 +636,8 @@ class TelegramMultiSignalCopier:
                 "max_sl_distance": 500.0,
                 "max_slippage": 50.0,
                 "be_buffer": 20.0,
+                "scalp_tp1_dist": 200.0,
+                "scalp_be_activation": 150.0,
                 "trailing_distance": 150.0,
                 "trailing_activation": 250.0,
                 "pip_multiplier": 1.0
@@ -642,6 +648,8 @@ class TelegramMultiSignalCopier:
                 "max_sl_distance": 1.50,
                 "max_slippage": 0.25,
                 "be_buffer": 0.10,
+                "scalp_tp1_dist": 0.40,
+                "scalp_be_activation": 0.30,
                 "trailing_distance": 0.50,
                 "trailing_activation": 0.80,
                 "pip_multiplier": 1.0
@@ -652,6 +660,8 @@ class TelegramMultiSignalCopier:
                 "max_sl_distance": 0.0050,  # 50 pips
                 "max_slippage": 0.0012,     # 12 pips
                 "be_buffer": 0.0002,        # 2 pips
+                "scalp_tp1_dist": 0.0020,   # 20 pips
+                "scalp_be_activation": 0.0015, # 15 pips
                 "trailing_distance": 0.0030,     # 30 pips
                 "trailing_activation": 0.0040,   # Activate trailing once +40 pips in profit
                 "pip_multiplier": 10000.0
@@ -697,16 +707,28 @@ class TelegramMultiSignalCopier:
         # 2-Ticket Split Architecture ("Banker + Trailing Runner"):
         # Ticket 1 (0.07 lots) targets TP1 to bank immediate profit into balance.
         # Ticket 2 (0.07 lots) targets the deepest target (tps[-1]) to capture massive swing runs with trailing protection.
+        # For single-target scalp calls (e.g. ssfgold) where the advertised TP is wide (> 1.25x scalp_tp1_dist),
+        # synthetically split into Ticket 1 Micro-Banker (+20 pips) + Ticket 2 Full Target Runner so early gains are locked!
         has_multi_targets = len(tps) > 1
-        t1_vol = lot_size
-        t2_vol = lot_size if has_multi_targets else 0.0
+        scalp_tp1 = params.get("scalp_tp1_dist", 2.0)
+        dist_to_tp = abs(tps[0] - entry)
 
-        tickets_plan = [{"ticket": 1, "vol": max(0.01, t1_vol), "tp": tps[0]}]
-        if has_multi_targets and t2_vol >= 0.01:
-            tickets_plan.append({"ticket": 2, "vol": t2_vol, "tp": tps[-1]})
+        if has_multi_targets:
+            tickets_plan = [
+                {"ticket": 1, "vol": max(0.01, lot_size), "tp": tps[0]},
+                {"ticket": 2, "vol": max(0.01, lot_size), "tp": tps[-1]}
+            ]
+        elif dist_to_tp > (scalp_tp1 * 1.25):
+            t1_tp = round(entry + scalp_tp1 if side == "BUY" else entry - scalp_tp1, 5)
+            tickets_plan = [
+                {"ticket": 1, "vol": max(0.01, lot_size), "tp": t1_tp},
+                {"ticket": 2, "vol": max(0.01, lot_size), "tp": tps[0]}
+            ]
+        else:
+            tickets_plan = [{"ticket": 1, "vol": max(0.01, lot_size), "tp": tps[0]}]
 
         total_vol = round(sum(t["vol"] for t in tickets_plan), 2)
-        logger.info(f"🚀 Executing {side} {symbol} ({len(tickets_plan)} tickets • {total_vol} total lots) | Entry ~{entry} | SL: {safe_sl} | TP1: {tps[0]} | Runner TP: {tps[-1]} | Channel: {channel}")
+        logger.info(f"🚀 Executing {side} {symbol} ({len(tickets_plan)} tickets • {total_vol} total lots) | Entry ~{entry} | SL: {safe_sl} | TP1: {tickets_plan[0]['tp']} | Runner TP: {tickets_plan[-1]['tp']} | Channel: {channel}")
 
         for t_plan in tickets_plan:
             t_num = t_plan["ticket"]
@@ -885,8 +907,9 @@ class TelegramMultiSignalCopier:
                 curr_price = float(spot["bid"] if side == "BUY" else spot["ask"])
                 gain = (curr_price - entry) if side == "BUY" else (entry - curr_price)
                 half_tp_distance = abs(pos.get("tp", entry) - entry) * 0.50
+                scalp_be_thresh = params.get("scalp_be_activation", half_tp_distance)
 
-                if gain >= half_tp_distance:
+                if gain >= half_tp_distance or gain >= scalp_be_thresh:
                     be_price = round(entry + params["be_buffer"] if side == "BUY" else entry - params["be_buffer"], 5)
                     try:
                         self.ctrader.amend_position(pos_id, stop_loss=be_price)

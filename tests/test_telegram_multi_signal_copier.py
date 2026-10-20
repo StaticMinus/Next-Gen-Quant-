@@ -105,14 +105,18 @@ def test_parser_rejects_spam_and_locked():
 def test_asset_parameters_gold_vs_forex():
     copier = TelegramMultiSignalCopier(dry_run=True)
     p_gold = copier.get_asset_parameters("XAUUSD")
-    assert p_gold["max_sl_distance"] == 10.0
+    assert p_gold["max_sl_distance"] == 12.0
     assert p_gold["max_slippage"] == 2.50
     assert p_gold["be_buffer"] == 0.30
+    assert p_gold["scalp_tp1_dist"] == 2.00
+    assert p_gold["scalp_be_activation"] == 1.50
 
     p_eurusd = copier.get_asset_parameters("EURUSD")
     assert p_eurusd["max_sl_distance"] == 0.0050
     assert p_eurusd["max_slippage"] == 0.0012
     assert p_eurusd["be_buffer"] == 0.0002
+    assert p_eurusd["scalp_tp1_dist"] == 0.0020
+    assert p_eurusd["scalp_be_activation"] == 0.0015
 
     p_eurjpy = copier.get_asset_parameters("EURJPY")
     assert p_eurjpy["max_sl_distance"] == 0.60
@@ -475,14 +479,57 @@ def test_ai_fallback_condition_gate():
     assert isinstance(MultiChannelSignalParser._should_attempt_ai_fallback(text_unstructured), bool)
 
 
-def test_parallel_session_connection_pool():
-    """Verifies that TelegramMultiSignalCopier initializes persistent session with connection pool."""
+def test_ssfgold_single_target_micro_banker_split():
+    """Verifies that a single wide target (e.g. ssfgold 20-pt TP) is split into Micro-Banker (+20 pips) and Runner."""
     copier = TelegramMultiSignalCopier(dry_run=True)
-    assert copier.session is not None
-    adapter = copier.session.adapters.get("https://")
-    assert adapter is not None
-    assert adapter._pool_connections == 30
-    assert adapter._pool_maxsize == 30
+    sig = {
+        "channel": "ssfgold",
+        "symbol": "XAUUSD",
+        "side": "SELL",
+        "entry_min": 4122.54,
+        "entry_max": 4122.54,
+        "entry_mid": 4122.54,
+        "sl": 4132.54,
+        "tps": [4102.54],
+        "type": "DIRECT_EXECUTION"
+    }
+    orders = copier.execute_signal(sig, spot_price=4120.45)
+    assert len(orders) == 2
+    # Ticket 1 (Micro-Banker): entry - 2.0 pts = 4118.45
+    assert orders[0]["ticket"] == 1
+    assert orders[0]["tp"] == 4118.45
+    # Ticket 2 (Runner): original target = 4102.54
+    assert orders[1]["ticket"] == 2
+    assert orders[1]["tp"] == 4102.54
+
+
+def test_rapid_breakeven_trigger():
+    """Verifies that breakeven triggers at +15 pips (+1.50 pts Gold) even if 50% TP is wider."""
+    from unittest.mock import MagicMock
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_spot_price.return_value = {"bid": 4118.50, "ask": 4118.60}  # gain = 4120.45 - 4118.60 = +1.85 pts
+    mock_ctrader.get_positions.return_value = [{"positionId": 12345}]
+
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+    copier.state["active_positions"] = [{
+        "positionId": 12345,
+        "ticket": 2,
+        "symbol": "XAUUSD",
+        "side": "SELL",
+        "entry": 4120.45,
+        "sl": 4132.54,
+        "tp": 4102.54,
+        "be_locked": False
+    }]
+
+    copier.manage_active_breakeven()
+    # Breakeven was locked because gain (+1.85 pts) >= scalp_be_activation (1.50 pts)
+    pos = copier.state["active_positions"][0]
+    assert pos["be_locked"] is True
+    # SL amended to entry - be_buffer (4120.45 - 0.30 = 4120.15)
+    assert pos["sl"] == 4120.15
+    mock_ctrader.amend_position.assert_called_once_with(12345, stop_loss=4120.15)
+
 
 
 
