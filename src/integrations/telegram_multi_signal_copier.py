@@ -118,17 +118,47 @@ class MultiChannelSignalParser:
         return s
 
     @classmethod
+    def get_default_sl_distance(cls, symbol: str, entry: float, tps: Optional[List[float]] = None) -> float:
+        """
+        Invariant 20: Stop-Loss Synthesis Guard.
+        Calculates a safe default Stop Loss distance if the provider omitted SL.
+        Uses 1:1 R:R of TP1 if reasonable, else standardized asset risk parameters.
+        """
+        sym = symbol.upper()
+        if "XAU" in sym or "GOLD" in sym:
+            def_dist = 8.0  # 80 pips Gold
+            max_dist = 12.0
+        elif "BTC" in sym:
+            def_dist = 400.0
+            max_dist = 600.0
+        elif "OIL" in sym:
+            def_dist = 1.0
+            max_dist = 1.5
+        elif "JPY" in sym:
+            def_dist = 0.40  # 40 pips JPY
+            max_dist = 0.60
+        else:
+            # Forex Major / Cross (e.g. EURUSD, EURCAD, GBPUSD)
+            def_dist = 0.0035  # 35 pips FX
+            max_dist = 0.0050
+
+        # If a valid TP is provided, synthesize SL to maintain a favorable 1:1 risk-to-reward
+        if tps and len(tps) > 0 and tps[0] is not None:
+            tp_dist = abs(tps[0] - entry)
+            if 0 < tp_dist <= max_dist:
+                return round(tp_dist, 5)
+
+        return round(def_dist, 5)
+
+    @classmethod
     def validate_directional_coherence(cls, sig: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """
         Directional Target Coherence Invariant:
         Ensures Take Profit targets and Stop Losses are mathematically valid for the order side.
         - BUY: TP must be > entry, SL must be < entry
         - SELL: TP must be < entry, SL must be > entry
-        - Rejects signals where stop loss was paywalled (e.g. VIP GROUP)
+        - Invariant 20: If Stop Loss was omitted or paywalled, automatically synthesize safety SL.
         """
-        if sig.get("sl_paywalled"):
-            return False, "Provider paywalled Stop Loss (e.g. 'VIP GROUP') without a numerical exit level"
-
         side = sig.get("side", "").upper()
         entry = sig.get("entry_mid", 0.0)
         tps = sig.get("tps", [])
@@ -136,6 +166,14 @@ class MultiChannelSignalParser:
 
         if not side or entry <= 0:
             return False, "Missing side or entry price"
+
+        # Invariant 20: Auto-synthesize Stop Loss if missing or paywalled
+        if sl is None or sig.get("sl_paywalled"):
+            sl_dist = cls.get_default_sl_distance(sig.get("symbol", "XAUUSD"), entry, tps)
+            sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+            sig["sl"] = sl
+            sig["sl_synthesized"] = True
+            sig["sl_paywalled"] = False
 
         if side == "BUY":
             if sl is not None and sl >= entry:
@@ -383,10 +421,14 @@ class MultiChannelSignalParser:
         m_tp_tag = re.findall(r"(?:Take\s*Profit|Target(?:\s*Level)?|TP\d?|Goal)\s*(?:[123¹²³]|\d(?!\d))?\s*[:=\-]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
 
         # 5. TAG STRUCTURED FORMAT (EliteTradingSignals, ProSignalsFx, xauusd_signals, TopTradingSignals, BestForexSignals)
-        if m_entry_tag and m_sl_tag and side:
+        if m_entry_tag and side:
             entry = float(m_entry_tag.group(1))
-            sl = float(m_sl_tag.group(1))
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,
@@ -401,20 +443,25 @@ class MultiChannelSignalParser:
 
         # 6. ZONE RANGE FORMAT (PrimeGoldSignals, EliteForexTradingSignals)
         m_zone = re.search(r"(?:between\s+(\d+(?:\.\d+)?)\s+till\s+(\d+(?:\.\d+)?)|[\(@]?\s*(\d+(?:\.\d+)?)\s*[\-]\s*(\d+(?:\.\d+)?)\)?)", text_clean, re.IGNORECASE)
-        if m_zone and side and m_sl_tag:
+        if m_zone and side:
             if m_zone.group(1) and m_zone.group(2):
                 e1, e2 = float(m_zone.group(1)), float(m_zone.group(2))
             else:
                 e1, e2 = float(m_zone.group(3)), float(m_zone.group(4))
-            sl = float(m_sl_tag.group(1))
+            entry_mid = (e1 + e2) / 2.0
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry_mid, tps)
+                sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,
                 "side": side,
                 "entry_min": min(e1, e2),
                 "entry_max": max(e1, e2),
-                "entry_mid": (e1 + e2) / 2.0,
+                "entry_mid": entry_mid,
                 "sl": sl,
                 "tps": tps,
                 "type": "ZONE_EXECUTION"
@@ -422,10 +469,14 @@ class MultiChannelSignalParser:
 
         # 7. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
         m_at_price = re.search(r"(?:@|AT)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_at_price and side and m_sl_tag:
+        if m_at_price and side:
             entry = float(m_at_price.group(1))
-            sl = float(m_sl_tag.group(1))
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,
@@ -442,10 +493,14 @@ class MultiChannelSignalParser:
             r"(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?(?:([A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+)?(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?\s*(\d+(?:\.\d+)?)",
             text_clean, re.IGNORECASE
         )
-        if m_direct and side and m_sl_tag:
+        if m_direct and side:
             entry = float(m_direct.group(4))
-            sl = float(m_sl_tag.group(1))
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,
@@ -460,10 +515,14 @@ class MultiChannelSignalParser:
 
         # 8. NATURAL LANGUAGE FORMAT (PipChasers)
         m_nat = re.search(r"(?:current\s*price(?:\s*at)?|trading\s*on|around|level)\s*[:=\-@]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_nat and side and m_sl_tag:
+        if m_nat and side:
             entry = float(m_nat.group(1))
-            sl = float(m_sl_tag.group(1))
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,
@@ -478,10 +537,14 @@ class MultiChannelSignalParser:
 
         # 9. COMPACT SHORTHAND FORMAT (forexsignalsdaily, ImperialForexSignals, GreenForexSignals)
         m_short = re.search(r"\b(BUY|SELL)\s+(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_short and m_sl_tag:
+        if m_short:
             entry = float(m_short.group(2))
-            sl = float(m_sl_tag.group(1))
             tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
             return {
                 "channel": channel,
                 "symbol": detected_sym,

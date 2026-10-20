@@ -118,3 +118,15 @@
   - **Favorable Premium Entries (Rallies):** For a SELL, if live spot price has rallied above the published entry, it must be accepted at the higher premium price as long as the Stop Loss is intact.
 - **Pre-Entry Stop Loss Invalidation:** If market price has already reached or breached the signal's Stop Loss prior to execution, the signal is considered pre-invalidated and aborted immediately with an invalidation alert.
 
+## 20. Stop-Loss Synthesis & Unconditional Signal Ingestion Invariant
+- **Zero-Signal-Loss Directive:** Taking legitimate trading signals is our highest execution priority. A valid trade setup (valid Direction, Symbol, and Entry level) must **NEVER** be skipped simply because a provider omitted, truncated (e.g. `Stop Loss:…`), or paywalled (e.g. `SL: VIP`) the Stop Loss.
+- **Automated Risk Synthesis:** Whenever a signal arrives without an explicit numeric Stop Loss:
+  - If a Take Profit (`TP1`) is provided and within standard bounds, synthesize Stop Loss at a 1:1 risk-to-reward distance: `sl = entry - abs(tp1 - entry)` for BUY, or `entry + abs(tp1 - entry)` for SELL.
+  - If no TP is available or the TP distance is outside safety bounds, synthesize Stop Loss using standardized asset safety distances:
+    * **Gold (`XAUUSD`):** 8.0 points ($80.00 / 0.1 lots)
+    * **Forex Majors / Crosses (`EURUSD`, `EURCAD`, `GBPUSD`):** 35 pips (`0.0035`)
+    * **JPY Pairs (`USDJPY`, `GBPJPY`, `AUDJPY`):** 40 pips (`0.40`)
+    * **Crypto (`BTCUSD`):** 400.0 points
+    * **Crude Oil (`USOIL`):** 1.00 point
+- **Full Downstream Protection:** The synthesized Stop Loss undergoes the identical Rapid Breakeven Armor (+15 pips) and Dynamic Trailing Stop protections, guaranteeing that capital is always strictly guarded.
+

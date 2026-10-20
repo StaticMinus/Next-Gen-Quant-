@@ -596,6 +596,45 @@ def test_directional_anti_chase_blocks_adverse_runaway_buy():
     assert dist_from_zone > params["max_slippage"]  # 3.8 > 2.5 -> BLOCKED!
 
 
+def test_stop_loss_synthesis_when_missing():
+    """Invariant 20: Missing Stop Loss must be synthesized based on asset safety distance."""
+    text = "BUY EURUSD @ 1.0850 TP: 1.0890"
+    sig = MultiChannelSignalParser.parse_message(text, "ForexEliteSignals")
+    assert sig is not None
+    assert sig["symbol"] == "EURUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 1.0850
+    # TP distance is 0.0040 (40 pips). SL is synthesized 1:1 at 1.0850 - 0.0040 = 1.0810
+    assert sig["sl"] == 1.0810
+    assert sig["is_valid"] is True
+
+
+def test_stop_loss_synthesis_truncated_eurcad():
+    """Invariant 20: Truncated Stop Loss ('Stop Loss:…') must be synthesized cleanly."""
+    text = "#EURCAD FREE SIGNAL|SHORT🔥 Entry: 1.6044 ⭐️Stop Loss:…"
+    sig = MultiChannelSignalParser.parse_message(text, "prosignalsfxx")
+    assert sig is not None
+    assert sig["symbol"] == "EURCAD"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 1.6044
+    # Default FX risk is 0.0035 (35 pips). SL synthesized at 1.6044 + 0.0035 = 1.6079
+    assert sig["sl"] == 1.6079
+    assert sig["is_valid"] is True
+
+
+def test_stop_loss_synthesis_paywalled_vip():
+    """Invariant 20: Paywalled Stop Loss ('SL: VIP GROUP') must not block entry - synthesize SL."""
+    text = "BUY GOLD 4250 SL VIP GROUP TP 4265"
+    sig = MultiChannelSignalParser.parse_message(text, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4250.0
+    # TP distance is 15 pts. Max Gold SL is 12.0 pts. Synthesized at 4250 - 8.0 = 4242.0 (or default 8-10 pts)
+    assert sig["sl"] < 4250.0
+    assert sig["is_valid"] is True
+
+
 
 
 
