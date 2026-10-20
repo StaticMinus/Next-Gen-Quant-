@@ -318,7 +318,11 @@ class MultiChannelSignalParser:
 
         # 4. ANABELSIGNALS FORMAT:
         if channel == "anabelsignals" or "✍️" in text_clean or "anabel" in text_lower:
-            m_ana_header = re.search(r"(?:✍️)?([A-Z0-9]+)\s+.*?\s+(BUY|SELL)", text_clean, re.IGNORECASE)
+            m_ana_header = re.search(r"✍️\s*#?([A-Z0-9]+)\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
+            if not m_ana_header:
+                m_ana_header = re.search(r"#([A-Z0-9]{3,7})\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
+            if not m_ana_header:
+                m_ana_header = re.search(r"\b([A-Z0-9]{3,7})\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
             m_ana_sl = re.search(r"(?:Stop\s*Loss|My\s*Stop\s*Loss|Recommended\s*Stop\s*Loss|Safe\s*Stop\s*Loss)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_target = re.search(r"(?:Target|Goal)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)

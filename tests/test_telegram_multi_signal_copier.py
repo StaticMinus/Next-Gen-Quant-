@@ -150,6 +150,18 @@ The market is trading on 1.6036 pivot level.
     # Verified: Auto-calculated SL is attached (entry - dist = 1.6036 - 0.0020 = 1.6016)
     assert sig["sl"] == pytest.approx(1.6016, rel=1e-3)
 
+
+def test_parser_anabelsignals_with_channel_header():
+    text = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
+
+✍️AUDJPY Massive Short! SELL!👍My dear subscribers,This is my opinion on the AUDJPY next move:The instrument tests an important psychological level 110.54Bias - Bearish⭐️Target - 110.08——————————💐#AUDJPY↗️Time Frame: 4H (forecast)——————————WISH YOU ALL LUCK🍀@anabelsignalscontact"""
+    sig = MultiChannelSignalParser.parse_message(text, "anabelsignals")
+    assert sig is not None
+    assert sig["symbol"] == "AUDJPY"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 110.54
+    assert sig["tps"] == [110.08]
+
 def test_2_ticket_split_execution():
     copier = TelegramMultiSignalCopier(dry_run=True)
     sig = {
