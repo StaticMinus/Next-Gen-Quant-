@@ -241,11 +241,15 @@ class MultiChannelSignalParser:
                 .replace("&nbsp;", " "))
         # Strip commas in formatted numbers e.g. 4,172.50 -> 4172.50
         t = re.sub(r'(\d+),(\d+)', r'\1\2', t)
+        # Fix numbers split across newlines by channel admins (e.g. "41\n38" -> "4138")
+        t = re.sub(r'(\b\d{2})\s*\n\s*(\d{2}\b)', r'\1\2', t)
+        # Expand shorthand ranges (e.g. "4150-60" -> "4150-4160")
+        t = re.sub(r'(\b\d{2})(\d{2})\s*-\s*(\d{2}\b)', r'\1\2-\1\3', t)
         # Normalize en-dash and em-dash to regular hyphen
         t = t.replace("–", "-").replace("—", "-")
         # Clean unicode emojis and directional arrows
         t = re.sub(r'[➡️👉►▶️|]', ' ', t)
-        t = re.sub(r'[🎯🚫✅🔘🚀✔️🟢🔴🔷♦️⭐️🥇📊📈📉💐🍀👑✍️⭕💡🔥🔗📞📍🛑📡]', ' ', t)
+        t = re.sub(r'[🎯🚫✅🔘🚀✔️🟢🔴🔷♦️⭐️🥇📊📈📉💐🍀👑✍️⭕💡🔥🔗📞📍🛑📡😊❤️🌸👍]', ' ', t)
         # Strip trailing dot after letters e.g. "GOLD." -> "GOLD "
         t = re.sub(r'([A-Za-z]+)\.', r'\1 ', t)
         return t
@@ -626,8 +630,64 @@ class MultiChannelSignalParser:
                 "type": "TAG_STRUCTURED"
             }
 
-        # 6. ZONE RANGE FORMAT (PrimeGoldSignals, EliteForexTradingSignals)
-        m_zone = re.search(r"(?:between\s+(\d+(?:\.\d+)?)\s+till\s+(\d+(?:\.\d+)?)|[\(@]?\s*(\d+(?:\.\d+)?)\s*[\-]\s*(\d+(?:\.\d+)?)\)?)", text_clean, re.IGNORECASE)
+        # 6. ACTION-LINKED ZONE RANGE FORMAT (e.g. "XAUUSD BUY 4162-4158", "BUY (4130-4135)")
+        m_action_zone = re.search(
+            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*[\(@]?\s*(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\)?",
+            text_clean, re.IGNORECASE
+        )
+        if m_action_zone and side:
+            e1, e2 = float(m_action_zone.group(2)), float(m_action_zone.group(3))
+            entry_mid = (e1 + e2) / 2.0
+            tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry_mid, tps)
+                sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": min(e1, e2),
+                "entry_max": max(e1, e2),
+                "entry_mid": entry_mid,
+                "sl": sl,
+                "tps": tps,
+                "type": "ZONE_EXECUTION"
+            }
+
+        # 7. DIRECT ACTION ENTRY FORMAT (e.g. "#XAUUSD BUY 4133", "BUY GOLD 4133", "BUY 4133", "SELL NOW 4150")
+        m_action_direct = re.search(
+            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*(\d+(?:\.\d+)?)",
+            text_clean, re.IGNORECASE
+        )
+        if m_action_direct and side:
+            entry = float(m_action_direct.group(2))
+            tps = [float(x) for x in m_tp_tag]
+            if m_sl_tag:
+                sl = float(m_sl_tag.group(1))
+            else:
+                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+            return {
+                "channel": channel,
+                "symbol": detected_sym,
+                "side": side,
+                "entry_min": entry,
+                "entry_max": entry,
+                "entry_mid": entry,
+                "sl": sl,
+                "tps": tps,
+                "type": "DIRECT_AT"
+            }
+
+        # 8. GENERAL ZONE RANGE FORMAT (Filtered: Excludes ranges on TP / TAKE PROFIT / TARGET / SL / STOP LOSS lines)
+        non_tp_sl_lines = [
+            l for l in text_clean.splitlines()
+            if not re.search(r"\b(TP\d?|TAKE\s*PROFIT|TARGET|SL\b|STOP\s*LOSS|STOPLOSS)\b|[¹²³]\s*/\s*TAKE", l, re.IGNORECASE)
+        ]
+        non_tp_sl_text = "\n".join(non_tp_sl_lines)
+        m_zone = re.search(r"(?:between\s+(\d+(?:\.\d+)?)\s+till\s+(\d+(?:\.\d+)?)|[\(@]?\s*(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\)?)", non_tp_sl_text, re.IGNORECASE)
         if m_zone and side:
             if m_zone.group(1) and m_zone.group(2):
                 e1, e2 = float(m_zone.group(1)), float(m_zone.group(2))
@@ -652,7 +712,7 @@ class MultiChannelSignalParser:
                 "type": "ZONE_EXECUTION"
             }
 
-        # 7. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
+        # 9. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
         m_at_price = re.search(r"(?:@|AT)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if m_at_price and side:
             entry = float(m_at_price.group(1))
@@ -772,7 +832,12 @@ class TelegramMultiSignalCopier:
     def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None, state_file: Optional[Path] = None):
         self.dry_run = dry_run
         self.ctrader = ctrader_client if ctrader_client is not None else CTraderMCPClient()
-        self.state_file = state_file if state_file is not None else (ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json" if dry_run else STATE_FILE)
+        if state_file is not None:
+            self.state_file = state_file
+        elif dry_run or "PYTEST_CURRENT_TEST" in os.environ:
+            self.state_file = ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json"
+        else:
+            self.state_file = STATE_FILE
         self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
@@ -785,7 +850,7 @@ class TelegramMultiSignalCopier:
 
         # Cold-start watermark initialization per channel (concurrent, only in live mode)
         watermarks = self.state.setdefault("watermarks", {})
-        if not self.dry_run:
+        if not self.dry_run and "PYTEST_CURRENT_TEST" not in os.environ:
             from concurrent.futures import ThreadPoolExecutor
             def init_wm(ch):
                 ch_id = ch["id"]

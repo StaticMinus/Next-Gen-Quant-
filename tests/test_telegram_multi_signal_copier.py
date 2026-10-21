@@ -799,7 +799,7 @@ def test_invariant_25_lot_sizing_floor_and_twin_tickets(monkeypatch):
     assert sum(t["volume"] for t in executed_single) == 0.14
 
 
-def test_invariant_23_broker_label_linked_breakeven():
+def test_invariant_23_broker_label_linked_breakeven(tmp_path):
     """Invariant 23: Reconciles broker-level positions tagged with _T2 when companion _T1 has closed."""
     from unittest.mock import MagicMock
     mock_ctrader = MagicMock()
@@ -817,13 +817,44 @@ def test_invariant_23_broker_label_linked_breakeven():
     # Price has recovered to 4121.0 (above BE 4120.50)
     mock_ctrader.get_spot_price.return_value = {"bid": 4121.0, "ask": 4121.2}
 
-    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader, state_file=tmp_path / "test_state.json")
     copier.state["active_positions"] = []  # State had lost the position
 
     copier.manage_active_breakeven()
 
     # Verify amend_position was called with Breakeven price (4120.0 + 0.30 buffer = 4120.3)
     mock_ctrader.amend_position.assert_called_once_with(9992, stop_loss=4120.3)
+
+
+def test_parser_xauusd_gold_trading_forex_regression():
+    """Verifies that direct entry BUY 4133 is not overwritten by range in TP3 (4150-60)."""
+    text = """#XAUUSD  BUY  4133
+¹/TAKE PROFIT     4138
+²/TAKE PROFIT     4141
+3/TAKE PROFIT     4150-60
+STOP LOSS       4127"""
+    sig = MultiChannelSignalParser.parse_message(text, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4133.0
+    assert sig["sl"] == 4127.0
+    assert sig["tps"] == [4138.0, 4141.0, 4150.0]
+    assert sig["is_valid"] is True
+    assert sig["validation_error"] is None
+
+
+def test_parser_xauusd_gold_trading_forex_inline_and_emojis():
+    """Verifies inline emoji-heavy post from XAUUSD_GOLD_TRADING_FOREX parses accurately."""
+    text = "#XAUUSD  BUY  4133  🚀 ¹/TAKE PROFIT     4138🔘 🚀 ²/TAKE PROFIT     4141🔘 🚀 3/TAKE PROFIT     4150-60🔘  😊 STOP LOSS       4127🔘  Regular Quantity ❤️"
+    sig = MultiChannelSignalParser.parse_message(text, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4133.0
+    assert sig["sl"] == 4127.0
+    assert sig["is_valid"] is True
+
 
 
 
