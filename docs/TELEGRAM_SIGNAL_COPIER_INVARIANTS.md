@@ -163,4 +163,12 @@
 - **Position ID Disambiguation:** For subsequent exact-price display amendments (`amend_position`), the client must never assume `orderId == positionId`. It must query the broker's active position list to resolve the true `positionId` matching the order's unique client comment and symbol.
 
 
+## 25. Enforced 0.07x2 Lot Sizing Floor & Secret Override Shield
+- **Twin-Ticket Policy (0.14 Total Lots):** Every Gold (XAUUSD) signal must strictly allocate twin tickets of **0.07 lots each** (Ticket 1 Banker = 0.07 lots, Ticket 2 Runner = 0.07 lots; aggregate exposure = 0.14 lots).
+- **Immutable Code-Level Floor:** Copier parameter loaders (`get_asset_parameters`) MUST clamp lot sizes with `max(0.07, configured_lot)` so that stale environment variables or cloud secrets (< 0.07, such as legacy `0.05`) cannot silently degrade trading size.
+- **Cloud Runner Hardening:** In GitHub Actions workflows (`gold_cloud_copier.yml`), `GOLD_COPIER_LOT_SIZE` must be hardwired directly to `'0.07'` to prevent secret configuration drift from injecting legacy `0.05` sizing.
+- **Twin-Ticket Enforcement on Single Targets:** If a Gold setup has only a single advertised target, the copier MUST synthetically allocate twin tickets (Ticket 1 Banker at advertised target, Ticket 2 Runner at extended target) at 0.07 lots each (0.14 total) so capital velocity is preserved.
+
+
+
 

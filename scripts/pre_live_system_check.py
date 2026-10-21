@@ -154,7 +154,7 @@ print("\n[5/7] Testing Risk Sentinel & Drawdown Guardrails (Mode A)...")
 try:
     from src.integrations.risk_guardian import guardian
     floor = float(os.getenv("DAILY_DRAWDOWN_FLOOR", "5650.0"))
-    lot_size = float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.05"))
+    lot_size = max(0.07, float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")))
     mode = os.getenv("GOLD_COPIER_TICKET_MODE", "TWO_TICKETS")
     
     # Verify account balance vs floor

@@ -700,8 +700,10 @@ class TelegramMultiSignalCopier:
     def get_asset_parameters(self, symbol: str) -> Dict[str, Any]:
         sym = symbol.upper()
         if "XAU" in sym or "GOLD" in sym:
+            configured_lot = float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07"))
+            gold_lot = max(0.07, configured_lot)  # Immutable Invariant 25: 0.07 lot floor per ticket (0.14 total)
             return {
-                "lot_size": float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")),
+                "lot_size": gold_lot,
                 "max_sl_distance": 12.0,          # 12.0 pts Gold tolerance
                 "max_slippage": 2.50,
                 "be_buffer": 0.30,
@@ -713,7 +715,7 @@ class TelegramMultiSignalCopier:
             }
         elif "JPY" in sym:
             return {
-                "lot_size": float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")),
+                "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
                 "max_sl_distance": 0.60,
                 "max_slippage": 0.15,
                 "be_buffer": 0.02,
@@ -749,7 +751,7 @@ class TelegramMultiSignalCopier:
             }
         else:
             return {
-                "lot_size": float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")),
+                "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
                 "max_sl_distance": 0.0050,  # 50 pips
                 "max_slippage": 0.0012,     # 12 pips
                 "be_buffer": 0.0002,        # 2 pips
@@ -806,19 +808,29 @@ class TelegramMultiSignalCopier:
         scalp_tp1 = params.get("scalp_tp1_dist", 2.0)
         dist_to_tp = abs(tps[0] - entry)
 
+        is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
+        min_ticket_vol = 0.07 if is_gold else 0.01
+
         if has_multi_targets:
             tickets_plan = [
-                {"ticket": 1, "vol": max(0.01, lot_size), "tp": tps[0]},
-                {"ticket": 2, "vol": max(0.01, lot_size), "tp": tps[-1]}
+                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
+                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[-1]}
             ]
         elif dist_to_tp > (scalp_tp1 * 1.25):
             t1_tp = round(entry + scalp_tp1 if side == "BUY" else entry - scalp_tp1, 5)
             tickets_plan = [
-                {"ticket": 1, "vol": max(0.01, lot_size), "tp": t1_tp},
-                {"ticket": 2, "vol": max(0.01, lot_size), "tp": tps[0]}
+                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp},
+                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}
+            ]
+        elif is_gold:
+            # Single tight target on Gold: enforce twin tickets (0.07 x 2 = 0.14 total) with extended runner
+            ext_runner = round(tps[0] + (scalp_tp1 if side == "BUY" else -scalp_tp1), 5)
+            tickets_plan = [
+                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
+                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": ext_runner}
             ]
         else:
-            tickets_plan = [{"ticket": 1, "vol": max(0.01, lot_size), "tp": tps[0]}]
+            tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
 
         total_vol = round(sum(t["vol"] for t in tickets_plan), 2)
         logger.info(f"🚀 Executing {side} {symbol} ({len(tickets_plan)} tickets • {total_vol} total lots) | Entry ~{entry} | SL: {safe_sl} | TP1: {tickets_plan[0]['tp']} | Runner TP: {tickets_plan[-1]['tp']} | Channel: {channel}")

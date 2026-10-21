@@ -707,6 +707,7 @@ def test_invariant_22_target_rollover_success():
         "text": "GOLD BUY 2650 - 2652\nSL: 2642\nTP1: 2653\nTP2: 2665"
     }])
     copier.state["watermarks"] = {"ssfgold": "ssfgold/18499"}
+    copier.state["executed_signal_keys"] = []
 
     copier.poll_cycle()
 
@@ -738,6 +739,7 @@ def test_invariant_22_target_rollover_rejected_when_rr_insufficient():
         "text": "GOLD BUY 2650 - 2652\nSL: 2642\nTP1: 2653\nTP2: 2657"
     }])
     copier.state["watermarks"] = {"ssfgold": "ssfgold/18500"}
+    copier.state["executed_signal_keys"] = []
 
     copier.poll_cycle()
 
@@ -747,6 +749,55 @@ def test_invariant_22_target_rollover_rejected_when_rr_insufficient():
     sent_alert = copier.send_telegram_alert.call_args[0][0]
     assert "SIGNAL SKIPPED: Anti-Chase Limit Exceeded" in sent_alert
     assert "https://t.me/ssfgold/18501" in sent_alert
+
+
+def test_invariant_25_lot_sizing_floor_and_twin_tickets(monkeypatch):
+    """Verify Invariant 25: enforces 0.07 lot floor even if 0.05 is passed in env, and opens twin tickets totaling 0.14 lots."""
+    monkeypatch.setenv("GOLD_COPIER_LOT_SIZE", "0.05")
+    monkeypatch.setenv("FOREX_COPIER_LOT_SIZE", "0.05")
+
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    params_gold = copier.get_asset_parameters("XAUUSD")
+    # Code-level floor must clamp 0.05 up to 0.07
+    assert params_gold["lot_size"] == 0.07
+
+    params_fx = copier.get_asset_parameters("EURUSD")
+    assert params_fx["lot_size"] == 0.07
+
+    # Multi-target signal: must generate 2 tickets of 0.07 lots (0.14 total)
+    sig_multi = {
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 2650.0,
+        "entry_max": 2652.0,
+        "entry_mid": 2651.0,
+        "sl": 2642.0,
+        "tps": [2655.0, 2665.0],
+        "channel": "ssfgold"
+    }
+    executed = copier.execute_signal(sig_multi, spot_price=2651.0)
+    assert len(executed) == 2
+    assert executed[0]["volume"] == 0.07
+    assert executed[1]["volume"] == 0.07
+    assert sum(t["volume"] for t in executed) == 0.14
+
+    # Single-target signal: must also synthesize twin tickets of 0.07 lots (0.14 total)
+    sig_single = {
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 2650.0,
+        "entry_max": 2652.0,
+        "entry_mid": 2651.0,
+        "sl": 2642.0,
+        "tps": [2653.0],
+        "channel": "ssfgold"
+    }
+    executed_single = copier.execute_signal(sig_single, spot_price=2651.0)
+    assert len(executed_single) == 2
+    assert executed_single[0]["volume"] == 0.07
+    assert executed_single[1]["volume"] == 0.07
+    assert sum(t["volume"] for t in executed_single) == 0.14
+
 
 
 

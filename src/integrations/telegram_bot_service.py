@@ -1078,7 +1078,7 @@ def get_webapp_url() -> str:
             "sym": sym,
             "name": name,
             "side": p.get("trade_side") or p.get("tradeSide", "BUY"),
-            "lots": p.get("lots", 0.05),
+            "lots": p.get("lots", 0.07),
             "entry": p.get("entry_price") or p.get("entryPrice", 0.0),
             "curr": p.get("current_price") or p.get("entry_price", 0.0),
             "pnl": p.get("floating_pnl") if p.get("floating_pnl") is not None else p.get("profit", 0.0),
@@ -1495,7 +1495,7 @@ def render_gold_radar_text():
     lines.extend([
         f"• <b>Binance P2P Rate:</b> <code>₦{rate:,.2f} / USDT</code>\n",
         "• <b>Signal Feed:</b> <code>@XAUUSD_GOLD_TRADING_FOREX</code> (0-Latency)\n",
-        "• <b>Execution:</b> ⚡ <b>Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)</b>"
+        "• <b>Execution:</b> ⚡ <b>Mode A (2 Tickets: TP1 & TP2, 0.07 lot each = 0.14 lot total)</b>"
     ])
     return "".join(lines)
 
@@ -1521,7 +1521,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
             "────────────────────────────\n"
             "• Exposure: <code>100% Cash Buffer Intact</code>\n"
             "• Copier Engine: 🟢 <b>Armed for next @XAUUSD_GOLD_TRADING_FOREX signal</b>\n"
-            "• Strategy: <b>Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)</b>"
+            "• Strategy: <b>Mode A (2 Tickets: TP1 & TP2, 0.07 lot each = 0.14 lot total)</b>"
         )
 
     lines = [
@@ -1535,7 +1535,7 @@ def render_trades_text(user_id: Optional[str] = None, pending_pos_id: Optional[i
         pos_id = p.get("position_id") or p.get("positionId", "---")
         sym = p.get("symbol_name") or p.get("symbol") or p.get("symbolName", "XAUUSD")
         side = str(p.get("trade_side") or p.get("tradeSide", "BUY")).upper()
-        lots = float(p.get("lots", 0.05))
+        lots = float(p.get("lots", 0.07))
         entry = float(p.get("entry_price") or p.get("entryPrice", 0.0))
         curr = float(p.get("current_price") or p.get("currentPrice", entry))
         tp = float(p.get("take_profit") or p.get("takeProfit", 0.0) or 0.0)
@@ -1753,7 +1753,7 @@ def render_morning_briefing_text():
         lines.append(f"🟢 <b>Trades:</b> {num_trades} Active ({pnl_sign}${abs(total_pnl):,.2f})\n")
 
     lines.append(f"🟡 <b>Gold Spot:</b> <code>${gold_p:,.2f}</code> | 0-Latency MTProto Push armed\n")
-    lines.append("⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)")
+    lines.append("⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.07 lot each = 0.14 lot total)")
     return "".join(lines)
 
 
@@ -1779,7 +1779,7 @@ def render_nightly_summary_text():
         f"{payout_bar} • 💸 <b>Payout Target:</b> +$480.00 USD\n",
         "⚪ <b>Positions:</b> 100% Cash Buffer Intact\n",
         f"🟡 <b>Gold Spot:</b> <code>${gold_p:,.2f}</code> • Copier armed for next session\n",
-        "⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.05 lot each)"
+        "⚡ <b>Execution:</b> Mode A (2 Tickets: TP1 & TP2, 0.07 lot each = 0.14 lot total)"
     ]
     return "".join(lines)
 

@@ -1,18 +1,18 @@
 """
 Telegram Gold (XAUUSD) Signal Copier for cTrader
 ================================================
-Monitors public Telegram channel (t.me/XAUUSD_GOLD_TRADING_FOREX), parses real-time
-Gold trading calls, filters out spam/promotional messages, checks anti-chase price limits,
-and executes 3 split-target trades (0.05 lot each) on cTrader with automatic Breakeven locks.
+Monitors public Telegram channels, parses real-time Gold trading calls,
+filters out spam/promotional messages, checks anti-chase price limits,
+and executes 2 split-target trades (0.07 lot each = 0.14 lot total) on cTrader
+with automatic Breakeven locks.
 
 Rules & FundedNext Protection:
 - Symbol: XAUUSD (symbolId: 41)
-- 3 split tickets (0.05 lot each = 0.15 lot total)
-  * Ticket 1: TP1 (+8 pts) -> Locks in +$40 USD
-  * Ticket 2: TP2 (+10 pts) -> Locks in +$50 USD
-  * Ticket 3: TP3 (+20 pts) -> Locks in +$100 USD
-- Protective Stop Loss: Clamps wide channel SLs to max 10.0 points ($50 risk per ticket / $150 total risk max).
-- Auto Breakeven Lock: Once Ticket 1 fills at TP1, SL on Tickets 2 & 3 is moved to Entry.
+- 2 split tickets (0.07 lot each = 0.14 lot total)
+  * Ticket 1: TP1 -> Immediate profit banking
+  * Ticket 2: TP2 / Runner -> Trailing profit maximization
+- Protective Stop Loss: Clamps wide channel SLs to max 10.0 points ($70 risk per ticket / $140 total risk max).
+- Auto Breakeven Lock: Once Ticket 1 fills at TP1, SL on Ticket 2 is moved to Entry + 0.30pt buffer.
 - Anti-Chase Guard: Rejects signals if market price has already slipped > 2.50 points from entry.
 - Duplicate Filter: Prevents duplicate execution if signal is re-posted or quoted.
 """
@@ -56,7 +56,7 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 CHANNEL_URL = "https://t.me/s/XAUUSD_GOLD_TRADING_FOREX"
 STATE_FILE = ROOT_DIR / "cache" / "gold_copier_state.json"
 
-DEFAULT_LOT_SIZE = float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07"))
+DEFAULT_LOT_SIZE = max(0.07, float(os.getenv("GOLD_COPIER_LOT_SIZE", "0.07")))
 MAX_SL_DISTANCE_POINTS = 10.0  # Max $10.00 price distance ($70 risk per 0.07 lot ticket)
 MAX_SLIPPAGE_TOLERANCE = 2.50   # Max $2.50 price deviation to prevent chasing late entries
 
@@ -168,6 +168,7 @@ class TelegramGoldCopier:
         """
         Parses text for Gold signal signature, filters out promo/spam/celebration messages,
         and enforces anti-chase price tolerance. Prioritizes signal syntax over footer promo links.
+        """
         # 0. Apply PatternMemory preflight normalization
         from src.integrations.pattern_memory import PatternMemory
         text = PatternMemory.apply_preflight_normalization(text, "XAUUSD_GOLD_TRADING_FOREX")
