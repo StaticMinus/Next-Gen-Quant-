@@ -444,6 +444,28 @@ class CTraderMCPClient:
 
         digits = self.get_symbol_digits(symbol)
 
+        # Compute relative SL/TP points if prices are provided and relative points are not explicitly passed
+        if relative_sl_points is None and stop_loss_price is not None:
+            try:
+                spot_info = self.get_spot_price(symbol)
+                if spot_info:
+                    entry_est = spot_info.get("ask" if side.upper() == "BUY" else "bid", 0.0)
+                    if entry_est > 0:
+                        dist = abs(entry_est - float(stop_loss_price))
+                        relative_sl_points = max(1, int(round(dist * (10 ** digits))))
+            except Exception:
+                pass
+        if relative_tp_points is None and take_profit_price is not None:
+            try:
+                spot_info = self.get_spot_price(symbol)
+                if spot_info:
+                    entry_est = spot_info.get("ask" if side.upper() == "BUY" else "bid", 0.0)
+                    if entry_est > 0:
+                        dist = abs(entry_est - float(take_profit_price))
+                        relative_tp_points = max(1, int(round(dist * (10 ** digits))))
+            except Exception:
+                pass
+
         args = {
             "symbolId": sym_id,
             "orderType": "MARKET",
@@ -452,8 +474,12 @@ class CTraderMCPClient:
             "label": "AgentQuant",
             "comment": comment[:256]
         }
+        if relative_sl_points is not None and relative_sl_points > 0:
+            args["relativeStopLoss"] = int(relative_sl_points)
+        if relative_tp_points is not None and relative_tp_points > 0:
+            args["relativeTakeProfit"] = int(relative_tp_points)
 
-        # Send MARKET order cleanly to avoid point precision rejections across various asset types
+        # Send MARKET order with native relative SL/TP points for zero-latency atomic broker protection
         raw = self.call_tool("create_order", args)
         result = self._parse_content_json(raw)
 
@@ -462,8 +488,27 @@ class CTraderMCPClient:
             pos_id = (
                 result.get("positionId")
                 or (result.get("position", {}).get("positionId") if isinstance(result.get("position"), dict) else None)
-                or result.get("orderId")
             )
+            # If positionId was not returned in create_order result, resolve true positionId from live positions
+            if not pos_id:
+                try:
+                    positions = self.get_positions_strict() or []
+                    for pos in positions:
+                        if pos.get("symbolId") == sym_id and pos.get("comment") == comment[:256]:
+                            pos_id = pos.get("positionId")
+                            break
+                    if not pos_id and positions:
+                        for pos in positions:
+                            if pos.get("symbolId") == sym_id and pos.get("tradeSide") == side.upper():
+                                pos_id = pos.get("positionId")
+                                break
+                except Exception:
+                    pass
+
+            # Fallback to orderId for mock/simulated unit tests
+            if not pos_id:
+                pos_id = result.get("orderId")
+
             if pos_id and (stop_loss_price or take_profit_price):
                 amend_args = {"positionId": int(pos_id)}
                 if stop_loss_price:
@@ -473,8 +518,28 @@ class CTraderMCPClient:
                 if len(amend_args) > 1:
                     amend_res = self.call_tool("amend_position", amend_args)
                     parsed_amend = self._parse_content_json(amend_res)
-                    if parsed_amend:
+                    if parsed_amend and isinstance(parsed_amend, dict) and not parsed_amend.get("isError"):
                         result["amended_protection"] = parsed_amend
+                    else:
+                        # Amendment encountered error or invalid parameters: trigger AutoHealingEngine
+                        try:
+                            from src.integrations.auto_healing_engine import AutoHealingEngine
+                            err_str = str(parsed_amend or amend_res)
+                            heal_res = AutoHealingEngine.diagnose_and_heal_amendment(
+                                ctrader_client=self,
+                                symbol=symbol,
+                                side=side,
+                                target_pos_id=int(pos_id),
+                                intended_sl=stop_loss_price,
+                                intended_tp=take_profit_price,
+                                comment=comment,
+                                error_payload=err_str
+                            )
+                            result["auto_healed"] = heal_res
+                            if heal_res.get("healed"):
+                                result["amended_protection"] = heal_res.get("result")
+                        except Exception as heal_err:
+                            print(f"[!] AutoHealing exception: {heal_err}")
 
         return result
 

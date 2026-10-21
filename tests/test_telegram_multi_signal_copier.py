@@ -458,13 +458,41 @@ Regular Quantity ❤️"""
 
 
 def test_directional_coherence_guard_inverted_buy():
-    """Validates that a BUY with TP < entry is blocked with is_valid == False."""
+    """Validates that a BUY with all TPs < entry is blocked with is_valid == False."""
     text_bad_buy = "#XAUUSD BUY 4145 SL 4135 TP 4140"
     sig = MultiChannelSignalParser.parse_message(text_bad_buy, "XAUUSD_GOLD_TRADING_FOREX")
     assert sig is not None
     assert sig["side"] == "BUY"
     assert sig["is_valid"] is False
-    assert "Inverted Take Profit: BUY TP1 (4140.0) <= Entry (4145.0)" in sig["validation_error"]
+    assert "Inverted Take Profit" in sig["validation_error"]
+
+
+def test_directional_coherence_tp1_at_entry_promotes_tp2_tp3_sell():
+    """Validates that a SELL with TP1 == entry discards TP1 and focuses on TP2 & TP3 (Invariant 23)."""
+    text_post_1023 = """#XAUUSD  SELL  4150
+🚀 ¹/TAKE PROFIT     4150🔘
+🚀 ²/TAKE PROFIT     4130🔘
+🚀 3/TAKE PROFIT     4120🔘
+😊 STOP LOSS       4157 🔘
+Regular Quantity ❤️"""
+    sig = MultiChannelSignalParser.parse_message(text_post_1023, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 4150.0
+    assert sig["is_valid"] is True
+    assert sig["tps"] == [4130.0, 4120.0]
+    assert sig.get("tp1_promoted_from_runner") is True
+
+
+def test_directional_coherence_tp1_at_entry_promotes_tp2_buy():
+    """Validates that a BUY with TP1 == entry discards TP1 and focuses on TP2 (Invariant 23)."""
+    text_buy = "EURUSD BUY 1.0800 SL 1.0760 TP1: 1.0800 TP2: 1.0850"
+    sig = MultiChannelSignalParser.parse_message(text_buy, "forexgdpfree")
+    assert sig is not None
+    assert sig["side"] == "BUY"
+    assert sig["is_valid"] is True
+    assert sig["tps"] == [1.0850]
+    assert sig.get("tp1_promoted_from_runner") is True
 
 
 def test_directional_coherence_valid_signals_pass():

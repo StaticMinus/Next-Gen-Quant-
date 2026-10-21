@@ -149,3 +149,18 @@
 - **Operator Notification:** The broadcast alert must explicitly state that the trade entered under **Invariant 22: Target-Rollover** with the adjusted Ratcheted Stop Loss and remaining reward headroom.
 
 
+## 23. Smart TP Promotion & At-Entry Target Filtering Invariant
+- **At-Entry TP1 Neutralization:** When a provider broadcasts a trading setup where `TP1` is identical to the entry price or slightly inverted (e.g. `SELL 4150` with `TP1 4150`, or `BUY 1.0800` with `TP1 1.0800`), the copier must **NEVER reject the signal as an inverted signal** if valid runner targets (`TP2`, `TP3`) exist.
+- **Automatic Target Promotion:**
+  - Strip the invalid/at-entry `TP1` from the active target list.
+  - Automatically promote `TP2` to serve as the initial banker target and `TP3` to serve as the runner target.
+  - Log and tag the signal with `tp1_promoted_from_runner: True`.
+  - Only reject if **all** targets are invalid (e.g. `SELL 4145` with all TPs at `4150, 4155, 4165`) or if the Stop Loss itself is inverted.
+
+
+## 24. Atomic Broker-Level Protection for Market Orders
+- **Zero-Latency Native Protection:** When submitting `MARKET` orders via cTrader Remote MCP (`create_order`), the client must calculate and attach `relativeStopLoss` and `relativeTakeProfit` directly in points within the `create_order` payload.
+- **Position ID Disambiguation:** For subsequent exact-price display amendments (`amend_position`), the client must never assume `orderId == positionId`. It must query the broker's active position list to resolve the true `positionId` matching the order's unique client comment and symbol.
+
+
+

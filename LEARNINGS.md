@@ -384,3 +384,13 @@ additions and the corrective reversals needed to keep that loop honest.
 
 That is the main lesson for a human reader: build the evaluator, memory, and
 feedback system with as much care as the agent itself.
+
+## 14. Phase 14 — Signal Copier Target Promotion & Broker Execution Invariants
+
+Operational review of live multi-channel execution highlighted two critical edge cases:
+
+1. **Target Promotion vs. Inversion Rejection:**
+   Signal channels often publish calls where `TP1` is placed at the exact market entry (e.g. `SELL 4150` with `TP1 4150`, `TP2 4130`, `TP3 4120`). A naive directional coherence check marks the whole setup as an "Inverted Signal" and rejects it. In reality, `TP1` simply represents the break-even anchor; the system must discard at-entry targets and promote `TP2` and `TP3` to trade the remaining edge.
+2. **Atomic Protection vs. Sequential Amendment:**
+   On broker APIs like cTrader Remote MCP, `create_order` returns an `orderId`, not a `positionId`. Attempting post-fill amendment using `orderId` causes broker rejection, leaving positions unhedged. Providing relative SL/TP points directly at order creation time (`relativeStopLoss`, `relativeTakeProfit`) guarantees zero-latency, atomic protection on fill.
+

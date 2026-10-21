@@ -179,15 +179,23 @@ class MultiChannelSignalParser:
         if side == "BUY":
             if sl is not None and sl >= entry:
                 return False, f"Inverted Stop Loss: BUY SL ({sl}) >= Entry ({entry})"
-            for idx, tp in enumerate(tps):
-                if tp <= entry:
-                    return False, f"Inverted Take Profit: BUY TP{idx+1} ({tp}) <= Entry ({entry})"
+            valid_tps = [tp for tp in tps if tp > entry]
+            if not valid_tps and tps:
+                return False, f"Inverted Take Profit: BUY all TPs <= Entry ({entry})"
+            if len(valid_tps) < len(tps):
+                logger.info(f"🎯 Invariant 23 (Smart TP Promotion): Filtered at-entry/inverted TP targets. Original: {tps} -> Active: {valid_tps} (Promoting TP2/TP3)")
+                sig["tps"] = valid_tps
+                sig["tp1_promoted_from_runner"] = True
         elif side == "SELL":
             if sl is not None and sl <= entry:
                 return False, f"Inverted Stop Loss: SELL SL ({sl}) <= Entry ({entry})"
-            for idx, tp in enumerate(tps):
-                if tp >= entry:
-                    return False, f"Inverted Take Profit: SELL TP{idx+1} ({tp}) >= Entry ({entry})"
+            valid_tps = [tp for tp in tps if tp < entry]
+            if not valid_tps and tps:
+                return False, f"Inverted Take Profit: SELL all TPs >= Entry ({entry})"
+            if len(valid_tps) < len(tps):
+                logger.info(f"🎯 Invariant 23 (Smart TP Promotion): Filtered at-entry/inverted TP targets. Original: {tps} -> Active: {valid_tps} (Promoting TP2/TP3)")
+                sig["tps"] = valid_tps
+                sig["tp1_promoted_from_runner"] = True
 
         return True, None
 
@@ -258,11 +266,27 @@ class MultiChannelSignalParser:
 
     @classmethod
     def parse_message(cls, text: str, channel: str) -> Optional[Dict[str, Any]]:
-        sig = cls._raw_parse_message(text, channel)
+        from src.integrations.pattern_memory import PatternMemory
+        # Preflight sub-millisecond normalization from learned channel quirks
+        normalized_text = PatternMemory.apply_preflight_normalization(text, channel)
+
+        sig = cls._raw_parse_message(normalized_text, channel)
         if not sig and cls._should_attempt_ai_fallback(text):
-            sig = cls._ai_extract_signal(text, channel)
+            try:
+                from src.integrations.ai_signal_interpreter import AISignalInterpreter
+                sig = AISignalInterpreter.interpret_signal(text, channel)
+            except Exception as e:
+                logger.debug(f"AISignalInterpreter fallback exception: {e}")
+            if not sig:
+                sig = cls._ai_extract_signal(text, channel)
+
         if not sig:
             return None
+
+        # Check if channel is known to use TP1 as entry anchor
+        if PatternMemory.should_promote_tp1(channel):
+            sig["force_tp1_promotion"] = True
+
         valid, err = cls.validate_directional_coherence(sig)
         sig["is_valid"] = valid
         sig["validation_error"] = err

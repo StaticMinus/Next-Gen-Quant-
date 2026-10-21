@@ -168,7 +168,10 @@ class TelegramGoldCopier:
         """
         Parses text for Gold signal signature, filters out promo/spam/celebration messages,
         and enforces anti-chase price tolerance. Prioritizes signal syntax over footer promo links.
-        """
+        # 0. Apply PatternMemory preflight normalization
+        from src.integrations.pattern_memory import PatternMemory
+        text = PatternMemory.apply_preflight_normalization(text, "XAUUSD_GOLD_TRADING_FOREX")
+
         # 1. Normalize broken space digits inside numbers (e.g. '4 355' -> '4355', '40 62' -> '4062')
         text_normalized = re.sub(r"(\d{1,2})\s+(\d{2,3})\b", r"\1\2", text)
         # Normalize range digits e.g. '4348-44' -> '4348'
@@ -211,8 +214,19 @@ class TelegramGoldCopier:
             potential_tps = re.findall(r"\b4\d{3}(?:\.\d+)?\b", text_clean)
             tp_matches = [p for p in potential_tps if float(p) != entry and float(p) != raw_sl]
 
-        tps = [float(x) for x in tp_matches][:3]
-        if not tps:
+        parsed_tps = [float(x) for x in tp_matches]
+        if side == "BUY":
+            valid_tps = [x for x in parsed_tps if x > entry]
+        else:
+            valid_tps = [x for x in parsed_tps if x < entry]
+
+        if valid_tps:
+            tps = valid_tps[:3]
+            # Ensure at least 3 levels for 3-ticket plan if possible
+            while len(tps) < 3:
+                step = 10.0 if side == "BUY" else -10.0
+                tps.append(round(tps[-1] + step, 2))
+        else:
             if side == "BUY":
                 tps = [entry + 8.0, entry + 10.0, entry + 20.0]
             else:
