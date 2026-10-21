@@ -240,8 +240,8 @@ def test_dynamic_trailing_stop_ratchet():
     assert copier.state["active_positions"][0]["sl"] == 2653.00
 
 
-def test_channel_config_all_55_valid():
-    assert len(CHANNELS_CONFIG) == 55
+def test_channel_config_all_155_valid():
+    assert len(CHANNELS_CONFIG) == 155
     ids = [c["id"] for c in CHANNELS_CONFIG]
     assert len(ids) == len(set(ids)), "Channel IDs must be unique"
     for c in CHANNELS_CONFIG:
