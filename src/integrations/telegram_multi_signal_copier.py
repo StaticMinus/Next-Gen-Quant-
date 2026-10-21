@@ -1098,8 +1098,12 @@ class TelegramMultiSignalCopier:
                         comment=comment,
                         bypass_concurrency_check=(t_num > 1)  # Allow twin ticket from same signal
                     )
-                    if order_res and "result" in order_res:
-                        pos_id = order_res.get("result", {}).get("positionId")
+                    if order_res and ("result" in order_res or "positionId" in order_res or "orderId" in order_res):
+                        pos_id = (
+                            order_res.get("positionId")
+                            or (order_res.get("result", {}).get("positionId") if isinstance(order_res.get("result"), dict) else None)
+                            or order_res.get("orderId")
+                        )
                         executed_orders.append({
                             "positionId": pos_id,
                             "ticket": t_num,
@@ -1202,6 +1206,25 @@ class TelegramMultiSignalCopier:
                             continue
                     except Exception as te:
                         logger.debug(f"Could not calculate age for #{pos_id}: {te}")
+
+            # Adopt any live positions on the broker that have Sig_ comment or AgentQuant label
+            for lp in live_positions:
+                lp_id = lp.get("positionId")
+                comment = lp.get("comment") or ""
+                label = lp.get("label") or ""
+                if (comment.startswith("Sig_") or label == "AgentQuant") and not any(p.get("positionId") == lp_id for p in active):
+                    ticket_num = 2 if "_T2" in comment else (1 if "_T1" in comment else 1)
+                    active.append({
+                        "positionId": lp_id,
+                        "ticket": ticket_num,
+                        "symbol": lp.get("symbolName") or "EURAUD",
+                        "side": lp.get("tradeSide", "BUY"),
+                        "entry": float(lp.get("entryPrice", 0.0)),
+                        "sl": float(lp.get("stopLoss", 0.0)) if lp.get("stopLoss") else None,
+                        "tp": float(lp.get("takeProfit", 0.0)) if lp.get("takeProfit") else None,
+                        "be_locked": False,
+                        "time": now_utc.isoformat()
+                    })
 
             # 2. Invariant 23: Direct Broker-Label-Linked Reconciliation & Companion Breakeven
             # First, reconcile broker-level positions tagged with _T2 if companion _T1 has closed

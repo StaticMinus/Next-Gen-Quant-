@@ -431,16 +431,19 @@ class CTraderMCPClient:
         if not sym_id:
             raise ValueError(f"Unknown symbol: {symbol}")
 
-        # Compute volume in 1/100 units
+        # Compute volume in 1/100 units (volume = lots * lotSize * 100)
         if "SPX" in sym_upper or "NDX" in sym_upper or "US30" in sym_upper or "UK100" in sym_upper:
             # Index lotSize = 1
             raw_vol = int(round(volume_lots * 1 * 100))
         elif "XAU" in sym_upper or "GOLD" in sym_upper:
-            # Metal lotSize = 100
+            # Metal lotSize = 100 (1 lot = 10,000 units in 1/100 format)
             raw_vol = int(round(volume_lots * 100 * 100))
+        elif "BTC" in sym_upper or "ETH" in sym_upper:
+            # Crypto lotSize = 1
+            raw_vol = int(round(volume_lots * 1 * 100))
         else:
-            # Forex/Stocks/Crypto lotSize = 100000 or 100
-            raw_vol = int(round(volume_lots * 100))
+            # Forex lotSize = 100,000 (1 lot = 10,000,000 units in 1/100 format)
+            raw_vol = int(round(volume_lots * 100000 * 100))
 
         digits = self.get_symbol_digits(symbol)
 
@@ -599,8 +602,10 @@ class CTraderMCPClient:
             raw_vol = int(round(volume_lots * 1 * 100))
         elif "XAU" in sym_upper or "GOLD" in sym_upper:
             raw_vol = int(round(volume_lots * 100 * 100))
+        elif "BTC" in sym_upper or "ETH" in sym_upper:
+            raw_vol = int(round(volume_lots * 1 * 100))
         else:
-            raw_vol = int(round(volume_lots * 100))
+            raw_vol = int(round(volume_lots * 100000 * 100))
 
         digits = self.get_symbol_digits(symbol)
         now_ms = int(time.time() * 1000)
