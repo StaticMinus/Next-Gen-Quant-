@@ -20,7 +20,7 @@ from src.integrations.telegram_multi_signal_copier import (
 
 def main():
     print("=" * 70)
-    print("AGENTQUANT 25-CHANNEL LIVE INGESTION DIAGNOSTIC")
+    print(f"AGENTQUANT {len(CHANNELS_CONFIG)}-CHANNEL LIVE INGESTION DIAGNOSTIC")
     print(f"Total Target Channels: {len(CHANNELS_CONFIG)}")
     print("=" * 70)
 

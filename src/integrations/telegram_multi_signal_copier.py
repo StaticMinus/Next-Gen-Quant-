@@ -76,7 +76,44 @@ CHANNELS_CONFIG = [
     {"id": "gold_signals_official", "name": "GoldSignals Official", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 4.5, "peak_session": "London"},
     {"id": "forexsignalsdaily", "name": "Forex Signals Daily", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 2.7, "peak_session": "London"},
     {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Gold Scalper", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "London/NY"},
-    {"id": "GoldEliteTrading", "name": "Gold Elite Traders", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "London"}
+    {"id": "GoldEliteTrading", "name": "Gold Elite Traders", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "London"},
+
+    # === NEW ADDITIONS (FLEET EXPANSION 26-55) ===
+    # Tier 1 Additions (>= 50% Verified Empirical Yield)
+    {"id": "DailyForexPipsFree", "name": "Daily Forex Pips Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
+    {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 76.5, "peak_session": "London/Tokyo"},
+    {"id": "FreeForexSignals24", "name": "Free Forex Signals 24", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
+    {"id": "UniversalForexSignals", "name": "Universal Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "New York"},
+    {"id": "gold_forex_signals", "name": "Gold & Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/NY"},
+    {"id": "CryptoBullSignals", "name": "Crypto Bull Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "24/7 Asian/NY"},
+    {"id": "forex_vip_signals", "name": "Forex VIP Signals Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London Open"},
+    {"id": "ForexSignalFactory", "name": "Forex Signal Factory", "enabled": True, "assets": ["ALL", "BTCUSD"], "tier": 1, "yield_pct": 65.0, "peak_session": "London/NY"},
+
+    # Tier 2 Additions (10% - 49% Empirical Yield)
+    {"id": "AltcoinSignalsFree", "name": "Altcoin & Gold Signals", "enabled": True, "assets": ["XAUUSD", "BTCUSD"], "tier": 2, "yield_pct": 40.0, "peak_session": "London/NY"},
+    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 38.9, "peak_session": "London Session"},
+    {"id": "GoldTradeDaily", "name": "Gold Trade Daily", "enabled": True, "assets": ["XAUUSD"], "tier": 2, "yield_pct": 36.4, "peak_session": "London Pre-Market"},
+    {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 2, "yield_pct": 35.7, "peak_session": "London Open"},
+    {"id": "fxpremiere_free", "name": "FXPremiere Free Stream", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 2, "yield_pct": 30.0, "peak_session": "London/NY"},
+    {"id": "MajorForexSignals", "name": "Major Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 25.0, "peak_session": "Tokyo/London"},
+    {"id": "US30_Forex_Signals", "name": "US30 Index Signals", "enabled": True, "assets": ["US30", "NAS100"], "tier": 2, "yield_pct": 20.0, "peak_session": "New York Open"},
+    {"id": "CryptoWhaleSignals", "name": "Crypto Whale Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD"], "tier": 2, "yield_pct": 20.0, "peak_session": "24/7 Asian"},
+    {"id": "GoldSignalsClub", "name": "Gold Signals Club", "enabled": True, "assets": ["XAUUSD"], "tier": 2, "yield_pct": 20.0, "peak_session": "London/NY"},
+    {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "New York Killzone"},
+    {"id": "VanguardForexSignals", "name": "Vanguard Forex", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "London Session"},
+    {"id": "BullishBearsTrading", "name": "Bullish Bears Trading", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "New York"},
+    {"id": "ForexGDP_Free", "name": "ForexGDP Free Stream", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 11.8, "peak_session": "London Session"},
+    {"id": "VasilyTrading", "name": "VasilyTrader Analytics", "enabled": True, "assets": ["USOIL", "ALL"], "tier": 2, "yield_pct": 10.5, "peak_session": "London/NY"},
+    {"id": "FedRussianInsiders", "name": "Fed Russian Insiders", "enabled": True, "assets": ["BTCUSD", "XAUUSD"], "tier": 2, "yield_pct": 10.0, "peak_session": "Asian/London"},
+    {"id": "ForexDailyProfits", "name": "Forex Daily Profits", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 10.0, "peak_session": "London Open"},
+    {"id": "fxleaders", "name": "FX Leaders Free", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 10.0, "peak_session": "London/NY"},
+
+    # Tier 3 Additions (Guarded / High-Frequency Cross Feeds)
+    {"id": "forex_scalping_signals", "name": "Forex Scalping Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 9.1, "peak_session": "London Open"},
+    {"id": "CryptoTradingSignalsFree", "name": "Crypto Signals Free", "enabled": True, "assets": ["BTCUSD"], "tier": 3, "yield_pct": 5.0, "peak_session": "Asian"},
+    {"id": "GoldSignalsDaily", "name": "Gold Signals Daily", "enabled": True, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 5.0, "peak_session": "London"},
+    {"id": "ApexTradingSignals", "name": "Apex Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "New York"},
+    {"id": "ForexMarketSignals", "name": "Forex Market Signals", "enabled": True, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "London"}
 ]
 
 HEADERS = {
@@ -116,6 +153,14 @@ class MultiChannelSignalParser:
             return "USOIL"
         if s in ["BTC", "BITCOIN"]:
             return "BTCUSD"
+        if s in ["ETH", "ETHEREUM"]:
+            return "ETHUSD"
+        if s in ["US30", "DJ30", "DOW", "DOWJONES"]:
+            return "US30"
+        if s in ["NAS100", "USTEC", "NASDAQ", "NDX"]:
+            return "NAS100"
+        if s in ["SPX500", "SP500", "SPX"]:
+            return "SPX500"
         return s
 
     @classmethod
@@ -132,6 +177,15 @@ class MultiChannelSignalParser:
         elif "BTC" in sym:
             def_dist = 400.0
             max_dist = 600.0
+        elif "ETH" in sym:
+            def_dist = 25.0
+            max_dist = 40.0
+        elif "US30" in sym or "DJ30" in sym:
+            def_dist = 60.0  # 60 points US30
+            max_dist = 120.0
+        elif "NAS" in sym or "USTEC" in sym:
+            def_dist = 30.0  # 30 points NAS100
+            max_dist = 60.0
         elif "OIL" in sym:
             def_dist = 1.0
             max_dist = 1.5
@@ -432,7 +486,7 @@ class MultiChannelSignalParser:
 
         # Detect symbol using known asset and currency combinations
         sym_match = re.search(
-            r"(?:#|\b)((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|CRUDE\s*OIL|BTCUSD|BTC|(?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY)[/_\-\s](?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY))\b",
+            r"(?:#|\b)((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|CRUDE\s*OIL|BTCUSD|BTC|ETHUSD|ETH|US30|DJ30|DOW|NAS100|USTEC|NASDAQ|SPX500|SP500|(?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY)[/_\-\s](?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY))\b",
             text_clean, re.IGNORECASE
         )
         detected_sym = "XAUUSD"
