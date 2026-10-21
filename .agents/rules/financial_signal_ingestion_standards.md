@@ -7,3 +7,12 @@
 3. **Author Target Invariance**: Signal copier engines must strictly execute the exact TP1 and TP2 levels specified by the channel author. Synthetic pip overrides are prohibited unless the signal explicitly omits take-profit targets.
 4. **Fail-Fast Diagnostic Alerting**: When an invalid, contradictory, or paywalled signal is received, the system must immediately dispatch a Telegram diagnostic alert rather than failing silently.
 5. **Defensive Broker Telemetry Unwrapping**: Broker API and MCP responses may return `null` for price, volume, commission, or timestamp attributes during off-tick or quiescent market states. Ingestion code must never assume non-null dictionary values when applying mathematical operators; all incoming broker numbers MUST be defensively guarded (e.g., `(float(val) / div) if val is not None else 0.0`) to guarantee fail-safe execution.
+6. **Direct Action Parsing Precedence**: In multi-channel signal parsers, direct execution and actionable order patterns (`m_action_direct`, `m_action_buy_now`) MUST be evaluated before broad entry zone search patterns. Take profit and stop loss definition blocks (e.g., `3/TAKE PROFIT 4150-60`) must be excluded from generic hyphenated zone searches to prevent false entry matches and inverted stop loss rejections.
+7. **Asset-Class Volume Multiplier Invariant**: When placing market or limit orders via cTrader MCP, the lot size multiplier must be determined strictly by asset class:
+   - Metals (Gold/XAUUSD): `raw_volume = round(lots * 100 * 100)`
+   - Forex Currencies (EURUSD, EURAUD, GBPJPY): `raw_volume = round(lots * 100000 * 100)`
+   - Indices & Crypto (US30, BTCUSD): `raw_volume = round(lots * 1 * 100)`
+   Sending an unscaled lot count on Forex triggers an immediate broker rejection (Order volume < minimum allowed volume).
+8. **Dynamic Single-Slot Allocation (Invariant 26)**: If a runner position is currently open (concurrency = 1/2) and a new valid signal arrives, the engine must scale the incoming order to a single ticket targeting TP1 (0.07 lots) rather than rejecting the trade or exceeding the 2-position concurrency ceiling. When 2 slots are free, twin tickets (Banker TP1 + Trailing Runner TP_max) are deployed.
+9. **Hermetic Test State Isolation**: Automated test suites running against the signal copier must execute with hermetic state isolation. Unit tests must never share or mutate the production state file `cache/multi_signal_copier_state.json` or persist accumulated mock tickets into subsequent test runs.
+

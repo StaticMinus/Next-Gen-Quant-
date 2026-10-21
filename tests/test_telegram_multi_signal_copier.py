@@ -856,6 +856,46 @@ def test_parser_xauusd_gold_trading_forex_inline_and_emojis():
     assert sig["is_valid"] is True
 
 
+def test_invariant_26_dynamic_single_slot_allocation():
+    """
+    Invariant 26: Dynamic Single-Slot Allocation.
+    When 1 slot is occupied (e.g. runner active), an incoming signal plans
+    exactly 1 ticket (0.07 lots targeting TP1) instead of failing or opening 2.
+    When 2 slots are free, it plans twin tickets (2 tickets).
+    """
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    sig = {
+        "channel": "forexgdpfree",
+        "symbol": "EURAUD",
+        "side": "BUY",
+        "entry_min": 1.5970,
+        "entry_max": 1.5975,
+        "entry_mid": 1.5972,
+        "sl": 1.5923,
+        "tps": [1.6032, 1.6230],
+        "type": "DIRECT_EXECUTION"
+    }
+
+    # Case 1: 1 slot already occupied -> allocates exactly 1 ticket
+    copier.state["active_positions"] = [
+        {"positionId": 999001, "ticket": 2, "symbol": "XAUUSD", "side": "BUY", "volume": 0.07}
+    ]
+    orders_1slot = copier.execute_signal(sig, spot_price=1.5972)
+    assert len(orders_1slot) == 1
+    assert orders_1slot[0]["ticket"] == 1
+    assert orders_1slot[0]["tp"] == 1.6032
+
+    # Case 2: 0 slots occupied (2 free) -> allocates 2 tickets
+    copier.state["active_positions"] = []
+    orders_2slots = copier.execute_signal(sig, spot_price=1.5972)
+    assert len(orders_2slots) == 2
+    assert orders_2slots[0]["ticket"] == 1
+    assert orders_2slots[0]["tp"] == 1.6032
+    assert orders_2slots[1]["ticket"] == 2
+    assert orders_2slots[1]["tp"] == 1.6230
+
+
+
 
 
 

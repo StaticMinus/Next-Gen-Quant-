@@ -834,11 +834,20 @@ class TelegramMultiSignalCopier:
         self.ctrader = ctrader_client if ctrader_client is not None else CTraderMCPClient()
         if state_file is not None:
             self.state_file = state_file
-        elif dry_run or "PYTEST_CURRENT_TEST" in os.environ:
+            self.state = self.load_state()
+        elif "PYTEST_CURRENT_TEST" in os.environ:
             self.state_file = ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json"
+            self.state = {
+                "watermarks": {},
+                "executed_signal_keys": [],
+                "active_positions": []
+            }
+        elif dry_run:
+            self.state_file = ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json"
+            self.state = self.load_state()
         else:
             self.state_file = STATE_FILE
-        self.state = self.load_state()
+            self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
         # Persistent HTTP connection pool for sub-second Telegram harvesting
@@ -1042,24 +1051,44 @@ class TelegramMultiSignalCopier:
         is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
         min_ticket_vol = 0.07 if is_gold else 0.01
 
+        # Invariant 26: Dynamic Single-Slot Allocation.
+        # Check current active positions on broker to determine available slots (FundedNext max 2 concurrent).
+        try:
+            live_pos = self.ctrader.get_positions_strict() if not self.dry_run else [p for p in self.state.get("active_positions", [])]
+            current_count = len(live_pos) if live_pos is not None else len(self.state.get("active_positions", []))
+        except Exception:
+            current_count = len(self.state.get("active_positions", []))
+
+        free_slots = max(0, 2 - current_count)
+
         if has_multi_targets:
-            tickets_plan = [
-                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
-                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[-1]}
-            ]
+            if free_slots == 1:
+                # 1 slot free: allocate single high-conviction banker ticket targeting TP1
+                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
+            else:
+                tickets_plan = [
+                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
+                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[-1]}
+                ]
         elif dist_to_tp > (scalp_tp1 * 1.25):
             t1_tp = round(entry + scalp_tp1 if side == "BUY" else entry - scalp_tp1, 5)
-            tickets_plan = [
-                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp},
-                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}
-            ]
+            if free_slots == 1:
+                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp}]
+            else:
+                tickets_plan = [
+                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp},
+                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}
+                ]
         elif is_gold:
-            # Single tight target on Gold: enforce twin tickets (0.07 x 2 = 0.14 total) with extended runner
+            # Single tight target on Gold
             ext_runner = round(tps[0] + (scalp_tp1 if side == "BUY" else -scalp_tp1), 5)
-            tickets_plan = [
-                {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
-                {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": ext_runner}
-            ]
+            if free_slots == 1:
+                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
+            else:
+                tickets_plan = [
+                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
+                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": ext_runner}
+                ]
         else:
             tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
 
