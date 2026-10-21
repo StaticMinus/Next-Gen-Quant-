@@ -1662,3 +1662,42 @@ To resume automated trading whenever you choose:
    - Or from terminal: Run `.venv\Scripts\python.exe -c "from src.integrations.risk_guardian import guardian; guardian.resume_trading()"`
 3. **Start / Verify Daemon**:
    - Run `.venv\Scripts\python.exe -m src.integrations.telegram_bot_service` (or execute `scripts/run_background_bot.vbs`).
+
+---
+
+## 51. Live Trade Forensic Audit & Invariant 23: Broker-Label-Linked Breakeven
+
+**Date:** October 21, 2026  
+**Status:** **Implemented, Verified & Test Suite Passing**
+
+### 1. Forensic Investigation Summary:
+- **Prior Closed Trade (Position #298568223 - Ticket 1):** Entered `BUY 0.07 lot XAUUSD @ 4120.40` at 04:34 UTC; cleanly hit TP1 at `4122.45` at 05:22 UTC for **+$13.07 Net Profit** banked into balance.
+- **Current Open Trade (Position #298568243 - Ticket 2 Runner):** Entered `BUY 0.07 lot XAUUSD @ 4120.37` alongside Ticket 1; targeting TP2 at `4162.05` (~+$290). Experienced temporary intraday pullback to $4,114.50 (floating paper drawdown of -$41.09, well within safety buffer).
+- **Previous Day Trade (Position #298436817):** Gold SELL closed at `4109.77` for **+$111.23 Net Profit** at 01:05 UTC.
+
+### 2. Architectural Root Cause & Upgrades:
+1. **Missing Method on cTrader MCP Client:** `CTraderMCPClient` lacked a comprehensive `amend_position` wrapper (only `amend_position_sl` existed), causing companion Breakeven modification attempts to fail silently. Added `amend_position` with auto-preservation of existing Take Profit and Stop Loss levels (cTrader MCP replaces rather than patches protection levels).
+2. **State Isolation:** Isolated `TelegramMultiSignalCopier` dry-run state into `multi_signal_copier_dry_run_state.json` so test runs never overwrite or clear live broker position IDs in `cache/multi_signal_copier_state.json`.
+3. **Invariant 23 (Broker-Label-Linked Breakeven):** When Ticket 1 (`Sig_*_T1`) closes in profit, the engine scans the broker directly for companion Ticket 2 (`Sig_*_T2`) and locks Stop Loss to Breakeven (`entry + buffer`) the moment price is at or above Breakeven, ensuring risk-free free-ride status even across bot restarts or cache purges.
+
+---
+
+## 52. Invariant 24: Institutional Price Action Stop-Loss (PASL) & Structural Shield Guard
+
+**Date:** October 21, 2026  
+**Status:** **Implemented, Verified & Test Suite Passing (89/89)**
+
+### 1. Upgrade Motivation:
+- Telegram signal channels frequently post arbitrary round numbers or tight stops inside market noise (e.g. above recent swing lows on BUYs). Market makers routinely sweep these obvious retail levels with quick wicks before reversing into profit.
+- Static fallback stops ($8.00 on Gold, 35 pips on Forex) do not respect actual live market structure.
+
+### 2. Implementation:
+- **Core Engine:** Created [`src/strategies/price_action_sl_engine.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/strategies/price_action_sl_engine.py) to calculate dynamic ATR(14) volatility buffers and detect fractal Swing Lows (for BUY) and Swing Highs (for SELL) across the last 8 M5 trendbars.
+- **Structural Shield Guard:** If a signal provider posts an SL that sits inside the noise pocket above a swing low, the engine automatically pushes the stop safely behind the liquidity wick plus an ATR buffer.
+- **Strict Risk Clamp:** Guaranteed never to exceed `max_sl_distance` ($10.00 Gold, 50 pips Forex, 0.40% indices) to ensure 100% compliance with FundedNext drawdown limits.
+- **Multi-Signal Integration:** Integrated directly into `execute_signal` in [`src/integrations/telegram_multi_signal_copier.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_multi_signal_copier.py).
+
+### 3. Verification:
+- **`pytest tests/test_price_action_sl.py -v`:** **6/6 PASSED** (ATR, swing detection, shield guard & clamp verification).
+- **`pytest tests/test_telegram_multi_signal_copier.py -v`:** **41/41 PASSED**.
+- **`pytest tests/test_autonomous_executor.py tests/test_strategies.py -q`:** **42/42 PASSED** (zero regressions across all 89 tests).

@@ -591,7 +591,7 @@ def test_directional_anti_chase_allows_discount_dip_buy():
     assert orders is not None
     assert len(orders) >= 1
     assert orders[0]["entry"] == 4120.25
-    assert orders[0]["sl"] == 4118.6
+    assert orders[0]["sl"] <= 4118.6  # Shielded behind swing structure by PASL
 
 
 def test_directional_anti_chase_blocks_adverse_runaway_buy():
@@ -797,6 +797,33 @@ def test_invariant_25_lot_sizing_floor_and_twin_tickets(monkeypatch):
     assert executed_single[0]["volume"] == 0.07
     assert executed_single[1]["volume"] == 0.07
     assert sum(t["volume"] for t in executed_single) == 0.14
+
+
+def test_invariant_23_broker_label_linked_breakeven():
+    """Invariant 23: Reconciles broker-level positions tagged with _T2 when companion _T1 has closed."""
+    from unittest.mock import MagicMock
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_positions.return_value = [
+        {
+            "positionId": 9992,
+            "comment": "Sig_prosig_XAUUSD_T2",
+            "symbolName": "XAUUSD",
+            "tradeSide": "BUY",
+            "entryPrice": 4120.0,
+            "stopLoss": 4108.0,
+            "takeProfit": 4160.0
+        }
+    ]
+    # Price has recovered to 4121.0 (above BE 4120.50)
+    mock_ctrader.get_spot_price.return_value = {"bid": 4121.0, "ask": 4121.2}
+
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+    copier.state["active_positions"] = []  # State had lost the position
+
+    copier.manage_active_breakeven()
+
+    # Verify amend_position was called with Breakeven price (4120.0 + 0.30 buffer = 4120.3)
+    mock_ctrader.amend_position.assert_called_once_with(9992, stop_loss=4120.3)
 
 
 

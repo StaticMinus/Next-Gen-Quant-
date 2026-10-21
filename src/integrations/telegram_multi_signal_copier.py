@@ -609,9 +609,10 @@ class MultiChannelSignalParser:
 
 
 class TelegramMultiSignalCopier:
-    def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None):
+    def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None, state_file: Optional[Path] = None):
         self.dry_run = dry_run
         self.ctrader = ctrader_client if ctrader_client is not None else CTraderMCPClient()
+        self.state_file = state_file if state_file is not None else (ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json" if dry_run else STATE_FILE)
         self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
@@ -641,9 +642,9 @@ class TelegramMultiSignalCopier:
         self.save_state()
 
     def load_state(self) -> dict:
-        if STATE_FILE.exists():
+        if self.state_file.exists():
             try:
-                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                with open(self.state_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.warning(f"Could not load state, creating fresh: {e}")
@@ -654,9 +655,9 @@ class TelegramMultiSignalCopier:
         }
 
     def save_state(self):
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
+            with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(self.state, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving state: {e}")
@@ -767,22 +768,27 @@ class TelegramMultiSignalCopier:
         side = sig["side"]
         channel = sig["channel"]
         params = self.get_asset_parameters(symbol)
-
-        raw_sl = sig["sl"]
         entry = spot_price  # Fill at live market spot
+        raw_sl = sig.get("sl")
         max_dist = params["max_sl_distance"]
 
-        # Clamp Stop Loss to safety maximum
-        if side == "BUY":
-            safe_sl = max(raw_sl, entry - max_dist)
-            if safe_sl >= entry:
-                logger.warning(f"Invalid BUY for {symbol}: SL {safe_sl} >= Entry {entry}")
-                return None
-        else:
-            safe_sl = min(raw_sl, entry + max_dist)
-            if safe_sl <= entry:
-                logger.warning(f"Invalid SELL for {symbol}: SL {safe_sl} <= Entry {entry}")
-                return None
+        # Invariant 24: Institutional Price Action Stop-Loss (PASL) & Structural Shield Guard
+        df_bars = None
+        try:
+            df_bars = self.ctrader.get_trendbars_dataframe(symbol, period="M_5", count=25)
+        except Exception as te:
+            logger.debug(f"Trendbars feed skipped/unavailable for {symbol}: {te}")
+
+        from src.strategies.price_action_sl_engine import PriceActionSLEngine
+        safe_sl, sl_reason = PriceActionSLEngine.reconcile_structural_sl(
+            provider_sl=raw_sl,
+            df_bars=df_bars,
+            side=side,
+            entry_price=entry,
+            symbol=symbol,
+            max_allowed_distance=max_dist
+        )
+        logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason}) | Provider: {raw_sl}")
 
         tps = sig["tps"]
         # Sanitize targets relative to actual fill entry spot
@@ -938,12 +944,15 @@ class TelegramMultiSignalCopier:
 
     def manage_active_breakeven(self):
         """Monitors active positions, triggers Breakeven locks, and enforces 48-Hour swing timeouts."""
-        active = self.state.get("active_positions", [])
-        if not active or self.dry_run:
+        if self.dry_run:
             return
 
         try:
             live_positions = self.ctrader.get_positions() or []
+            active = self.state.setdefault("active_positions", [])
+            if not active and not live_positions:
+                return
+
             live_pos_ids = {p.get("positionId") for p in live_positions}
             now_utc = datetime.now(timezone.utc)
 
@@ -969,7 +978,34 @@ class TelegramMultiSignalCopier:
                     except Exception as te:
                         logger.debug(f"Could not calculate age for #{pos_id}: {te}")
 
-            # 2. Check if Ticket 1 has hit TP1 to advance Ticket 2 to Breakeven
+            # 2. Invariant 23: Direct Broker-Label-Linked Reconciliation & Companion Breakeven
+            # First, reconcile broker-level positions tagged with _T2 if companion _T1 has closed
+            for lp in live_positions:
+                lp_id = lp.get("positionId")
+                comment = lp.get("comment") or ""
+                if "_T2" in comment:
+                    t1_comment = comment.replace("_T2", "_T1")
+                    t1_open = any((p.get("comment") or "") == t1_comment for p in live_positions)
+                    if not t1_open:
+                        # T1 has already closed on the broker!
+                        pos_in_active = next((p for p in active if p.get("positionId") == lp_id), None)
+                        if not pos_in_active:
+                            # Reconstruct from broker position
+                            sym_name = lp.get("symbolName") or "XAUUSD"
+                            pos_in_active = {
+                                "positionId": lp_id,
+                                "ticket": 2,
+                                "symbol": sym_name,
+                                "side": lp.get("tradeSide", "BUY"),
+                                "entry": float(lp.get("entryPrice", 0.0)),
+                                "sl": float(lp.get("stopLoss", 0.0)) if lp.get("stopLoss") else None,
+                                "tp": float(lp.get("takeProfit", 0.0)) if lp.get("takeProfit") else None,
+                                "be_locked": False,
+                                "time": now_utc.isoformat()
+                            }
+                            active.append(pos_in_active)
+
+            # Check if Ticket 1 has hit TP1 to advance Ticket 2 to Breakeven
             t1_items = [p for p in active if p.get("ticket") == 1]
             remaining_tickets = [p for p in active if p.get("ticket") == 2]
 
@@ -986,18 +1022,55 @@ class TelegramMultiSignalCopier:
                     for rem in remaining_tickets:
                         rem_id = rem.get("positionId")
                         if rem_id and rem_id in live_pos_ids and not rem.get("be_locked") and rem.get("symbol") == sym:
-                            try:
-                                self.ctrader.amend_position(rem_id, stop_loss=be_price)
-                                rem["be_locked"] = True
-                                rem["sl"] = be_price
-                                logger.info(f"🛡️ Ticket #1 filled! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
-                                self.send_telegram_alert(
-                                    f"🎯 <b>Target 1 Banked!</b>\n"
-                                    f"Symbol: {sym} | Ticket #2 (#{rem_id})\n"
-                                    f"SL moved to Breakeven @ <code>{be_price}</code> (Free-Ride Mode activated!)"
-                                )
-                            except Exception as ae:
-                                logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
+                            spot = self.ctrader.get_spot_price(sym)
+                            curr_price = float(spot["bid"] if side == "BUY" else spot["ask"]) if spot else None
+                            can_move = (curr_price >= be_price) if (curr_price and side == "BUY") else (curr_price <= be_price if curr_price else True)
+                            if can_move:
+                                try:
+                                    self.ctrader.amend_position(rem_id, stop_loss=be_price, symbol=sym)
+                                    rem["be_locked"] = True
+                                    rem["sl"] = be_price
+                                    logger.info(f"🛡️ Ticket #1 filled! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
+                                    self.send_telegram_alert(
+                                        f"🎯 <b>Target 1 Banked!</b>\n"
+                                        f"Symbol: {sym} | Ticket #2 (#{rem_id})\n"
+                                        f"SL moved to Breakeven @ <code>{be_price}</code> (Free-Ride Mode activated!)"
+                                    )
+                                except Exception as ae:
+                                    logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
+                            else:
+                                rem["be_pending"] = True
+                                logger.info(f"⏳ Ticket #1 filled, but spot {curr_price} is adverse to BE {be_price}. Awaiting price recovery for #{rem_id}.")
+
+            # Also check any pending Ticket 2s whose T1 is confirmed closed
+            for rem in remaining_tickets:
+                rem_id = rem.get("positionId")
+                if rem_id and rem_id in live_pos_ids and not rem.get("be_locked"):
+                    sym = rem.get("symbol")
+                    side = rem.get("side", "BUY")
+                    entry_p = rem.get("entry")
+                    params = self.get_asset_parameters(sym)
+                    be_price = round(entry_p + params["be_buffer"] if side == "BUY" else entry_p - params["be_buffer"], 5)
+                    spot = self.ctrader.get_spot_price(sym)
+                    curr_price = float(spot["bid"] if side == "BUY" else spot["ask"]) if spot else None
+                    can_move = (curr_price >= be_price) if (curr_price and side == "BUY") else (curr_price <= be_price if curr_price else False)
+                    if can_move:
+                        try:
+                            self.ctrader.amend_position(rem_id, stop_loss=be_price)
+                            rem["be_locked"] = True
+                            rem["sl"] = be_price
+                            rem["be_pending"] = False
+                            logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
+                            self.send_telegram_alert(
+                                f"🎯 <b>Companion Breakeven Activated!</b>\n"
+                                f"Symbol: {sym} | Ticket #2 (#{rem_id})\n"
+                                f"Price at favorable level. SL locked @ <code>{be_price}</code>"
+                            )
+                        except Exception as ae:
+                            logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
+                    else:
+                        rem["be_pending"] = True
+                        logger.info(f"⏳ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) awaiting price {curr_price} to reach BE {be_price}")
 
             # 3. Dynamic Breakeven for individual running tickets past 50% TP distance
             for pos in active:

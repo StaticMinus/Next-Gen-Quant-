@@ -721,17 +721,47 @@ class CTraderMCPClient:
         raw = self.call_tool("close_position", args)
         return self._parse_content_json(raw)
 
-    def amend_position_sl(self, position_id: int, stop_loss: float, symbol: Optional[str] = None) -> Optional[dict]:
+    def amend_position(self, position_id: int, stop_loss: Optional[float] = None,
+                       take_profit: Optional[float] = None,
+                       trailing_stop_loss: Optional[bool] = None,
+                       symbol: Optional[str] = None) -> Optional[dict]:
         """
-        Amends the stop loss of an active position (e.g., Move SL to Break-Even).
+        Amends stop loss and/or take profit of an active position.
+        Crucial: cTrader MCP replaces protections rather than patching them.
+        If either stop_loss or take_profit is omitted, this method queries existing
+        position details and resends the existing protection to avoid clearing it.
         """
-        digits = self.get_symbol_digits(symbol) if symbol else (5 if stop_loss < 10.0 else 2)
-        args = {
-            "positionId": position_id,
-            "stopLoss": round(float(stop_loss), digits)
-        }
+        existing_sl = None
+        existing_tp = None
+        if stop_loss is None or take_profit is None:
+            raw_det = self.call_tool("get_position_details", {"positionId": position_id})
+            data_det = self._parse_content_json(raw_det)
+            if data_det and isinstance(data_det, dict):
+                pos_obj = data_det.get("position", data_det)
+                if pos_obj:
+                    existing_sl = pos_obj.get("stopLoss")
+                    existing_tp = pos_obj.get("takeProfit")
+
+        final_sl = stop_loss if stop_loss is not None else existing_sl
+        final_tp = take_profit if take_profit is not None else existing_tp
+
+        digits = self.get_symbol_digits(symbol) if symbol else 2
+        args = {"positionId": int(position_id)}
+        if final_sl is not None:
+            args["stopLoss"] = round(float(final_sl), digits)
+        if final_tp is not None:
+            args["takeProfit"] = round(float(final_tp), digits)
+        if trailing_stop_loss is not None:
+            args["trailingStopLoss"] = bool(trailing_stop_loss)
+
         raw = self.call_tool("amend_position", args)
         return self._parse_content_json(raw)
+
+    def amend_position_sl(self, position_id: int, stop_loss: float, symbol: Optional[str] = None) -> Optional[dict]:
+        """
+        Amends the stop loss of an active position while preserving existing take profit.
+        """
+        return self.amend_position(position_id=position_id, stop_loss=stop_loss, symbol=symbol)
 
     def close_partial_position(self, position_id: int, fraction: float = 0.5) -> Optional[dict]:
         """
