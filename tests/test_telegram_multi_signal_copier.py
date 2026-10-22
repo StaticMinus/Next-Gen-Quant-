@@ -991,12 +991,11 @@ def test_parser_xauusd_gold_trading_forex_inline_and_emojis():
 
 def test_invariant_26_dynamic_single_slot_allocation():
     """
-    Invariant 26: Dynamic Single-Slot Allocation.
-    When 1 slot is occupied (e.g. runner active), an incoming signal plans
-    exactly 1 ticket (0.07 lots targeting TP1) instead of failing or opening 2.
-    When 2 slots are free, it plans twin tickets (2 tickets).
+    Invariant 26: Dynamic Capacity & Twin-Slot Allocation.
+    When only 1 slot is free (e.g. 5 slots occupied with max 6), allocates 1 ticket defensively.
+    When 2 or more slots are free, plans twin tickets (2 x 0.07 lots = 0.14 lots).
     """
-    copier = TelegramMultiSignalCopier(dry_run=True)
+    copier = TelegramMultiSignalCopier(dry_run=True, max_concurrent_positions=2)
     sig = {
         "channel": "forexgdpfree",
         "symbol": "EURAUD",
@@ -1009,23 +1008,68 @@ def test_invariant_26_dynamic_single_slot_allocation():
         "type": "DIRECT_EXECUTION"
     }
 
-    # Case 1: 1 slot already occupied -> allocates exactly 1 ticket
+    # Case 1: 1 slot free when max=2 and 1 occupied -> allocates 1 ticket defensively
     copier.state["active_positions"] = [
         {"positionId": 999001, "ticket": 2, "symbol": "XAUUSD", "side": "BUY", "volume": 0.07}
     ]
     orders_1slot = copier.execute_signal(sig, spot_price=1.5972)
     assert len(orders_1slot) == 1
     assert orders_1slot[0]["ticket"] == 1
+    assert orders_1slot[0]["volume"] == 0.07
     assert orders_1slot[0]["tp"] == 1.6032
 
-    # Case 2: 0 slots occupied (2 free) -> allocates 2 tickets
+    # Case 2: 0 slots occupied (2 free) -> allocates twin tickets (0.14 lots)
     copier.state["active_positions"] = []
     orders_2slots = copier.execute_signal(sig, spot_price=1.5972)
     assert len(orders_2slots) == 2
     assert orders_2slots[0]["ticket"] == 1
+    assert orders_2slots[0]["volume"] == 0.07
     assert orders_2slots[0]["tp"] == 1.6032
     assert orders_2slots[1]["ticket"] == 2
+    assert orders_2slots[1]["volume"] == 0.07
     assert orders_2slots[1]["tp"] == 1.6230
+    assert round(sum(o["volume"] for o in orders_2slots), 2) == 0.14
+
+    # Case 3: Production default (max 6 concurrent) -> with 1 active position, still allocates twin tickets (0.14 lots)
+    copier_prod = TelegramMultiSignalCopier(dry_run=True)  # max_concurrent_positions=6
+    copier_prod.state["active_positions"] = [
+        {"positionId": 999001, "ticket": 2, "symbol": "XAUUSD", "side": "BUY", "volume": 0.07}
+    ]
+    orders_prod = copier_prod.execute_signal(sig, spot_price=1.5972)
+    assert len(orders_prod) == 2
+    assert orders_prod[0]["volume"] == 0.07
+    assert orders_prod[1]["volume"] == 0.07
+    assert round(sum(o["volume"] for o in orders_prod), 2) == 0.14
+
+
+def test_universal_twin_ticket_execution_single_target_forex():
+    """
+    Verifies that single-target calls on Forex pairs also execute twin tickets (2 x 0.07 = 0.14 lots)
+    by synthetically creating Ticket 1 (advertised TP) + Ticket 2 (extended runner target).
+    """
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    sig_forex_single = {
+        "channel": "ForexEliteSignals",
+        "symbol": "EURUSD",
+        "side": "BUY",
+        "entry_min": 1.0850,
+        "entry_max": 1.0850,
+        "entry_mid": 1.0850,
+        "sl": 1.0820,
+        "tps": [1.0880],
+        "type": "DIRECT_EXECUTION"
+    }
+    orders = copier.execute_signal(sig_forex_single, spot_price=1.0850)
+    assert len(orders) == 2, "Single-target Forex calls must execute twin tickets"
+    assert orders[0]["ticket"] == 1
+    assert orders[0]["volume"] == 0.07
+    assert orders[0]["tp"] == 1.0870  # +20 pip micro-banker
+    assert orders[1]["ticket"] == 2
+    assert orders[1]["volume"] == 0.07
+    assert orders[1]["tp"] == 1.0880  # Full advertised target runner
+    assert round(sum(o["volume"] for o in orders), 2) == 0.14
+
+
 
 
 def test_parser_parenthesized_and_numbered_targets():

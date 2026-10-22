@@ -700,9 +700,10 @@ class MultiChannelSignalParser:
 
 
 class TelegramMultiSignalCopier:
-    def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None, state_file: Optional[Path] = None):
+    def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None, state_file: Optional[Path] = None, max_concurrent_positions: Optional[int] = None):
         self.dry_run = dry_run
         self.ctrader = ctrader_client if ctrader_client is not None else CTraderMCPClient()
+        self.max_concurrent_positions = max_concurrent_positions if max_concurrent_positions is not None else int(os.getenv("MAX_CONCURRENT_POSITIONS", "6"))
         if state_file is not None:
             self.state_file = state_file
             self.state = self.load_state()
@@ -720,6 +721,7 @@ class TelegramMultiSignalCopier:
             self.state_file = STATE_FILE
             self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
+
 
         # Persistent HTTP connection pool for sub-second Telegram harvesting
         self.session = requests.Session()
@@ -968,49 +970,55 @@ class TelegramMultiSignalCopier:
         scalp_tp1 = params.get("scalp_tp1_dist", 2.0)
         dist_to_tp = abs(tps[0] - entry)
 
-        is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
-        min_ticket_vol = 0.07 if is_gold else 0.01
+        # Strict Invariant 25: 0.07 lots per ticket (0.14 lots total across twin tickets)
+        ticket_vol = max(0.07, lot_size)
 
-        # Invariant 26: Dynamic Single-Slot Allocation.
-        # Check current active positions on broker to determine available slots (FundedNext max 2 concurrent).
+        # Invariant 26: Dynamic Capacity & Twin-Slot Allocation.
+        # Check current active positions on broker to determine available slots.
         try:
             live_pos = self.ctrader.get_positions_strict() if not self.dry_run else [p for p in self.state.get("active_positions", [])]
             current_count = len(live_pos) if live_pos is not None else len(self.state.get("active_positions", []))
         except Exception:
             current_count = len(self.state.get("active_positions", []))
 
-        free_slots = max(0, 2 - current_count)
+        max_allowed_pos = getattr(self, "max_concurrent_positions", 6)
+        free_slots = max(0, max_allowed_pos - current_count)
 
+        if free_slots == 0:
+            logger.warning(f"🛑 [Invariant 26] Max Concurrent Positions limit ({max_allowed_pos}) reached ({current_count} active). Skipping signal for {symbol}.")
+            return None
+
+        # Universal Twin-Ticket Allocation:
+        # Every trade executes twin tickets of 0.07 lots (0.14 total) when at least 2 slots are free.
         if has_multi_targets:
             if free_slots == 1:
-                # 1 slot free: allocate single high-conviction banker ticket targeting TP1
-                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
+                tickets_plan = [{"ticket": 1, "vol": ticket_vol, "tp": tps[0]}]
             else:
                 tickets_plan = [
-                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
-                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[-1]}
+                    {"ticket": 1, "vol": ticket_vol, "tp": tps[0]},
+                    {"ticket": 2, "vol": ticket_vol, "tp": tps[-1]}
                 ]
         elif dist_to_tp > (scalp_tp1 * 1.25):
             t1_tp = round(entry + scalp_tp1 if side == "BUY" else entry - scalp_tp1, 5)
             if free_slots == 1:
-                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp}]
+                tickets_plan = [{"ticket": 1, "vol": ticket_vol, "tp": t1_tp}]
             else:
                 tickets_plan = [
-                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": t1_tp},
-                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}
-                ]
-        elif is_gold:
-            # Single tight target on Gold
-            ext_runner = round(tps[0] + (scalp_tp1 if side == "BUY" else -scalp_tp1), 5)
-            if free_slots == 1:
-                tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
-            else:
-                tickets_plan = [
-                    {"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]},
-                    {"ticket": 2, "vol": max(min_ticket_vol, lot_size), "tp": ext_runner}
+                    {"ticket": 1, "vol": ticket_vol, "tp": t1_tp},
+                    {"ticket": 2, "vol": ticket_vol, "tp": tps[0]}
                 ]
         else:
-            tickets_plan = [{"ticket": 1, "vol": max(min_ticket_vol, lot_size), "tp": tps[0]}]
+            # Single tight target call across any asset (Gold, Forex Major, Cross, Index):
+            # Synthesize Ticket 1 (advertised TP) + Ticket 2 (extended runner target)
+            ext_runner = round(tps[0] + (scalp_tp1 if side == "BUY" else -scalp_tp1), 5)
+            if free_slots == 1:
+                tickets_plan = [{"ticket": 1, "vol": ticket_vol, "tp": tps[0]}]
+            else:
+                tickets_plan = [
+                    {"ticket": 1, "vol": ticket_vol, "tp": tps[0]},
+                    {"ticket": 2, "vol": ticket_vol, "tp": ext_runner}
+                ]
+
 
         total_vol = round(sum(t["vol"] for t in tickets_plan), 2)
         logger.info(f"🚀 Executing {side} {symbol} ({len(tickets_plan)} tickets • {total_vol} total lots) | Entry ~{entry} | SL: {safe_sl} | TP1: {tickets_plan[0]['tp']} | Runner TP: {tickets_plan[-1]['tp']} | Channel: {channel}")
