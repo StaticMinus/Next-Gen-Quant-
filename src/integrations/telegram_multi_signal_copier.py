@@ -452,8 +452,8 @@ class MultiChannelSignalParser:
 
         # Standardized parameter tags
         m_entry_tag = re.search(r"(?:Entry(?:\s*Level)?|CURRENT\s*PRICE|Precio(?:\s*de\s*referencia)?|Precio|BUY\s*AREA|SELL\s*AREA)\s*[:=\-@]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_sl_tag = re.search(r"(?:Stop\s*Loss|Stoploss|SL|Safe\s*Stop\s*Loss|Recommended\s*Stop\s*Loss)\s*[:=\-]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_tp_tag = re.findall(r"(?:Take\s*Profit|Target(?:\s*Level)?|TP\d?|Goal)\s*(?:[123¹²³]|\d(?!\d))?\s*[:=\-]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_sl_tag = re.search(r"(?:Stop\s*Loss|Stoploss|SL|Safe\s*Stop\s*Loss|Recommended\s*Stop\s*Loss)\s*[:=\-]?\s*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_tp_tag = re.findall(r"(?:\b(?:Take\s*Profit|Target(?:\s*Level)?|TP|Goal)(?:\s*[1-9¹²³⁴])?\b|\bTP[1-9]\b)[\s:=-–—]*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
 
         # 5. TAG STRUCTURED FORMAT (EliteTradingSignals, ProSignalsFx, xauusd_signals, TopTradingSignals, BestForexSignals)
         if m_entry_tag and side:
@@ -1578,31 +1578,39 @@ class TelegramMultiSignalCopier:
                             dist_from_zone = 0.0
 
                 if dist_from_zone > params["max_slippage"]:
-                    # Invariant 22: Target-Rollover & Ratcheted Late Entry Check
-                    # If TP1 is passed/blocked, check if higher targets (TP2+) still offer >= 1.5:1 R:R with ratcheted SL
+                    # Invariant 22/29: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
+                    # If spot has run past entry zone, scan all remaining candidate targets to find the first target offering >= 1.5:1 R:R
                     candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
                     rollover_executed = False
 
                     if candidate_tps:
-                        next_tp = candidate_tps[0]
                         ratcheted_sl = round(e_max if side == "BUY" else e_min, 5)
                         ratcheted_risk = abs(curr_spot - ratcheted_sl)
-                        remaining_reward = abs(next_tp - curr_spot)
-
-                        # Enforce minimum risk floor to prevent micro stops smaller than buffer
                         min_risk_dist = params.get("be_buffer", 0.5)
                         eff_risk = max(ratcheted_risk, min_risk_dist)
 
-                        if remaining_reward >= (1.5 * eff_risk):
+                        # Evaluate all remaining candidate targets for asymmetric risk:reward
+                        viable_tp = None
+                        viable_index = None
+                        for i, tp in enumerate(candidate_tps):
+                            reward = abs(tp - curr_spot)
+                            if reward >= (1.5 * eff_risk):
+                                viable_tp = tp
+                                viable_index = i
+                                break
+
+                        if viable_tp is not None:
+                            remaining_tps = candidate_tps[viable_index:]
+                            remaining_reward = abs(viable_tp - curr_spot)
                             logger.info(
-                                f"🎯 Invariant 22 Target-Rollover: {symbol} spot {curr_spot} passed entry zone, but next target {next_tp} "
+                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone, but target {viable_tp} "
                                 f"offers {remaining_reward:.2f} pts reward vs {eff_risk:.2f} pts ratcheted risk (>= 1.5 R:R). Proceeding with ratcheted SL {ratcheted_sl}."
                             )
                             rollover_sig = copy.deepcopy(sig)
                             rollover_sig["sl"] = ratcheted_sl
-                            rollover_sig["tps"] = candidate_tps
+                            rollover_sig["tps"] = remaining_tps
                             rollover_sig["is_target_rollover"] = True
-                            rollover_sig["rollover_tp"] = next_tp
+                            rollover_sig["rollover_tp"] = viable_tp
                             self.execute_signal(rollover_sig, curr_spot)
                             rollover_executed = True
 

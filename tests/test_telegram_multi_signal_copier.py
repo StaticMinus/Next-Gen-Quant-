@@ -1005,6 +1005,71 @@ def test_invariant_26_dynamic_single_slot_allocation():
     assert orders_2slots[1]["tp"] == 1.6230
 
 
+def test_parser_parenthesized_and_numbered_targets():
+    """
+    Verifies that targets formatted with parenthesized numbers (e.g. TARGET 1 ( 4063 ))
+    are parsed cleanly as price levels [4063.0, 4067.0, ...] and NOT as indices [1.0, 2.0, ...].
+    """
+    text = (
+        "XAUUSD BUY NOW ( 4059\n\n"
+        "TARGET 1  ( 4063 )\n"
+        "TARGET 2  ( 4067 )\n"
+        "TARGET 3  ( 4071 )\n"
+        "TARGET 4  ( 4079 )\n\n"
+        "STOP LOSS     (  4050 )\n\n"
+        "RISK MANAGEMENT IS IMPORTANT"
+    )
+    sig = MultiChannelSignalParser.parse_message(text, "US30_Forex_Signals")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 4059.0
+    assert sig["sl"] == 4050.0
+    assert sig["tps"] == [4063.0, 4067.0, 4071.0, 4079.0]
+    assert sig["is_valid"] is True
+
+
+def test_invariant_29_smart_multi_target_rollover():
+    """
+    Verifies Invariant 29: When spot price is slightly past entry and TP1 has < 1.5 R:R,
+    the system does NOT reject the trade if higher targets (TP2, TP3, TP4) offer >= 1.5:1 R:R.
+    It promotes the first viable target (TP2) as TP1 and executes the runner to TP4!
+    """
+    from unittest.mock import MagicMock
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    # Spot is 4062.00 (3.0 pts above 4059.0 entry)
+    mock_ctrader.get_spot_price.return_value = {"bid": 4061.90, "ask": 4062.00}
+
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=True)
+    copier.check_market_hours = MagicMock(return_value=True)
+    copier.check_conflicts = MagicMock(return_value=False)
+    copier.execute_signal = MagicMock()
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "us30_forex_signals/7656",
+        "post_url": "https://t.me/us30_forex_signals/7656",
+        "text": "XAUUSD BUY NOW ( 4059  TARGET 1  ( 4063 ) TARGET 2  ( 4067 ) TARGET 3  ( 4071 ) TARGET 4  ( 4079 )  STOP LOSS ( 4050 )"
+    }])
+    copier.state["watermarks"] = {"US30_Forex_Signals": "us30_forex_signals/7655"}
+    copier.state["executed_signal_keys"] = []
+
+    copier.poll_cycle()
+
+    # execute_signal must be called via Invariant 29 multi-target rollover!
+    assert copier.execute_signal.called
+    sig_arg, spot_arg = copier.execute_signal.call_args[0]
+    assert spot_arg == 4062.00
+    assert sig_arg["is_target_rollover"] is True
+    # At 4062.00, ratcheted risk is (4062 - 4059) = 3.0 pts.
+    # TP1 (4063) only offers 1.0 pt (< 1.5 * 3.0 = 4.5).
+    # TP2 (4067) offers 5.0 pts (>= 4.5 pts)!
+    # Therefore, TP2 (4067) is promoted as rollover_tp!
+    assert sig_arg["rollover_tp"] == 4067.0
+    assert sig_arg["tps"] == [4067.0, 4071.0, 4079.0]
+    assert sig_arg["sl"] == 4059.0
+
+
+
 
 
 
