@@ -242,7 +242,7 @@ def test_dynamic_trailing_stop_ratchet():
 
 def test_channel_config_pruned_elite_fleet_valid():
     assert len(CHANNELS_CONFIG) <= 50
-    assert len(CHANNELS_CONFIG) == 19
+    assert len(CHANNELS_CONFIG) == 39
     ids = [c["id"] for c in CHANNELS_CONFIG]
     assert len(ids) == len(set(ids)), "Channel IDs must be unique"
     # Ensure toxic losing channels are excluded from active fleet
@@ -253,6 +253,9 @@ def test_channel_config_pruned_elite_fleet_valid():
     assert "forexgdpfree" in ids
     assert "ssfgold" in ids
     assert "anabelsignals" in ids
+    assert "elite_pips_hunter" in ids
+    assert "oanda" in ids
+    assert "dow_jones_signals" in ids
     for c in CHANNELS_CONFIG:
         assert "id" in c and c["id"]
         assert "name" in c and c["name"]

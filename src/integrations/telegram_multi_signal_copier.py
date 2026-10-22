@@ -66,8 +66,32 @@ CHANNELS_CONFIG = [
     {"id": "US30_Forex_Signals", "name": "US30 Index Signals", "enabled": True, "assets": ["US30", "NAS100"], "tier": 2, "yield_pct": 20.0, "peak_session": "New York Open"},
     {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "New York Killzone"},
     {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 76.5, "peak_session": "London/Tokyo"},
-    {"id": "forexgdpfree", "name": "Forex GDP Free Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 84.0, "peak_session": "London/NY"}
+    {"id": "forexgdpfree", "name": "Forex GDP Free Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 84.0, "peak_session": "London/NY"},
+    # === CATEGORY A: SNIPER ENTRY SPECIALISTS (Order Blocks, SMC, Tight SL) ===
+    {"id": "elite_pips_hunter", "name": "Elite Pips Hunter", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
+    {"id": "fxscalpingpro", "name": "FX Scalping Pro", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
+    {"id": "royal_pips_fx", "name": "Royal Pips FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 78.9, "peak_session": "London Pre-Market"},
+    {"id": "price_action_traders", "name": "Price Action Traders", "enabled": True, "assets": ["EURUSD", "GBPUSD", "XAUUSD"], "tier": 1, "yield_pct": 35.0, "peak_session": "London Open"},
+    {"id": "smart_pips_signals", "name": "Smart Pips Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 40.0, "peak_session": "New York Open"},
+    {"id": "purepipsofficial", "name": "Pure Pips Official", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 40.0, "peak_session": "London/NY"},
+    {"id": "alphatradesfx", "name": "Alpha Trades FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 41.2, "peak_session": "New York Open"},
+    # === CATEGORY B: MULTI-DAY SWING TRADERS (Forex GDP Style, 60-150+ Pip Targets) ===
+    {"id": "oanda", "name": "Oanda Swings", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 100.0, "peak_session": "London/Tokyo"},
+    {"id": "DailyForexPipsFree", "name": "Daily Forex Pips Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
+    {"id": "UniversalForexSignals", "name": "Universal Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
+    {"id": "vipfx1", "name": "VIP FX Crosses", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/Tokyo"},
+    {"id": "ultreos_forex", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London Open"},
+    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 42.5, "peak_session": "London/NY"},
+    {"id": "purefxvip", "name": "Pure FX VIP", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 55.0, "peak_session": "London Open"},
+    # === CATEGORY C: MACRO & CPI VOLATILITY SPECIALISTS (US CPI, NFP, Indices) ===
+    {"id": "dow_jones_signals", "name": "Dow Jones Signals", "enabled": True, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 1, "yield_pct": 45.0, "peak_session": "New York Open"},
+    {"id": "protrades1", "name": "Pro Trades Macro", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "New York/London"},
+    {"id": "fx_signals", "name": "FX Signals Macro", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London/NY"},
+    {"id": "wallstreet_pips", "name": "Wall Street Pips", "enabled": True, "assets": ["NAS100", "US30", "XAUUSD", "ALL"], "tier": 1, "yield_pct": 42.1, "peak_session": "New York Open"},
+    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 38.9, "peak_session": "London Open"},
+    {"id": "UniversalCryptoSignals", "name": "Universal Crypto Macro", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "XAUUSD"], "tier": 1, "yield_pct": 30.0, "peak_session": "24/7 Asian/NY"}
 ]
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -914,9 +938,13 @@ class TelegramMultiSignalCopier:
 
         # Invariant 28: Pure Intraday Scalp Target Guard (Reject Multi-Day Swings)
         # Prevents any signal whose primary target TP1 requires multi-day swing holding (>70 pips standard Forex, >80 pips JPY, >25.0 pts Gold)
-        # USER DIRECTIVE EXCEPTION: Forex GDP (forexgdpfree / forexgdp) is authorized for multi-day swing targets.
-        is_forexgdp = str(channel).lower() in ["forexgdpfree", "forexgdp"]
-        if dist_tp1 > max_intraday_tp and not is_forexgdp:
+        # USER DIRECTIVE EXCEPTION: Authorized multi-day swing channels (Forex GDP and vetted swing providers)
+        authorized_swing_channels = {
+            "forexgdpfree", "forexgdp", "oanda", "dailyforexpipsfree", "universalforexsignals",
+            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip"
+        }
+        is_swing_authorized = str(channel).lower() in authorized_swing_channels
+        if dist_tp1 > max_intraday_tp and not is_swing_authorized:
             logger.warning(
                 f"🛑 [Invariant 28] Rejected multi-day swing signal from {channel} on {symbol} {side}: "
                 f"TP1 distance {dist_tp1:.4f} exceeds intraday ceiling {max_intraday_tp:.4f}."
