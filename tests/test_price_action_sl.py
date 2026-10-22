@@ -78,14 +78,15 @@ def test_calculate_swing_sl_sell():
 
 def test_structural_shield_adoption_buy():
     """
-    If a provider sets a tight SL (e.g. 4115.0) right inside the noise pocket,
-    the Structural Shield adopts the swing low SL (4111.0) so the trade isn't wicked out.
+    INVARIANT: Provider tight SL is NEVER widened.
+    Overly wide provider SL is tightened to market structure.
     """
     lows = [4116.0, 4114.0, 4112.0, 4112.0, 4115.0, 4118.0, 4119.0, 4120.0, 4121.0]
     highs = [4120.0, 4118.0, 4116.0, 4117.0, 4119.0, 4122.0, 4123.0, 4124.0, 4125.0]
     df = create_sample_bars(lows, highs)
 
-    # Provider gave 4116.0 (which sits above the swing low 4112.0)
+    # 1. Provider gave tight 4116.0 (closer to entry 4122.0 than swing low 4111.0)
+    # Must NOT widen to 4111.0!
     sl, reason = PriceActionSLEngine.reconcile_structural_sl(
         provider_sl=4116.0,
         df_bars=df,
@@ -94,9 +95,22 @@ def test_structural_shield_adoption_buy():
         symbol="XAUUSD",
         max_allowed_distance=12.0
     )
+    assert reason == "PROVIDER_EXACT"
+    assert sl == 4116.0
 
-    assert reason == "STRUCTURAL_SHIELD_ADOPTED"
-    assert sl < 4112.0  # Safe behind the swing low
+    # 2. Provider gave wide 4105.0 (further from entry than swing low ~4111.0)
+    # Must tighten to swing structure!
+    sl_tight, reason_tight = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=4105.0,
+        df_bars=df,
+        side="BUY",
+        entry_price=4122.0,
+        symbol="XAUUSD",
+        max_allowed_distance=12.0
+    )
+    assert reason_tight == "STRUCTURAL_SHIELD_TIGHTENED"
+    assert sl_tight < 4112.0
+    assert sl_tight > 4105.0
 
 
 def test_max_risk_clamp():
@@ -123,7 +137,9 @@ def test_max_risk_clamp():
 
 def test_copier_integration_with_pasl():
     """
-    Verifies TelegramMultiSignalCopier uses PriceActionSLEngine during execute_signal.
+    Verifies TelegramMultiSignalCopier uses PriceActionSLEngine during execute_signal:
+    - Tight provider SL is preserved.
+    - Missing SL is synthesized by PASL.
     """
     mock_ctrader = MagicMock()
     lows = [4115.0, 4113.0, 4111.0, 4114.0, 4116.0, 4118.0]
@@ -132,20 +148,36 @@ def test_copier_integration_with_pasl():
     mock_ctrader.get_trendbars_dataframe.return_value = df
 
     copier = TelegramMultiSignalCopier(dry_run=True, ctrader_client=mock_ctrader)
-    sig = {
+    sig_tight = {
         "channel": "ssfgold",
         "symbol": "XAUUSD",
         "side": "BUY",
         "entry_min": 4120.0,
         "entry_max": 4120.0,
         "entry_mid": 4120.0,
-        "sl": 4116.0,  # Provider tight SL (inside noise)
+        "sl": 4116.0,  # Provider tight SL (4 pts risk)
         "tps": [4125.0],
         "type": "DIRECT_EXECUTION"
     }
 
-    orders = copier.execute_signal(sig, spot_price=4120.0)
+    orders = copier.execute_signal(sig_tight, spot_price=4120.0)
     assert len(orders) == 2
-    # Verify the SL adopted was shielded behind the swing low (4111.0)
-    assert orders[0]["sl"] < 4111.0
-    assert orders[1]["sl"] < 4111.0
+    # Verify tight SL was preserved exactly
+    assert orders[0]["sl"] == 4116.0
+    assert orders[1]["sl"] == 4116.0
+
+    # Missing SL synthesized by PASL behind swing low 4111.0
+    sig_none = {
+        "channel": "ssfgold",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 4120.0,
+        "entry_max": 4120.0,
+        "entry_mid": 4120.0,
+        "sl": None,
+        "tps": [4125.0],
+        "type": "DIRECT_EXECUTION"
+    }
+    orders_syn = copier.execute_signal(sig_none, spot_price=4120.0)
+    # Clamped to new 5.0 pt max risk ceiling (4120.0 - 5.0 = 4115.0)
+    assert orders_syn[0]["sl"] == 4115.0

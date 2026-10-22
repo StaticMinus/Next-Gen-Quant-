@@ -153,23 +153,19 @@ class PriceActionSLEngine:
             candidate_sl = float(provider_sl)
             reason = "PROVIDER_EXACT"
 
-            # 3. Apply Structural Shield Guard if PASL is available
+            # 3. Apply Asymmetric Structural Guard if PASL is available
+            # INVARIANT: NEVER WIDEN PROVIDER SL.
+            # If provider set a tighter SL than PASL, respect provider exact SL.
+            # If PASL is tighter than provider SL, adopt PASL to reduce risk.
             if pasl is not None:
                 if side_upper == "BUY":
-                    # If provider SL is above the swing low (inside the noise / liquidity sweep zone),
-                    # shield the position by placing SL behind the structural swing low
-                    if candidate_sl > pasl:
-                        shield_dist = abs(entry_price - pasl)
-                        if shield_dist <= max_allowed_distance:
-                            candidate_sl = pasl
-                            reason = "STRUCTURAL_SHIELD_ADOPTED"
+                    if candidate_sl < pasl < entry_price:
+                        candidate_sl = pasl
+                        reason = "STRUCTURAL_SHIELD_TIGHTENED"
                 else:
-                    # For SELL: If provider SL is below the swing high, shield above it
-                    if candidate_sl < pasl:
-                        shield_dist = abs(pasl - entry_price)
-                        if shield_dist <= max_allowed_distance:
-                            candidate_sl = pasl
-                            reason = "STRUCTURAL_SHIELD_ADOPTED"
+                    if entry_price < pasl < candidate_sl:
+                        candidate_sl = pasl
+                        reason = "STRUCTURAL_SHIELD_TIGHTENED"
 
         # 4. Strict Prop-Firm Risk Clamp
         if side_upper == "BUY":

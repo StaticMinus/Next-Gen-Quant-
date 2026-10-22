@@ -106,7 +106,7 @@ def test_parser_rejects_spam_and_locked():
 def test_asset_parameters_gold_vs_forex():
     copier = TelegramMultiSignalCopier(dry_run=True)
     p_gold = copier.get_asset_parameters("XAUUSD")
-    assert p_gold["max_sl_distance"] == 12.0
+    assert p_gold["max_sl_distance"] == 5.0
     assert p_gold["max_slippage"] == 2.50
     assert p_gold["be_buffer"] == 0.30
     assert p_gold["scalp_tp1_dist"] == 2.00
@@ -240,10 +240,16 @@ def test_dynamic_trailing_stop_ratchet():
     assert copier.state["active_positions"][0]["sl"] == 2653.00
 
 
-def test_channel_config_all_155_valid():
-    assert len(CHANNELS_CONFIG) == 155
+def test_channel_config_pruned_elite_fleet_valid():
+    assert len(CHANNELS_CONFIG) <= 50
+    assert len(CHANNELS_CONFIG) == 32
     ids = [c["id"] for c in CHANNELS_CONFIG]
     assert len(ids) == len(set(ids)), "Channel IDs must be unique"
+    # Ensure toxic losing channels are excluded from active fleet
+    assert "PrimeGoldSignals" not in ids
+    assert "xauanalysisofficial" not in ids
+    assert "ssfgold" in ids
+    assert "anabelsignals" in ids
     for c in CHANNELS_CONFIG:
         assert "id" in c and c["id"]
         assert "name" in c and c["name"]
