@@ -181,3 +181,129 @@ def test_copier_integration_with_pasl():
     orders_syn = copier.execute_signal(sig_none, spot_price=4120.0)
     # Clamped to new 5.0 pt max risk ceiling (4120.0 - 5.0 = 4115.0)
     assert orders_syn[0]["sl"] == 4115.0
+
+
+def test_calculate_swing_sl_sell_with_spread_cushion():
+    """
+    Verifies that for SELL trades, spread_cushion is added to the PASL to prevent
+    Ask-price spread spikes from prematurely triggering stop-loss.
+    """
+    lows = [4120.0, 4122.0, 4124.0, 4126.0, 4128.0, 4125.0, 4123.0, 4121.0, 4119.0, 4118.0]
+    highs = [4124.0, 4126.0, 4128.0, 4131.0, 4135.0, 4130.0, 4128.0, 4125.0, 4122.0, 4121.0]
+    df = create_sample_bars(lows, highs)
+
+    # Without spread cushion
+    pasl_no_spread, _ = PriceActionSLEngine.calculate_swing_sl(
+        df=df,
+        side="SELL",
+        entry_price=4118.0,
+        symbol="XAUUSD",
+        lookback_bars=8,
+        spread_cushion=0.0
+    )
+
+    # With 0.35 pt live spread cushion
+    pasl_with_spread, dist = PriceActionSLEngine.calculate_swing_sl(
+        df=df,
+        side="SELL",
+        entry_price=4118.0,
+        symbol="XAUUSD",
+        lookback_bars=8,
+        spread_cushion=0.35
+    )
+
+    # The cushioned SL must sit exactly 0.35 higher than the uncushioned SL
+    assert round(pasl_with_spread - pasl_no_spread, 2) == 0.35
+    assert pasl_with_spread > 4135.0 + 0.35
+
+
+def test_calculate_m5_trailing_sl_buy():
+    """
+    Verifies institutional M5 market structure trailing for BUY positions.
+    When a trade moves into profit and confirms a higher swing low base,
+    the SL ratchets behind that swing low (protecting banked gains).
+    """
+    # 8 M5 bars showing an uptrend with a pull-back base at 4124.50
+    lows = [4120.0, 4121.0, 4124.5, 4125.0, 4126.0, 4127.0, 4128.0, 4129.0]
+    highs = [4123.0, 4124.0, 4127.0, 4128.0, 4129.0, 4130.0, 4131.0, 4132.0]
+    df = create_sample_bars(lows, highs)
+
+    # Entry was 4120.00, current SL is BE @ 4120.30, price reached 4130.00
+    new_sl = PriceActionSLEngine.calculate_m5_trailing_sl(
+        df=df,
+        side="BUY",
+        entry_price=4120.00,
+        current_sl=4120.30,
+        current_price=4130.00,
+        symbol="XAUUSD",
+        lookback_bars=5
+    )
+
+    assert new_sl is not None
+    # Swing low is 4124.50. SL should be below 4124.50, but way above current BE 4120.30!
+    assert new_sl < 4124.50
+    assert new_sl > 4123.00
+    assert new_sl > 4120.30
+
+
+def test_calculate_m5_trailing_sl_sell():
+    """
+    Verifies institutional M5 market structure trailing for SELL positions.
+    Ratchet must trail behind lower swing highs with spread cushion.
+    """
+    # 8 M5 bars showing a downtrend with a lower high bounce at 4115.00
+    lows = [4118.0, 4116.0, 4114.0, 4112.0, 4110.0, 4109.0, 4108.0, 4107.0]
+    highs = [4122.0, 4120.0, 4118.0, 4115.0, 4113.0, 4112.0, 4111.0, 4110.0]
+    df = create_sample_bars(lows, highs)
+
+    # Entry was 4122.00, current SL is BE @ 4121.70, price is down to 4108.00
+    new_sl = PriceActionSLEngine.calculate_m5_trailing_sl(
+        df=df,
+        side="SELL",
+        entry_price=4122.00,
+        current_sl=4121.70,
+        current_price=4108.00,
+        symbol="XAUUSD",
+        lookback_bars=5,
+        spread_cushion=0.25
+    )
+
+    assert new_sl is not None
+    # Swing high in lookback is 4115.00. SL must sit above 4115.00 + buffer + spread
+    assert new_sl > 4115.00
+    assert new_sl < 4121.70  # strictly ratcheted lower than BE
+
+
+def test_copier_m5_structure_trailing_integration():
+    """
+    Verifies copier uses M5 structure trailing in manage_active_breakeven
+    when trendbars are provided by broker.
+    """
+    mock_ctrader = MagicMock()
+    lows = [4120.0, 4121.0, 4122.0, 4125.0, 4126.0, 4127.0]
+    highs = [4123.0, 4124.0, 4125.0, 4128.0, 4129.0, 4130.0]
+    df = create_sample_bars(lows, highs)
+    mock_ctrader.get_trendbars_dataframe.return_value = df
+    mock_ctrader.get_positions.return_value = [{"positionId": 777}]
+    mock_ctrader.get_spot_price.return_value = {"bid": 4129.50, "ask": 4129.70}
+
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+    copier.state["active_positions"] = [{
+        "positionId": 777,
+        "ticket": 2,
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry": 4120.00,
+        "sl": 4120.30,  # BE
+        "tp": 4140.00,
+        "be_locked": True
+    }]
+
+    copier.manage_active_breakeven()
+
+    # Position 777 should have been amended using M5 structural level (> 4123.0)
+    mock_ctrader.amend_position.assert_called_once()
+    called_sl = mock_ctrader.amend_position.call_args[1]["stop_loss"]
+    assert called_sl > 4123.0
+    assert called_sl < 4129.50
+

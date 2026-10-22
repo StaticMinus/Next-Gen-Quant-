@@ -859,6 +859,14 @@ class TelegramMultiSignalCopier:
         except Exception as te:
             logger.debug(f"Trendbars feed skipped/unavailable for {symbol}: {te}")
 
+        spread = 0.0
+        try:
+            live_spot = self.ctrader.get_spot_price(symbol)
+            if live_spot and "ask" in live_spot and "bid" in live_spot:
+                spread = abs(float(live_spot["ask"]) - float(live_spot["bid"]))
+        except Exception:
+            spread = 0.0
+
         from src.strategies.price_action_sl_engine import PriceActionSLEngine
         safe_sl, sl_reason = PriceActionSLEngine.reconcile_structural_sl(
             provider_sl=raw_sl,
@@ -866,9 +874,10 @@ class TelegramMultiSignalCopier:
             side=side,
             entry_price=entry,
             symbol=symbol,
-            max_allowed_distance=max_dist
+            max_allowed_distance=max_dist,
+            spread_cushion=spread if side == "SELL" else 0.0
         )
-        logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason}) | Provider: {raw_sl}")
+        logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
 
         tps = sig["tps"]
         # Sanitize targets relative to actual fill entry spot
@@ -1313,17 +1322,47 @@ class TelegramMultiSignalCopier:
                 trail_dist = params.get("trailing_distance", 0.0030)
 
                 if gain >= trail_act:
+                    df_bars = None
+                    try:
+                        df_bars = self.ctrader.get_trendbars_dataframe(symbol, period="M_5", count=20)
+                    except Exception as tbe:
+                        logger.debug(f"Trendbars unavailable for trailing {symbol}: {tbe}")
+
+                    spread = abs(float(spot.get("ask", 0.0)) - float(spot.get("bid", 0.0))) if spot else 0.0
+
+                    from src.strategies.price_action_sl_engine import PriceActionSLEngine
+                    structural_sl = PriceActionSLEngine.calculate_m5_trailing_sl(
+                        df=df_bars,
+                        side=side,
+                        entry_price=entry,
+                        current_sl=current_sl,
+                        current_price=curr_price,
+                        symbol=symbol,
+                        lookback_bars=6,
+                        spread_cushion=spread if side == "SELL" else 0.0
+                    )
+
+                    new_sl = None
+                    trail_mode = "Distance Dynamic"
+                    if structural_sl is not None:
+                        new_sl = structural_sl
+                        trail_mode = "M5 Structure Pivot"
+                    else:
+                        if side == "BUY":
+                            new_sl = round(curr_price - trail_dist, 5)
+                        else:
+                            new_sl = round(curr_price + trail_dist + (spread if side == "SELL" else 0.0), 5)
+
                     if side == "BUY":
-                        new_sl = round(curr_price - trail_dist, 5)
                         # Ratchet constraint: only ratchet SL upwards
-                        if new_sl > current_sl + (params["be_buffer"] * 0.5):
+                        if new_sl and new_sl > current_sl + (params["be_buffer"] * 0.5):
                             try:
                                 self.ctrader.amend_position(pos_id, stop_loss=new_sl)
                                 pos["sl"] = new_sl
                                 pos["be_locked"] = True
-                                logger.info(f"🏃 [TRAILING STOP] Ticket #2 (#{pos_id} {symbol}) SL trailed up to {new_sl} (gain: +{gain:.4f})")
+                                logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed up to {new_sl} (gain: +{gain:.4f})")
                                 self.send_telegram_alert(
-                                    f"🏃 <b>Trailing Stop Advanced</b>\n"
+                                    f"🏃 <b>Trailing Stop Advanced ({trail_mode})</b>\n"
                                     f"Symbol: {symbol} | Ticket #{pos.get('ticket')} (#{pos_id})\n"
                                     f"Floating Gain: +{gain:.4f}\n"
                                     f"New Protected SL: <code>{new_sl}</code>"
@@ -1331,16 +1370,15 @@ class TelegramMultiSignalCopier:
                             except Exception as ae:
                                 logger.error(f"Failed to trail SL for #{pos_id}: {ae}")
                     else:  # SELL
-                        new_sl = round(curr_price + trail_dist, 5)
                         # Ratchet constraint: only ratchet SL downwards
-                        if new_sl < current_sl - (params["be_buffer"] * 0.5):
+                        if new_sl and new_sl < current_sl - (params["be_buffer"] * 0.5):
                             try:
                                 self.ctrader.amend_position(pos_id, stop_loss=new_sl)
                                 pos["sl"] = new_sl
                                 pos["be_locked"] = True
-                                logger.info(f"🏃 [TRAILING STOP] Ticket #2 (#{pos_id} {symbol}) SL trailed down to {new_sl} (gain: +{gain:.4f})")
+                                logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed down to {new_sl} (gain: +{gain:.4f})")
                                 self.send_telegram_alert(
-                                    f"🏃 <b>Trailing Stop Advanced</b>\n"
+                                    f"🏃 <b>Trailing Stop Advanced ({trail_mode})</b>\n"
                                     f"Symbol: {symbol} | Ticket #{pos.get('ticket')} (#{pos_id})\n"
                                     f"Floating Gain: +{gain:.4f}\n"
                                     f"New Protected SL: <code>{new_sl}</code>"
