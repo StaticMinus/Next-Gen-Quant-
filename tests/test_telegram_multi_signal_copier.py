@@ -1046,11 +1046,11 @@ def test_invariant_29_smart_multi_target_rollover():
     copier.check_conflicts = MagicMock(return_value=False)
     copier.execute_signal = MagicMock()
     copier.fetch_channel_posts = MagicMock(return_value=[{
-        "post_id": "us30_forex_signals/7656",
-        "post_url": "https://t.me/us30_forex_signals/7656",
+        "post_id": "xauusd_signals/7656",
+        "post_url": "https://t.me/xauusd_signals/7656",
         "text": "XAUUSD BUY NOW ( 4059  TARGET 1  ( 4063 ) TARGET 2  ( 4067 ) TARGET 3  ( 4071 ) TARGET 4  ( 4079 )  STOP LOSS ( 4050 )"
     }])
-    copier.state["watermarks"] = {"US30_Forex_Signals": "us30_forex_signals/7655"}
+    copier.state["watermarks"] = {"xauusd_signals": "xauusd_signals/7655"}
     copier.state["executed_signal_keys"] = []
 
     copier.poll_cycle()
@@ -1067,6 +1067,46 @@ def test_invariant_29_smart_multi_target_rollover():
     assert sig_arg["rollover_tp"] == 4067.0
     assert sig_arg["tps"] == [4067.0, 4071.0, 4079.0]
     assert sig_arg["sl"] == 4059.0
+
+
+def test_channel_asset_whitelist_filtering():
+    """
+    Verifies Invariant 30:
+    - Gold-only channels (assets: ["XAUUSD"]) reject non-gold assets (e.g. EURUSD).
+    - Multi-asset channels (assets: ["ALL"]) accept any valid asset.
+    """
+    from unittest.mock import MagicMock
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    mock_ctrader.get_spot_price.return_value = {"bid": 1.12000, "ask": 1.12005}
+
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=True)
+    copier.check_market_hours = MagicMock(return_value=True)
+    copier.check_conflicts = MagicMock(return_value=False)
+    copier.execute_signal = MagicMock()
+
+    # Case 1: xauusd_signals (assets: ["XAUUSD"]) posts EURUSD signal -> MUST BE BLOCKED
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "xauusd_signals/888",
+        "post_url": "https://t.me/xauusd_signals/888",
+        "text": "EURUSD BUY 1.1200 SL 1.1180 TP 1.1240"
+    }])
+    copier.state["watermarks"] = {"xauusd_signals": "xauusd_signals/887"}
+    copier.state["executed_signal_keys"] = []
+    copier.poll_cycle()
+    assert not copier.execute_signal.called
+
+    # Case 2: ForexEliteSignals (assets: ["ALL"]) posts EURUSD signal -> MUST BE ACCEPTED
+    copier.execute_signal.reset_mock()
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "ForexEliteSignals/999",
+        "post_url": "https://t.me/ForexEliteSignals/999",
+        "text": "EURUSD BUY 1.1200 SL 1.1180 TP 1.1240"
+    }])
+    copier.state["watermarks"] = {"ForexEliteSignals": "ForexEliteSignals/998"}
+    copier.poll_cycle()
+    assert copier.execute_signal.called
+
 
 
 

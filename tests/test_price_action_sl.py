@@ -307,3 +307,60 @@ def test_copier_m5_structure_trailing_integration():
     assert called_sl > 4123.0
     assert called_sl < 4129.50
 
+
+def test_get_min_noise_floor_distance():
+    assert PriceActionSLEngine.get_min_noise_floor_distance("XAUUSD") == 1.50
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GOLD") == 1.50
+    assert PriceActionSLEngine.get_min_noise_floor_distance("EURUSD") == 0.00080
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPUSD") == 0.00080
+    assert PriceActionSLEngine.get_min_noise_floor_distance("USDJPY") == 0.08
+    assert PriceActionSLEngine.get_min_noise_floor_distance("US30") == 25.0
+    assert PriceActionSLEngine.get_min_noise_floor_distance("BTCUSD") == 50.0
+
+
+def test_structural_shield_rejects_sub_noise_tightening():
+    """
+    Forex incident test: Provider gave 1.11920 (7 pips from entry 1.11990).
+    A micro-consolidation wick gave PASL of 1.11959 (3.1 pips from entry).
+    Because 3.1 pips is inside the noise floor (< 8 pips), PASL tightening
+    must be DISCARDED and provider SL 1.11920 preserved.
+    """
+    lows = [1.11980, 1.11975, 1.11965, 1.11970, 1.11980, 1.11985]
+    highs = [1.12010, 1.12005, 1.11995, 1.12000, 1.12015, 1.12020]
+    df = create_sample_bars(lows, highs)
+
+    sl, reason = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=1.11920,
+        df_bars=df,
+        side="BUY",
+        entry_price=1.11990,
+        symbol="EURUSD",
+        max_allowed_distance=0.0050
+    )
+    assert reason == "PROVIDER_EXACT"
+    assert sl == 1.11920
+
+
+def test_structural_shield_allows_valid_macro_tightening():
+    """
+    When provider gives an overly wide SL (30 pips away) and a valid swing structure
+    exists outside the noise floor (e.g. 15 pips away), it should be tightened.
+    """
+    lows = [1.11880, 1.11860, 1.11850, 1.11890, 1.11930, 1.11960]
+    highs = [1.11920, 1.11900, 1.11890, 1.11930, 1.11970, 1.12000]
+    df = create_sample_bars(lows, highs)
+
+    sl, reason = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=1.11690,  # 30 pips away
+        df_bars=df,
+        side="BUY",
+        entry_price=1.11990,
+        symbol="EURUSD",
+        max_allowed_distance=0.0050
+    )
+    assert reason == "STRUCTURAL_SHIELD_TIGHTENED"
+    assert sl > 1.11690
+    assert sl < 1.11990
+    assert round(1.11990 - sl, 5) >= 0.00080  # Outside noise floor
+
+

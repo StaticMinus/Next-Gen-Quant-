@@ -9,12 +9,33 @@ Institutional Price Action Stop Loss calculation based on:
 4. Hard Prop-Firm Ceilings: Guarantees stops never exceed maximum loss limits.
 """
 
+import logging
 from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+logger = logging.getLogger("price_action_sl_engine")
+
 
 class PriceActionSLEngine:
+    @classmethod
+    def get_min_noise_floor_distance(cls, symbol: str) -> float:
+        """
+        Returns the minimum physical Stop-Loss distance required to prevent trades
+        from being stopped out by standard bid/ask spread and intraday volatility noise.
+        """
+        sym_upper = symbol.upper()
+        if "XAU" in sym_upper or "GOLD" in sym_upper:
+            return 1.50   # 1.50 pts Gold (15 pips)
+        elif "JPY" in sym_upper:
+            return 0.08   # 8 pips on JPY pairs (e.g. 0.080 on USDJPY)
+        elif any(k in sym_upper for k in ["BTC", "ETH"]):
+            return 50.0   # $50 Crypto
+        elif any(k in sym_upper for k in ["US30", "NAS100", "SPX", "NDX", "DJ30"]):
+            return 25.0   # 25 pts Indices
+        else:
+            return 0.00080 # 8.0 pips standard Forex (EURUSD, GBPUSD, etc.)
+
     @staticmethod
     def calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
         """
@@ -92,12 +113,17 @@ class PriceActionSLEngine:
         atr = cls.calculate_atr(df, period=14)
         dynamic_buffer = max(min_buffer, atr * atr_buffer_mult)
 
+        min_noise = cls.get_min_noise_floor_distance(sym_upper)
+
         if side_upper == "BUY":
             swing_low = float(scan_df["low"].min())
             pasl = round(swing_low - dynamic_buffer, digits)
             # Ensure PASL is strictly below entry
             if pasl >= entry_price:
                 pasl = round(entry_price - dynamic_buffer, digits)
+            # Guarantee PASL respects minimum physical noise floor
+            if (entry_price - pasl) < min_noise:
+                pasl = round(entry_price - min_noise, digits)
             risk_dist = round(abs(entry_price - pasl), digits)
             return pasl, risk_dist
         else:
@@ -108,6 +134,9 @@ class PriceActionSLEngine:
             # Ensure PASL is strictly above entry
             if pasl <= entry_price:
                 pasl = round(entry_price + dynamic_buffer + max(0.0, spread_cushion), digits)
+            # Guarantee PASL respects minimum physical noise floor
+            if (pasl - entry_price) < min_noise:
+                pasl = round(entry_price + min_noise + max(0.0, spread_cushion), digits)
             risk_dist = round(abs(pasl - entry_price), digits)
             return pasl, risk_dist
 
@@ -148,6 +177,8 @@ class PriceActionSLEngine:
             except Exception:
                 pasl = None
 
+        min_noise = cls.get_min_noise_floor_distance(sym_upper)
+
         # 2. Determine initial candidate SL
         if provider_sl is None or provider_sl <= 0:
             if pasl is not None:
@@ -163,17 +194,25 @@ class PriceActionSLEngine:
 
             # 3. Apply Asymmetric Structural Guard if PASL is available
             # INVARIANT: NEVER WIDEN PROVIDER SL.
-            # If provider set a tighter SL than PASL, respect provider exact SL.
-            # If PASL is tighter than provider SL, adopt PASL to reduce risk.
+            # INVARIANT: NEVER TIGHTEN PROVIDER SL INTO THE SUB-NOISE ZONE.
+            # If provider set a valid SL, only tighten if PASL is outside the
+            # asset's noise floor (>= min_noise_floor_distance from entry).
             if pasl is not None:
-                if side_upper == "BUY":
-                    if candidate_sl < pasl < entry_price:
-                        candidate_sl = pasl
-                        reason = "STRUCTURAL_SHIELD_TIGHTENED"
+                pasl_dist = abs(entry_price - pasl)
+                if pasl_dist >= min_noise:
+                    if side_upper == "BUY":
+                        if candidate_sl < pasl < entry_price:
+                            candidate_sl = pasl
+                            reason = "STRUCTURAL_SHIELD_TIGHTENED"
+                    else:
+                        if entry_price < pasl < candidate_sl:
+                            candidate_sl = pasl
+                            reason = "STRUCTURAL_SHIELD_TIGHTENED"
                 else:
-                    if entry_price < pasl < candidate_sl:
-                        candidate_sl = pasl
-                        reason = "STRUCTURAL_SHIELD_TIGHTENED"
+                    logger.debug(
+                        f"🛡️ [PASL Noise Floor Guard] Discarded PASL tightening {pasl}: "
+                        f"distance {pasl_dist:.5f} is below noise floor {min_noise:.5f}. Preserving provider SL {candidate_sl}."
+                    )
 
         # 4. Strict Prop-Firm Risk Clamp
         if side_upper == "BUY":

@@ -785,6 +785,7 @@ class TelegramMultiSignalCopier:
             gold_lot = max(0.07, configured_lot)  # Immutable Invariant 25: 0.07 lot floor per ticket (0.14 total)
             return {
                 "lot_size": gold_lot,
+                "min_sl_distance": 1.50,           # 1.50 pts Gold noise floor (15 pips)
                 "max_sl_distance": 5.0,           # 5.0 pts Gold tolerance ($35 max risk per ticket)
                 "max_slippage": 2.50,
                 "be_buffer": 0.30,
@@ -797,6 +798,7 @@ class TelegramMultiSignalCopier:
         elif "JPY" in sym:
             return {
                 "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
+                "min_sl_distance": 0.08,          # 8 pips noise floor (0.080)
                 "max_sl_distance": 0.60,
                 "max_slippage": 0.15,
                 "be_buffer": 0.02,
@@ -809,6 +811,7 @@ class TelegramMultiSignalCopier:
         elif "BTC" in sym:
             return {
                 "lot_size": float(os.getenv("CRYPTO_COPIER_LOT_SIZE", "0.01")),
+                "min_sl_distance": 50.0,
                 "max_sl_distance": 500.0,
                 "max_slippage": 50.0,
                 "be_buffer": 20.0,
@@ -821,6 +824,7 @@ class TelegramMultiSignalCopier:
         elif "OIL" in sym or "USOIL" in sym:
             return {
                 "lot_size": float(os.getenv("OIL_COPIER_LOT_SIZE", "0.10")),
+                "min_sl_distance": 0.30,
                 "max_sl_distance": 1.50,
                 "max_slippage": 0.25,
                 "be_buffer": 0.10,
@@ -833,6 +837,7 @@ class TelegramMultiSignalCopier:
         else:
             return {
                 "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
+                "min_sl_distance": 0.0008,        # 8 pips noise floor (0.00080)
                 "max_sl_distance": 0.0050,  # 50 pips
                 "max_slippage": 0.0012,     # 12 pips
                 "be_buffer": 0.0002,        # 2 pips
@@ -1497,6 +1502,17 @@ class TelegramMultiSignalCopier:
 
                 symbol = sig["symbol"]
                 side = sig["side"]
+
+                # Invariant 30: Channel Asset Whitelist Guard
+                # If a channel has an explicit asset specialization, reject non-whitelisted assets.
+                allowed_assets = ch.get("assets", ["ALL"])
+                if "ALL" not in allowed_assets and symbol not in allowed_assets:
+                    logger.info(
+                        f"⏭️ [Invariant 30] Blocked {symbol} {side} from {ch_id}: "
+                        f"asset '{symbol}' is not authorized in channel whitelist {allowed_assets}."
+                    )
+                    continue
+
                 sig_key = f"{symbol}_{side}_{round(sig['entry_mid'], 2)}_{ch_id}"
 
                 if sig_key in self.state.get("executed_signal_keys", []):
