@@ -242,12 +242,15 @@ def test_dynamic_trailing_stop_ratchet():
 
 def test_channel_config_pruned_elite_fleet_valid():
     assert len(CHANNELS_CONFIG) <= 50
-    assert len(CHANNELS_CONFIG) == 32
+    assert len(CHANNELS_CONFIG) == 18
     ids = [c["id"] for c in CHANNELS_CONFIG]
     assert len(ids) == len(set(ids)), "Channel IDs must be unique"
-    # Ensure toxic losing channels are excluded from active fleet
+    # Ensure toxic losing channels and multi-day swing channels are excluded from active fleet
     assert "PrimeGoldSignals" not in ids
     assert "xauanalysisofficial" not in ids
+    assert "forexgdpfree" not in ids
+    assert "learn2tradenews" not in ids
+    assert "ForexSignalFactory" not in ids
     assert "ssfgold" in ids
     assert "anabelsignals" in ids
     for c in CHANNELS_CONFIG:
@@ -606,6 +609,77 @@ def test_companion_breakeven_synchronization():
     assert t2["sl"] == 4090.86
     assert t1["be_locked"] is True
     assert t1["sl"] == 4091.65
+
+
+def test_intraday_guard_rejects_multi_day_swing():
+    """Verifies Invariant 28: Signals with TP1 distances exceeding intraday thresholds are rejected."""
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    # EURUSD swing signal with 100-pip TP1 (0.0100 > 0.0070 limit)
+    swing_sig_fx = {
+        "channel": "forexgdpfree",
+        "symbol": "EURUSD",
+        "side": "BUY",
+        "entry_min": 1.0850,
+        "entry_max": 1.0850,
+        "entry_mid": 1.0850,
+        "sl": 1.0800,
+        "tps": [1.0950],  # 100 pips multi-day swing
+        "type": "SWING_SIGNAL"
+    }
+    orders_fx = copier.execute_signal(swing_sig_fx, spot_price=1.0850)
+    assert orders_fx is None
+
+    # Gold swing signal with 35.0 pt TP1 (350 pips > 25.0 pt limit)
+    swing_sig_gold = {
+        "channel": "learn2tradenews",
+        "symbol": "XAUUSD",
+        "side": "SELL",
+        "entry_min": 4100.0,
+        "entry_max": 4100.0,
+        "entry_mid": 4100.0,
+        "sl": 4115.0,
+        "tps": [4065.0],  # 35.0 pts multi-day swing
+        "type": "SWING_SIGNAL"
+    }
+    orders_gold = copier.execute_signal(swing_sig_gold, spot_price=4100.0)
+    assert orders_gold is None
+
+
+def test_intraday_guard_accepts_session_scalp():
+    """Verifies Invariant 28: Fast session scalps (<= 35 pips FX, <= 5.0 pts Gold) are accepted."""
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    # EURUSD session scalp: 15 pips TP1 (0.0015 <= 0.0035)
+    scalp_sig_fx = {
+        "channel": "anabelsignals",
+        "symbol": "EURUSD",
+        "side": "BUY",
+        "entry_min": 1.0850,
+        "entry_max": 1.0850,
+        "entry_mid": 1.0850,
+        "sl": 1.0820,
+        "tps": [1.0865],  # 15 pips scalp
+        "type": "SCALP_SIGNAL"
+    }
+    orders_fx = copier.execute_signal(scalp_sig_fx, spot_price=1.0850)
+    assert orders_fx is not None
+    assert len(orders_fx) >= 1
+    assert orders_fx[0]["tp"] == 1.0865
+
+    # Gold session scalp: 2.0 pt TP1 (20 pips <= 5.0 pts)
+    scalp_sig_gold = {
+        "channel": "DailyForexSignals",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 4085.0,
+        "entry_max": 4085.0,
+        "entry_mid": 4085.0,
+        "sl": 4081.0,
+        "tps": [4087.0],  # 2.0 pts scalp
+        "type": "SCALP_SIGNAL"
+    }
+    orders_gold = copier.execute_signal(scalp_sig_gold, spot_price=4085.0)
+    assert orders_gold is not None
+    assert len(orders_gold) >= 1
 
 
 def test_directional_anti_chase_allows_discount_dip_buy():

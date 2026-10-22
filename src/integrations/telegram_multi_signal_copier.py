@@ -47,43 +47,25 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 
 CHANNELS_CONFIG = [
-    # Top Tier 1: Institutional Clean & High Signal Density (Proven Highest Yield)
+    # === PURE INTRADAY & SESSION SCALPING FLEET (Resolves within active session • Invariant 28) ===
     {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 25.0, "peak_session": "London Pre-Market"},
     {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
-    {"id": "forexgdpfree", "name": "ForexGDP Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 31.6, "peak_session": "London Session"},
-    {"id": "learn2tradenews", "name": "Learn 2 Trade", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 25.0, "peak_session": "New York Session"},
+    {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 35.7, "peak_session": "London Open"},
     {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 57.1, "peak_session": "New York"},
     {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 45.0, "peak_session": "London Open"},
-    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 42.5, "peak_session": "London Open"},
     {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 37.8, "peak_session": "London Open"},
     {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 35.1, "peak_session": "New York/London"},
     {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 35.0, "peak_session": "London Open"},
-    {"id": "ForexProfitSignals", "name": "ForexPro Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 20.0, "peak_session": "London/NY"},
-
-    # High Empirical Yield Multi-Asset Channels (Fleet 26-50 Top Performers)
-    {"id": "DailyForexPipsFree", "name": "Daily Forex Pips Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
-    {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 76.5, "peak_session": "London/Tokyo"},
     {"id": "FreeForexSignals24", "name": "Free Forex Signals 24", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
-    {"id": "UniversalForexSignals", "name": "Universal Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "New York"},
     {"id": "gold_forex_signals", "name": "Gold & Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/NY"},
     {"id": "CryptoBullSignals", "name": "Crypto Bull Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "24/7 Asian/NY"},
-    {"id": "forex_vip_signals", "name": "Forex VIP Signals Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London Open"},
-    {"id": "ForexSignalFactory", "name": "Forex Signal Factory", "enabled": True, "assets": ["ALL", "BTCUSD"], "tier": 1, "yield_pct": 65.0, "peak_session": "London/NY"},
-
-    # Tier 2: Direct Reliable Format & Indices/Crypto
     {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "London/Asian"},
     {"id": "pipchasers", "name": "PipChasers", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "Asian/London"},
-    {"id": "XAUUSD_Gold_Signals", "name": "Crown Gold Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 2, "yield_pct": 13.5, "peak_session": "London/NY"},
-    {"id": "ForexSignalsTelegram", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 13.2, "peak_session": "Asian Session"},
     {"id": "prosignalsfxx", "name": "ProSignalsFx", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 11.1, "peak_session": "London/NY"},
     {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 66.7, "peak_session": "New York"},
-    {"id": "AltcoinSignalsFree", "name": "Altcoin & Gold Signals", "enabled": True, "assets": ["XAUUSD", "BTCUSD"], "tier": 2, "yield_pct": 40.0, "peak_session": "London/NY"},
-    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 38.9, "peak_session": "London Session"},
-    {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 2, "yield_pct": 35.7, "peak_session": "London Open"},
     {"id": "US30_Forex_Signals", "name": "US30 Index Signals", "enabled": True, "assets": ["US30", "NAS100"], "tier": 2, "yield_pct": 20.0, "peak_session": "New York Open"},
-    {"id": "CryptoWhaleSignals", "name": "Crypto Whale Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD"], "tier": 2, "yield_pct": 20.0, "peak_session": "24/7 Asian"},
     {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "New York Killzone"},
-    {"id": "BullishBearsTrading", "name": "Bullish Bears Trading", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "New York"}
+    {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 76.5, "peak_session": "London/Tokyo"}
 ]
 
 HEADERS = {
@@ -899,6 +881,33 @@ class TelegramMultiSignalCopier:
             # Fallback 1.5:1 R:R target
             dist = abs(entry - safe_sl)
             tps = [round(entry + (dist * 1.5) if side == "BUY" else entry - (dist * 1.5), 5)]
+
+        # Invariant 28: Pure Intraday Scalp Target Guard (Reject Multi-Day Swings)
+        # Prevents any signal whose primary target TP1 requires multi-day swing holding (>70 pips standard Forex, >80 pips JPY, >25.0 pts Gold)
+        dist_tp1 = abs(tps[0] - entry)
+        sym_upper = symbol.upper()
+        if "XAU" in sym_upper or "GOLD" in sym_upper:
+            max_intraday_tp = 25.0  # 25.0 pts Gold (250 pips)
+        elif "JPY" in sym_upper:
+            max_intraday_tp = 0.80  # 80 pips JPY
+        elif "BTC" in sym_upper or "ETH" in sym_upper:
+            max_intraday_tp = 800.0
+        elif "US30" in sym_upper or "NAS100" in sym_upper:
+            max_intraday_tp = 150.0
+        else:
+            max_intraday_tp = 0.0070  # 70 pips standard Forex (EURUSD, GBPUSD, AUDUSD, etc.)
+
+        if dist_tp1 > max_intraday_tp:
+            logger.warning(
+                f"🛑 [Invariant 28] Rejected multi-day swing signal from {channel} on {symbol} {side}: "
+                f"TP1 distance {dist_tp1:.4f} exceeds intraday ceiling {max_intraday_tp:.4f}."
+            )
+            self.send_telegram_alert(
+                f"🛑 <b>Multi-Day Swing Rejected (Invariant 28)</b>\n"
+                f"Channel: <code>{channel}</code> | {symbol} {side}\n"
+                f"TP1 distance (<code>{dist_tp1:.4f}</code>) exceeds intraday limit (<code>{max_intraday_tp:.4f}</code>)."
+            )
+            return None
 
         lot_size = params["lot_size"]  # 0.07 lots per ticket
         executed_orders = []
