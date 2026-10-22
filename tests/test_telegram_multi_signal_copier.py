@@ -242,15 +242,15 @@ def test_dynamic_trailing_stop_ratchet():
 
 def test_channel_config_pruned_elite_fleet_valid():
     assert len(CHANNELS_CONFIG) <= 50
-    assert len(CHANNELS_CONFIG) == 18
+    assert len(CHANNELS_CONFIG) == 19
     ids = [c["id"] for c in CHANNELS_CONFIG]
     assert len(ids) == len(set(ids)), "Channel IDs must be unique"
-    # Ensure toxic losing channels and multi-day swing channels are excluded from active fleet
+    # Ensure toxic losing channels are excluded from active fleet
     assert "PrimeGoldSignals" not in ids
     assert "xauanalysisofficial" not in ids
-    assert "forexgdpfree" not in ids
     assert "learn2tradenews" not in ids
     assert "ForexSignalFactory" not in ids
+    assert "forexgdpfree" in ids
     assert "ssfgold" in ids
     assert "anabelsignals" in ids
     for c in CHANNELS_CONFIG:
@@ -614,9 +614,9 @@ def test_companion_breakeven_synchronization():
 def test_intraday_guard_rejects_multi_day_swing():
     """Verifies Invariant 28: Signals with TP1 distances exceeding intraday thresholds are rejected."""
     copier = TelegramMultiSignalCopier(dry_run=True)
-    # EURUSD swing signal with 100-pip TP1 (0.0100 > 0.0070 limit)
+    # EURUSD swing signal with 100-pip TP1 (0.0100 > 0.0070 limit) on generic channel
     swing_sig_fx = {
-        "channel": "forexgdpfree",
+        "channel": "DailyForexSignals",
         "symbol": "EURUSD",
         "side": "BUY",
         "entry_min": 1.0850,
@@ -643,6 +643,26 @@ def test_intraday_guard_rejects_multi_day_swing():
     }
     orders_gold = copier.execute_signal(swing_sig_gold, spot_price=4100.0)
     assert orders_gold is None
+
+
+def test_forexgdp_swing_exemption():
+    """Verifies that Forex GDP is exempt from Invariant 28 multi-day swing rejection by user directive."""
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    swing_sig_gdp = {
+        "channel": "forexgdpfree",
+        "symbol": "EURAUD",
+        "side": "BUY",
+        "entry_min": 1.5960,
+        "entry_max": 1.5985,
+        "entry_mid": 1.59725,
+        "sl": 1.5897,
+        "tps": [1.6090],  # 117 pips TP1 (exceeds normal 70-pip limit)
+        "type": "ZONE_EXECUTION",
+        "is_valid": True
+    }
+    orders = copier.execute_signal(swing_sig_gdp, spot_price=1.59725)
+    assert orders is not None
+    assert len(orders) >= 1
 
 
 def test_intraday_guard_accepts_session_scalp():

@@ -65,7 +65,8 @@ CHANNELS_CONFIG = [
     {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 66.7, "peak_session": "New York"},
     {"id": "US30_Forex_Signals", "name": "US30 Index Signals", "enabled": True, "assets": ["US30", "NAS100"], "tier": 2, "yield_pct": 20.0, "peak_session": "New York Open"},
     {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "New York Killzone"},
-    {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 76.5, "peak_session": "London/Tokyo"}
+    {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 76.5, "peak_session": "London/Tokyo"},
+    {"id": "forexgdpfree", "name": "Forex GDP Free Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 84.0, "peak_session": "London/NY"}
 ]
 
 HEADERS = {
@@ -911,7 +912,11 @@ class TelegramMultiSignalCopier:
         else:
             max_intraday_tp = 0.0070  # 70 pips standard Forex (EURUSD, GBPUSD, AUDUSD, etc.)
 
-        if dist_tp1 > max_intraday_tp:
+        # Invariant 28: Pure Intraday Scalp Target Guard (Reject Multi-Day Swings)
+        # Prevents any signal whose primary target TP1 requires multi-day swing holding (>70 pips standard Forex, >80 pips JPY, >25.0 pts Gold)
+        # USER DIRECTIVE EXCEPTION: Forex GDP (forexgdpfree / forexgdp) is authorized for multi-day swing targets.
+        is_forexgdp = str(channel).lower() in ["forexgdpfree", "forexgdp"]
+        if dist_tp1 > max_intraday_tp and not is_forexgdp:
             logger.warning(
                 f"🛑 [Invariant 28] Rejected multi-day swing signal from {channel} on {symbol} {side}: "
                 f"TP1 distance {dist_tp1:.4f} exceeds intraday ceiling {max_intraday_tp:.4f}."
