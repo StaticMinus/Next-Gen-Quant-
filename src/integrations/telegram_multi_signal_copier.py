@@ -923,40 +923,41 @@ class TelegramMultiSignalCopier:
             dist = abs(entry - safe_sl)
             tps = [round(entry + (dist * 1.5) if side == "BUY" else entry - (dist * 1.5), 5)]
 
-        # Invariant 28: Pure Intraday Scalp Target Guard (Reject Multi-Day Swings)
-        # Prevents any signal whose primary target TP1 requires multi-day swing holding (>70 pips standard Forex, >80 pips JPY, >25.0 pts Gold)
+        # Invariant 28: Target Scaling & Intraday Ceilings (Never Reject Good Signals)
+        # USER DIRECTIVE: A good signal must NEVER be rejected simply because its TP target is far away!
+        # Downside risk is strictly controlled by Stop Loss ($35 max risk) and Breakeven Lock (+10 pips).
         dist_tp1 = abs(tps[0] - entry)
         sym_upper = symbol.upper()
         if "XAU" in sym_upper or "GOLD" in sym_upper:
-            max_intraday_tp = 25.0  # 25.0 pts Gold (250 pips)
+            max_intraday_tp = 60.0  # 60.0 pts Gold (600 pips)
         elif "JPY" in sym_upper:
-            max_intraday_tp = 0.80  # 80 pips JPY
+            max_intraday_tp = 1.80  # 180 pips JPY
         elif "BTC" in sym_upper or "ETH" in sym_upper:
-            max_intraday_tp = 800.0
+            max_intraday_tp = 2500.0
         elif "US30" in sym_upper or "NAS100" in sym_upper:
-            max_intraday_tp = 150.0
+            max_intraday_tp = 400.0
         else:
-            max_intraday_tp = 0.0070  # 70 pips standard Forex (EURUSD, GBPUSD, AUDUSD, etc.)
+            max_intraday_tp = 0.0150  # 150 pips standard Forex (EURUSD, GBPUSD, AUDUSD, etc.)
 
-        # Invariant 28: Pure Intraday Scalp Target Guard (Reject Multi-Day Swings)
-        # Prevents any signal whose primary target TP1 requires multi-day swing holding (>70 pips standard Forex, >80 pips JPY, >25.0 pts Gold)
-        # USER DIRECTIVE EXCEPTION: Authorized multi-day swing channels (Forex GDP and vetted swing providers)
+        # USER DIRECTIVE: Authorized swing channels have full target pass-through
         authorized_swing_channels = {
             "forexgdpfree", "forexgdp", "oanda", "dailyforexpipsfree", "universalforexsignals",
-            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip"
+            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip", "elitetrading_signals"
         }
         is_swing_authorized = str(channel).lower() in authorized_swing_channels
         if dist_tp1 > max_intraday_tp and not is_swing_authorized:
-            logger.warning(
-                f"🛑 [Invariant 28] Rejected multi-day swing signal from {channel} on {symbol} {side}: "
-                f"TP1 distance {dist_tp1:.4f} exceeds intraday ceiling {max_intraday_tp:.4f}."
+            # DO NOT REJECT: Clamp TP1 to max_intraday_tp so Ticket 1 banks intraday profit,
+            # while preserving the deep target for Ticket 2 runner!
+            original_tp = tps[0]
+            clamped_tp1 = round(entry + max_intraday_tp if side == "BUY" else entry - max_intraday_tp, 5)
+            logger.info(
+                f"ℹ️ [Invariant 28] Signal from {channel} on {symbol} {side} has wide TP1 ({dist_tp1:.4f} > {max_intraday_tp:.4f}). "
+                f"Clamping Ticket 1 TP to {clamped_tp1} while keeping deep target {original_tp} for runner."
             )
-            self.send_telegram_alert(
-                f"🛑 <b>Multi-Day Swing Rejected (Invariant 28)</b>\n"
-                f"Channel: <code>{channel}</code> | {symbol} {side}\n"
-                f"TP1 distance (<code>{dist_tp1:.4f}</code>) exceeds intraday limit (<code>{max_intraday_tp:.4f}</code>)."
-            )
-            return None
+            if len(tps) == 1:
+                tps = [clamped_tp1, original_tp]
+            else:
+                tps[0] = clamped_tp1
 
         lot_size = params["lot_size"]  # 0.07 lots per ticket
         executed_orders = []

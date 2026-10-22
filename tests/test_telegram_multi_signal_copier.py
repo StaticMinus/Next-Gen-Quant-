@@ -614,10 +614,12 @@ def test_companion_breakeven_synchronization():
     assert t1["sl"] == 4091.65
 
 
-def test_intraday_guard_rejects_multi_day_swing():
-    """Verifies Invariant 28: Signals with TP1 distances exceeding intraday thresholds are rejected."""
+def test_intraday_guard_never_rejects_wide_tp_signals():
+    """Verifies Invariant 28: Signals with wide TP1 distances are NEVER rejected.
+    They execute as twin tickets with Banker + Trailing Runner.
+    """
     copier = TelegramMultiSignalCopier(dry_run=True)
-    # EURUSD swing signal with 100-pip TP1 (0.0100 > 0.0070 limit) on generic channel
+    # EURUSD swing signal with 100-pip TP1 (0.0100) on generic channel
     swing_sig_fx = {
         "channel": "DailyForexSignals",
         "symbol": "EURUSD",
@@ -626,13 +628,18 @@ def test_intraday_guard_rejects_multi_day_swing():
         "entry_max": 1.0850,
         "entry_mid": 1.0850,
         "sl": 1.0800,
-        "tps": [1.0950],  # 100 pips multi-day swing
+        "tps": [1.0950],  # 100 pips swing
         "type": "SWING_SIGNAL"
     }
     orders_fx = copier.execute_signal(swing_sig_fx, spot_price=1.0850)
-    assert orders_fx is None
+    assert orders_fx is not None
+    assert len(orders_fx) == 2
+    assert orders_fx[0]["volume"] == 0.07
+    assert orders_fx[1]["volume"] == 0.07
+    assert orders_fx[1]["tp"] == 1.0950
 
-    # Gold swing signal with 35.0 pt TP1 (350 pips > 25.0 pt limit)
+    # Gold swing signal with 75.0 pt TP1 (exceeds even 60.0 pt ceiling on non-whitelisted channel)
+    # Must NOT be rejected: Ticket 1 clamped to 60.0 pts, Ticket 2 targets full 75.0 pts!
     swing_sig_gold = {
         "channel": "learn2tradenews",
         "symbol": "XAUUSD",
@@ -640,12 +647,15 @@ def test_intraday_guard_rejects_multi_day_swing():
         "entry_min": 4100.0,
         "entry_max": 4100.0,
         "entry_mid": 4100.0,
-        "sl": 4115.0,
-        "tps": [4065.0],  # 35.0 pts multi-day swing
+        "sl": 4105.0,
+        "tps": [4025.0],  # 75.0 pts swing (exceeds 60.0 ceiling)
         "type": "SWING_SIGNAL"
     }
     orders_gold = copier.execute_signal(swing_sig_gold, spot_price=4100.0)
-    assert orders_gold is None
+    assert orders_gold is not None
+    assert len(orders_gold) == 2
+    assert orders_gold[0]["tp"] == 4040.0  # Clamped to 60.0 pt intraday banker
+    assert orders_gold[1]["tp"] == 4025.0  # Preserved full 75.0 pt runner target
 
 
 def test_forexgdp_swing_exemption():
