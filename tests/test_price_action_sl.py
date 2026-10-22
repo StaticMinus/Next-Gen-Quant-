@@ -13,7 +13,7 @@ from src.integrations.telegram_multi_signal_copier import TelegramMultiSignalCop
 def create_sample_bars(lows, highs, closes=None, opens=None):
     n = len(lows)
     if closes is None:
-        closes = [(l + h) / 2.0 for l, h in zip(lows, highs)]
+        closes = [(low_val + high_val) / 2.0 for low_val, high_val in zip(lows, highs)]
     if opens is None:
         opens = closes.copy()
     timestamps = pd.date_range("2026-10-21 00:00", periods=n, freq="5min")

@@ -120,7 +120,7 @@ class AutoHealingEngine:
 
         # ── STRATEGY 4: EMERGENCY PROTECTION NET (SUBMIT AT LEAST STOP LOSS) ──
         if healed_sl is not None:
-            logger.warning(f"⚠️ [AutoHealing] Joint SL/TP amend failed. Attempting emergency isolated Stop Loss protection...")
+            logger.warning("⚠️ [AutoHealing] Joint SL/TP amend failed. Attempting emergency isolated Stop Loss protection...")
             sl_only_payload = {"positionId": int(real_pos_id), "stopLoss": round(float(healed_sl), digits)}
             sl_res = ctrader_client.call_tool("amend_position", sl_only_payload)
             parsed_sl = ctrader_client._parse_content_json(sl_res)

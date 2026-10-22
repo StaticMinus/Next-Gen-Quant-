@@ -110,7 +110,7 @@ def test_asset_parameters_gold_vs_forex():
     assert p_gold["max_slippage"] == 2.50
     assert p_gold["be_buffer"] == 0.30
     assert p_gold["scalp_tp1_dist"] == 2.00
-    assert p_gold["scalp_be_activation"] == 1.50
+    assert p_gold["scalp_be_activation"] == 1.00
 
     p_eurusd = copier.get_asset_parameters("EURUSD")
     assert p_eurusd["max_sl_distance"] == 0.0050
@@ -576,6 +576,36 @@ def test_rapid_breakeven_trigger():
     # SL amended to entry - be_buffer (4120.45 - 0.30 = 4120.15)
     assert pos["sl"] == 4120.15
     mock_ctrader.amend_position.assert_called_once_with(12345, stop_loss=4120.15)
+
+
+def test_companion_breakeven_synchronization():
+    """Verifies Invariant 27: When one ticket locks BE, unlocked companion ticket also synchronizes BE."""
+    from unittest.mock import MagicMock
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    mock_ctrader = MagicMock()
+    # Spot is 4092.10 (favorable to both Ticket 2 entry 4090.56 and Ticket 1 entry 4091.35)
+    mock_ctrader.get_spot_price.return_value = {"bid": 4092.10, "ask": 4092.30}
+    mock_ctrader.get_positions.return_value = [
+        {"positionId": 101, "symbolName": "XAUUSD", "tradeSide": "BUY", "entryPrice": 4091.35, "stopLoss": 4087.92, "takeProfit": 4093.64},
+        {"positionId": 102, "symbolName": "XAUUSD", "tradeSide": "BUY", "entryPrice": 4090.56, "stopLoss": 4087.92, "takeProfit": 4116.70}
+    ]
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+
+    copier.state["active_positions"] = [
+        {"positionId": 101, "ticket": 1, "symbol": "XAUUSD", "side": "BUY", "entry": 4091.35, "sl": 4087.92, "tp": 4093.64, "be_locked": False},
+        {"positionId": 102, "ticket": 2, "symbol": "XAUUSD", "side": "BUY", "entry": 4090.56, "sl": 4087.92, "tp": 4116.70, "be_locked": False}
+    ]
+
+    copier.manage_active_breakeven()
+
+    t1 = next(p for p in copier.state["active_positions"] if p["positionId"] == 101)
+    t2 = next(p for p in copier.state["active_positions"] if p["positionId"] == 102)
+
+    # Both tickets must be locked at breakeven (entry + 0.30 buffer)
+    assert t2["be_locked"] is True
+    assert t2["sl"] == 4090.86
+    assert t1["be_locked"] is True
+    assert t1["sl"] == 4091.65
 
 
 def test_directional_anti_chase_allows_discount_dip_buy():

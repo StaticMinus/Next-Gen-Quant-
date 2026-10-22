@@ -547,8 +547,8 @@ class MultiChannelSignalParser:
 
         # 8. GENERAL ZONE RANGE FORMAT (Filtered: Excludes ranges on TP / TAKE PROFIT / TARGET / SL / STOP LOSS lines)
         non_tp_sl_lines = [
-            l for l in text_clean.splitlines()
-            if not re.search(r"\b(TP\d?|TAKE\s*PROFIT|TARGET|SL\b|STOP\s*LOSS|STOPLOSS)\b|[¹²³]\s*/\s*TAKE", l, re.IGNORECASE)
+            line for line in text_clean.splitlines()
+            if not re.search(r"\b(TP\d?|TAKE\s*PROFIT|TARGET|SL\b|STOP\s*LOSS|STOPLOSS)\b|[¹²³]\s*/\s*TAKE", line, re.IGNORECASE)
         ]
         non_tp_sl_text = "\n".join(non_tp_sl_lines)
         m_zone = re.search(r"(?:between\s+(\d+(?:\.\d+)?)\s+till\s+(\d+(?:\.\d+)?)|[\(@]?\s*(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\)?)", non_tp_sl_text, re.IGNORECASE)
@@ -807,7 +807,7 @@ class TelegramMultiSignalCopier:
                 "max_slippage": 2.50,
                 "be_buffer": 0.30,
                 "scalp_tp1_dist": 2.00,           # 20 pips micro-banker for scalps
-                "scalp_be_activation": 1.50,      # Lock BE at +15 pips gain
+                "scalp_be_activation": 1.00,      # Lock BE at +10 pips gain (Invariant 27)
                 "trailing_distance": 3.00,       # 30 pips / 3.0 pts Gold
                 "trailing_activation": 4.00,     # Activate trailing once +4.0 pts in profit
                 "pip_multiplier": 1.0
@@ -1186,7 +1186,7 @@ class TelegramMultiSignalCopier:
             # Also check any pending Ticket 2s whose T1 is confirmed closed
             for rem in remaining_tickets:
                 rem_id = rem.get("positionId")
-                if rem_id and rem_id in live_pos_ids and not rem.get("be_locked"):
+                if rem_id and rem_id in live_pos_ids and not rem.get("be_locked") and rem.get("be_pending"):
                     sym = rem.get("symbol")
                     side = rem.get("side", "BUY")
                     entry_p = rem.get("entry")
@@ -1213,10 +1213,10 @@ class TelegramMultiSignalCopier:
                         rem["be_pending"] = True
                         logger.info(f"⏳ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) awaiting price {curr_price} to reach BE {be_price}")
 
-            # 3. Dynamic Breakeven for individual running tickets past 50% TP distance
+            # 3. Dynamic Breakeven for individual running tickets past 50% TP distance & Companion Sync
             for pos in active:
                 pos_id = pos.get("positionId")
-                if not pos_id or pos_id not in live_pos_ids or pos.get("be_locked"):
+                if not pos_id or pos_id not in live_pos_ids:
                     continue
 
                 symbol = pos.get("symbol")
@@ -1233,7 +1233,7 @@ class TelegramMultiSignalCopier:
                 half_tp_distance = abs(pos.get("tp", entry) - entry) * 0.50
                 scalp_be_thresh = params.get("scalp_be_activation", half_tp_distance)
 
-                if gain >= half_tp_distance or gain >= scalp_be_thresh:
+                if not pos.get("be_locked") and (gain >= half_tp_distance or gain >= scalp_be_thresh):
                     be_price = round(entry + params["be_buffer"] if side == "BUY" else entry - params["be_buffer"], 5)
                     try:
                         self.ctrader.amend_position(pos_id, stop_loss=be_price)
@@ -1247,6 +1247,36 @@ class TelegramMultiSignalCopier:
                         )
                     except Exception as ae:
                         logger.error(f"Failed to amend #{pos_id} to Breakeven: {ae}")
+
+                # Invariant 27: Companion Breakeven Synchronization
+                # If this position is be_locked, synchronously advance any unlocked companion tickets
+                if pos.get("be_locked"):
+                    for comp in active:
+                        comp_id = comp.get("positionId")
+                        if (
+                            comp_id
+                            and comp_id in live_pos_ids
+                            and not comp.get("be_locked")
+                            and comp.get("symbol") == symbol
+                            and comp.get("side") == side
+                            and comp_id != pos_id
+                        ):
+                            c_entry = comp.get("entry", entry)
+                            c_be = round(c_entry + params["be_buffer"] if side == "BUY" else c_entry - params["be_buffer"], 5)
+                            can_move_comp = (curr_price >= c_be) if side == "BUY" else (curr_price <= c_be)
+                            if can_move_comp:
+                                try:
+                                    self.ctrader.amend_position(comp_id, stop_loss=c_be)
+                                    comp["be_locked"] = True
+                                    comp["sl"] = c_be
+                                    logger.info(f"🛡️ [Invariant 27] Companion Position #{comp_id} ({symbol}) synchronized to Breakeven @ {c_be}")
+                                    self.send_telegram_alert(
+                                        f"🛡️ <b>Companion Breakeven Synchronized!</b>\n"
+                                        f"Symbol: {symbol} | Position #{comp_id}\n"
+                                        f"SL synchronized to BE: <code>{c_be}</code>"
+                                    )
+                                except Exception as cae:
+                                    logger.error(f"Failed to amend companion #{comp_id} to Breakeven: {cae}")
 
             # 4. Dynamic Ratcheting Trailing Stop for Ticket 2 Runners
             for pos in active:
