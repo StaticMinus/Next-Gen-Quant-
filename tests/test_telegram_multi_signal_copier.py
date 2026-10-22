@@ -832,6 +832,8 @@ def test_signal_alert_contains_telegram_post_deep_link():
     sent_alert = copier.send_telegram_alert.call_args[0][0]
     assert "https://t.me/ssfgold/18427" in sent_alert
     assert "View in Telegram" in sent_alert
+    assert "Est. Profit:" in sent_alert
+    assert "Est. Time:" in sent_alert
 
 
 def test_invariant_22_target_rollover_success():

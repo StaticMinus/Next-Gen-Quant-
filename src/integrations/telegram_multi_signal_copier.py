@@ -798,12 +798,56 @@ class TelegramMultiSignalCopier:
                 clean_text = re.sub(r'<br\s*/?>', '\n', raw_html)
                 clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
                 if clean_text:
-                    post_url = f"https://t.me/{pid}"
+                    pid_clean = str(pid).split("/")[-1]
+                    post_url = f"https://t.me/{channel_id}/{pid_clean}"
                     messages.append({"post_id": pid, "post_url": post_url, "text": clean_text})
             return messages
         except Exception as e:
             logger.error(f"Error fetching channel {channel_id}: {e}")
             return []
+
+    @staticmethod
+    def estimate_target_profit_and_time(symbol: str, entry: float, tp: float, volume: float) -> Tuple[float, str]:
+        """Calculates projected dollar profit and estimated time to reach target based on asset velocity."""
+        sym = symbol.upper()
+        dist = abs(tp - entry)
+
+        # 1. Projected Dollar Profit
+        if "XAU" in sym or "GOLD" in sym:
+            # Gold: 1.0 pt move = $100 per 1.0 lot -> $7.00 per 0.07 lot
+            dollar_profit = round(dist * 100.0 * volume, 2)
+            hours = dist / 4.0  # ~4.0 pts / hr average velocity in London/NY
+        elif "BTC" in sym or "ETH" in sym:
+            dollar_profit = round(dist * 1.0 * volume, 2)
+            hours = dist / 250.0
+        elif any(k in sym for k in ["US30", "NAS100", "SPX"]):
+            dollar_profit = round(dist * 1.0 * volume, 2)
+            hours = dist / 60.0
+        elif "JPY" in sym:
+            pips = dist / 0.01
+            dollar_profit = round(pips * 0.65 * (volume / 0.07), 2)
+            hours = pips / 15.0
+        else:
+            # Standard Forex (EURUSD, GBPUSD, AUDUSD, etc.): 1 pip (0.0001) = $0.70 for 0.07 lot
+            pips = dist / 0.0001
+            dollar_profit = round(pips * 0.70 * (volume / 0.07), 2)
+            hours = pips / 12.0
+
+        # 2. Human-friendly time estimate
+        if hours < 0.40:
+            time_str = "~15–30m"
+        elif hours < 0.85:
+            time_str = "~30–45m"
+        elif hours < 1.6:
+            time_str = "~1–1.5h"
+        elif hours < 3.5:
+            time_str = f"~{int(round(hours))}–{int(round(hours))+1}h"
+        elif hours < 9.0:
+            time_str = f"~{int(round(hours))}–{int(round(hours))+2}h"
+        else:
+            time_str = f"~{int(round(hours // 24)) + 1}d (swing)" if hours >= 18 else f"~{int(round(hours))}h"
+
+        return dollar_profit, time_str
 
     def get_asset_parameters(self, symbol: str) -> Dict[str, Any]:
         sym = symbol.upper()
@@ -1090,20 +1134,40 @@ class TelegramMultiSignalCopier:
 
             # Telegram broadcast to David (LIVE ONLY - never broadcast simulated dry-run orders)
             if not self.dry_run:
-                is_rollover = sig.get("is_target_rollover", False)
-                rollover_badge = " (Target-Rollover • Invariant 22)" if is_rollover else ""
-                rollover_note = f"\n🎯 <b>Rollover Mode:</b> TP1 passed. Riding momentum to Target {sig.get('rollover_tp')} with Ratcheted SL at {safe_sl}" if is_rollover else ""
-                tps_str = f"TP1: {tps[0]}" + (f" | Runner TP: {tps[-1]} ({len(tps)} targets)" if len(tps) > 1 else "")
-                post_url = sig.get("post_url") or (f"https://t.me/{sig.get('post_id')}" if sig.get("post_id") else None)
-                post_link_str = f"\n🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>" if post_url else ""
+                ch_clean = str(channel).lstrip("@")
+                if sig.get("post_url"):
+                    link_url = sig["post_url"]
+                elif sig.get("post_id"):
+                    pid_part = str(sig["post_id"]).split("/")[-1]
+                    link_url = f"https://t.me/{ch_clean}/{pid_part}"
+                else:
+                    link_url = f"https://t.me/{ch_clean}"
+
+                # Calculate estimated dollar profits and time to target
+                profits_and_times = [
+                    self.estimate_target_profit_and_time(symbol, entry, order["tp"], order["volume"])
+                    for order in executed_orders
+                ]
+                total_est_profit = sum(p[0] for p in profits_and_times)
+
+                if len(executed_orders) == 1:
+                    prof_str = f"+${total_est_profit:.2f}"
+                    time_str = profits_and_times[0][1]
+                    tp_str = f"🎯 TP {executed_orders[0]['tp']}"
+                else:
+                    t1_p, t1_t = profits_and_times[0]
+                    t2_p, t2_t = profits_and_times[1]
+                    prof_str = f"+${total_est_profit:.2f} (T1 +${t1_p:.0f} · T2 +${t2_p:.0f})"
+                    time_str = f"{t1_t} (T1) · {t2_t} (T2)" if t1_t != t2_t else t1_t
+                    tp_str = f"🎯 T1 {executed_orders[0]['tp']} · T2 {executed_orders[1]['tp']}"
+
+                rollover_badge = " [Rollover]" if sig.get("is_target_rollover") else ""
                 alert_msg = (
-                    f"⚡ <b>NEW SIGNAL EXECUTED{rollover_badge}</b>\n"
-                    f"📡 <b>Source:</b> {channel}{post_link_str}\n"
-                    f"📈 <b>Action:</b> {side} {symbol}\n"
-                    f"📍 <b>Fill Price:</b> {entry}\n"
-                    f"🛡️ <b>Stop Loss:</b> {safe_sl}\n"
-                    f"🎯 <b>Targets:</b> {tps_str}\n"
-                    f"📦 <b>Tickets:</b> {len(executed_orders)} tickets ({total_vol} lots total){rollover_note}"
+                    f"⚡ <b>{side} {symbol} @ {entry}</b>{rollover_badge}\n"
+                    f"🛡️ SL {safe_sl} · {tp_str}\n"
+                    f"💰 Est. Profit: <b>{prof_str}</b>\n"
+                    f"⏱️ Est. Time: <b>{time_str}</b>\n"
+                    f"📦 {len(executed_orders)}x {executed_orders[0]['volume']}L · 🔗 <a href=\"{link_url}\">View in Telegram</a> ({channel})"
                 )
                 self.send_telegram_alert(alert_msg)
             else:
@@ -1238,9 +1302,8 @@ class TelegramMultiSignalCopier:
                                     rem["sl"] = be_price
                                     logger.info(f"🛡️ Ticket #1 filled! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
                                     self.send_telegram_alert(
-                                        f"🎯 <b>Target 1 Banked!</b>\n"
-                                        f"Symbol: {sym} | Ticket #2 (#{rem_id})\n"
-                                        f"SL moved to Breakeven @ <code>{be_price}</code> (Free-Ride Mode activated!)"
+                                        f"🎯 <b>T1 Banked: {sym}</b> (#2)\n"
+                                        f"SL moved to Breakeven @ <code>{be_price}</code>"
                                     )
                                 except Exception as ae:
                                     logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
@@ -1268,9 +1331,8 @@ class TelegramMultiSignalCopier:
                             rem["be_pending"] = False
                             logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
                             self.send_telegram_alert(
-                                f"🎯 <b>Companion Breakeven Activated!</b>\n"
-                                f"Symbol: {sym} | Ticket #2 (#{rem_id})\n"
-                                f"Price at favorable level. SL locked @ <code>{be_price}</code>"
+                                f"🎯 <b>BE Activated: {sym}</b> (#2)\n"
+                                f"SL locked @ <code>{be_price}</code>"
                             )
                         except Exception as ae:
                             logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
@@ -1306,8 +1368,7 @@ class TelegramMultiSignalCopier:
                         pos["sl"] = be_price
                         logger.info(f"🛡️ Position #{pos_id} ({symbol}) moved to Breakeven @ {be_price}")
                         self.send_telegram_alert(
-                            f"🛡️ <b>Breakeven Locked!</b>\n"
-                            f"Symbol: {symbol} | Position #{pos_id}\n"
+                            f"🛡️ <b>BE Locked: {symbol}</b> (#{pos_id})\n"
                             f"SL moved to entry buffer: <code>{be_price}</code>"
                         )
                     except Exception as ae:
@@ -1336,8 +1397,7 @@ class TelegramMultiSignalCopier:
                                     comp["sl"] = c_be
                                     logger.info(f"🛡️ [Invariant 27] Companion Position #{comp_id} ({symbol}) synchronized to Breakeven @ {c_be}")
                                     self.send_telegram_alert(
-                                        f"🛡️ <b>Companion Breakeven Synchronized!</b>\n"
-                                        f"Symbol: {symbol} | Position #{comp_id}\n"
+                                        f"🛡️ <b>Companion BE Synced: {symbol}</b> (#{comp_id})\n"
                                         f"SL synchronized to BE: <code>{c_be}</code>"
                                     )
                                 except Exception as cae:
@@ -1409,10 +1469,8 @@ class TelegramMultiSignalCopier:
                                 pos["be_locked"] = True
                                 logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed up to {new_sl} (gain: +{gain:.4f})")
                                 self.send_telegram_alert(
-                                    f"🏃 <b>Trailing Stop Advanced ({trail_mode})</b>\n"
-                                    f"Symbol: {symbol} | Ticket #{pos.get('ticket')} (#{pos_id})\n"
-                                    f"Floating Gain: +{gain:.4f}\n"
-                                    f"New Protected SL: <code>{new_sl}</code>"
+                                    f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
+                                    f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
                                 )
                             except Exception as ae:
                                 logger.error(f"Failed to trail SL for #{pos_id}: {ae}")
@@ -1425,10 +1483,8 @@ class TelegramMultiSignalCopier:
                                 pos["be_locked"] = True
                                 logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed down to {new_sl} (gain: +{gain:.4f})")
                                 self.send_telegram_alert(
-                                    f"🏃 <b>Trailing Stop Advanced ({trail_mode})</b>\n"
-                                    f"Symbol: {symbol} | Ticket #{pos.get('ticket')} (#{pos_id})\n"
-                                    f"Floating Gain: +{gain:.4f}\n"
-                                    f"New Protected SL: <code>{new_sl}</code>"
+                                    f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
+                                    f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
                                 )
                             except Exception as ae:
                                 logger.error(f"Failed to trail SL for #{pos_id}: {ae}")
@@ -1516,7 +1572,8 @@ class TelegramMultiSignalCopier:
 
             for p in new_posts:
                 pid = p["post_id"]
-                post_url = p.get("post_url") or f"https://t.me/{pid}"
+                pid_clean = str(pid).split("/")[-1]
+                post_url = p.get("post_url") or f"https://t.me/{ch_id}/{pid_clean}"
                 watermarks[ch_id] = pid
                 self.save_state()
 
@@ -1533,12 +1590,9 @@ class TelegramMultiSignalCopier:
                     logger.warning(f"🚫 [REJECTED MALFORMED SIGNAL] {ch_id} (Post #{pid}): {err}")
                     if not self.dry_run:
                         self.send_telegram_alert(
-                            f"⚠️ <b>SIGNAL BLOCKED: Malformed / Inverted Signal</b>\n\n"
-                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
-                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
-                            f"📈 <b>Action:</b> {sig.get('side')} {sig.get('symbol')} @ {sig.get('entry_mid')}\n"
-                            f"❌ <b>Reason:</b> {err}\n"
-                            f"🛡️ <b>Protection:</b> Blocked automatically to protect your capital."
+                            f"⚠️ <b>Blocked: {sig.get('side')} {sig.get('symbol')}</b>\n"
+                            f"Reason: {err}\n"
+                            f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                         )
                     continue
 
@@ -1564,12 +1618,9 @@ class TelegramMultiSignalCopier:
                 if self.check_conflicts(symbol, side):
                     if not self.dry_run:
                         self.send_telegram_alert(
-                            f"🛡️ <b>CONFLICT SHIELD ACTIVATED</b>\n\n"
-                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
-                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
-                            f"📈 <b>Attempted:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
-                            f"⚠️ <b>Reason:</b> Opposing position already active on account.\n"
-                            f"🛡️ <b>Action:</b> Order skipped to avoid hedging conflict."
+                            f"🛡️ <b>Conflict Shield: {symbol}</b>\n"
+                            f"Skipped {side} (opposing active)\n"
+                            f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                         )
                     continue
 
@@ -1599,13 +1650,9 @@ class TelegramMultiSignalCopier:
                             logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
                             if not self.dry_run:
                                 self.send_telegram_alert(
-                                    f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
-                                    f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
-                                    f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
-                                    f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
-                                    f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
-                                    f"🛡️ <b>SL Level:</b> {raw_sl}\n"
-                                    f"⚠️ <b>Status:</b> Setup aborted because market reached SL prior to entry."
+                                    f"⏭️ <b>Aborted: {side} {symbol}</b>\n"
+                                    f"Market hit SL ({raw_sl}) before entry\n"
+                                    f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
                             continue
                         else:
@@ -1622,13 +1669,9 @@ class TelegramMultiSignalCopier:
                             logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
                             if not self.dry_run:
                                 self.send_telegram_alert(
-                                    f"⏭️ <b>SIGNAL INVALIDATED: Stop Loss Already Reached</b>\n\n"
-                                    f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
-                                    f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
-                                    f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
-                                    f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
-                                    f"🛡️ <b>SL Level:</b> {raw_sl}\n"
-                                    f"⚠️ <b>Status:</b> Setup aborted because market reached SL prior to entry."
+                                    f"⏭️ <b>Aborted: {side} {symbol}</b>\n"
+                                    f"Market hit SL ({raw_sl}) before entry\n"
+                                    f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
                             continue
                         else:
@@ -1685,13 +1728,9 @@ class TelegramMultiSignalCopier:
                     logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone:.2f} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
                     if not self.dry_run:
                         self.send_telegram_alert(
-                            f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n\n"
-                            f"📡 <b>Source:</b> {ch_id} (Post #{pid})\n"
-                            f"🔗 <b>Original Post:</b> <a href=\"{post_url}\">View in Telegram</a>\n"
-                            f"📈 <b>Action:</b> {side} {symbol} @ {sig.get('entry_mid')}\n"
-                            f"📍 <b>Live Market Spot:</b> {curr_spot}\n"
-                            f"📏 <b>Adverse Distance:</b> +{dist_from_zone:.2f} pts towards TP (Max Allowed: {params['max_slippage']}){sl_risk_str}\n"
-                            f"🛡️ <b>Protection:</b> Trade blocked to prevent chasing after price has already run away (no valid rollover target with >= 1.5:1 R:R)."
+                            f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n"
+                            f"Action: {side} {symbol} @ {sig.get('entry_mid')} (Spot: {curr_spot}, +{dist_from_zone:.2f} pts away)\n"
+                            f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                         )
                     continue
 
