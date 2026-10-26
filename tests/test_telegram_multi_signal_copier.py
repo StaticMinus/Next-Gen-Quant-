@@ -136,6 +136,10 @@ def test_conflict_detection():
     assert copier.check_conflicts("EURUSD", "SELL") is False
 
 def test_parser_anabelsignals_forecast_auto_sl():
+    """
+    Invariant 32: Anabel's 4H conversational forecast without author Stop Loss
+    must be rejected to prevent synthesizing arbitrary tight stops on swing setups.
+    """
     text = """✍️EURCAD Massive Long! BUY!
 The market is trading on 1.6036 pivot level.
 ⭐️Target - 1.6056
@@ -143,25 +147,28 @@ The market is trading on 1.6036 pivot level.
 💐#EURCAD
 ↗️Time Frame: 4H (forecast)"""
     sig = MultiChannelSignalParser.parse_message(text, "anabelsignals")
-    assert sig is not None
-    assert sig["symbol"] == "EURCAD"
-    assert sig["side"] == "BUY"
-    assert sig["entry_mid"] == 1.6036
-    assert sig["tps"] == [1.6056]
-    # Verified: Auto-calculated SL is attached (entry - dist = 1.6036 - 0.0020 = 1.6016)
-    assert sig["sl"] == pytest.approx(1.6016, rel=1e-3)
+    assert sig is None
 
 
 def test_parser_anabelsignals_with_channel_header():
-    text = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
+    """
+    Invariant 32: 4H forecast with channel header and no author SL is rejected.
+    When Safe Stop Loss is provided, it is parsed cleanly.
+    """
+    text_forecast = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
 
 ✍️AUDJPY Massive Short! SELL!👍My dear subscribers,This is my opinion on the AUDJPY next move:The instrument tests an important psychological level 110.54Bias - Bearish⭐️Target - 110.08——————————💐#AUDJPY↗️Time Frame: 4H (forecast)——————————WISH YOU ALL LUCK🍀@anabelsignalscontact"""
-    sig = MultiChannelSignalParser.parse_message(text, "anabelsignals")
-    assert sig is not None
-    assert sig["symbol"] == "AUDJPY"
-    assert sig["side"] == "SELL"
-    assert sig["entry_mid"] == 110.54
-    assert sig["tps"] == [110.08]
+    sig = MultiChannelSignalParser.parse_message(text_forecast, "anabelsignals")
+    assert sig is None
+
+    text_signal = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
+
+✍️GOLD Under Pressure! SELL!👍My dear friends,The price is coiling around 4016.1Bias - Bearish⭐️Goal - 4004.7⭐️Safe Stop Loss - 4024.8💐#GOLD↗️Time Frame : 30m (signal)"""
+    sig2 = MultiChannelSignalParser.parse_message(text_signal, "anabelsignals")
+    assert sig2 is not None
+    assert sig2["symbol"] == "XAUUSD"
+    assert sig2["sl"] == 4024.8
+
 
 def test_2_ticket_split_execution():
     copier = TelegramMultiSignalCopier(dry_run=True)
@@ -1220,3 +1227,59 @@ def test_invariant_31_excessive_slippage_chase_rejected():
     assert copier.send_telegram_alert.called
     sent_alert = copier.send_telegram_alert.call_args[0][0]
     assert "Anti-Chase Limit Exceeded" in sent_alert
+
+
+def test_invariant_32_forecast_rejection():
+    """
+    Verifies Invariant 32:
+    - High-timeframe conversational posts marked '(forecast)' without an author Stop Loss
+      must be rejected (return None) to prevent synthesizing tight stops on swing ideas.
+    - Actionable signals with explicit author Stop Loss (even from Anabel) must be accepted.
+    """
+    # Incident message from today: EURUSD 4H forecast with no Stop Loss
+    forecast_text = (
+        "✍️EURUSD What Next? BUY!👍\n"
+        "My dear subscribers,\n"
+        "My technical analysis for EURUSD is below:\n"
+        "The price is coiling around a solid key level - 1.1202\n"
+        "Bias - Bullish\n"
+        "⭐️Goal - 1.1216\n"
+        "💐#EURUSD\n"
+        "Time Frame: 4H (forecast)\n"
+        "WISH YOU ALL LUCK🍀@anabelsignalscontact"
+    )
+    parsed_forecast = MultiChannelSignalParser.parse_message(forecast_text, "anabelsignals")
+    assert parsed_forecast is None, "Forecast without author Stop Loss must be rejected!"
+
+    # Actionable Gold signal from today: Gold 30m with Safe Stop Loss 4024.8
+    signal_text = (
+        "✍️GOLD Under Pressure! SELL!👍\n"
+        "My dear friends,\n"
+        "The price is coiling around a solid key level - 4016.1\n"
+        "Bias - Bearish\n"
+        "⭐️Goal - 4004.7\n"
+        "⭐️Safe Stop Loss - 4024.8\n"
+        "💐#GOLD\n"
+        "Time Frame : 30m (signal)\n"
+        "WISH YOU ALL LUCK🍀@anabelsignalscon"
+    )
+    parsed_signal = MultiChannelSignalParser.parse_message(signal_text, "anabelsignals")
+    assert parsed_signal is not None
+    assert parsed_signal["symbol"] == "XAUUSD"
+    assert parsed_signal["side"] == "SELL"
+    assert parsed_signal["sl"] == 4024.8
+    assert parsed_signal["tps"] == [4004.7]
+
+
+def test_invariant_34_fleet_expectancy_and_specialization():
+    """
+    Verifies Invariant 34:
+    - elitetrading_signals (35% win rate) is disabled in active fleet.
+    - anabelsignals is specialized to Gold only (assets: ['XAUUSD']).
+    """
+    from src.integrations.telegram_multi_signal_copier import CHANNELS_CONFIG
+    channel_map = {c["id"]: c for c in CHANNELS_CONFIG}
+
+    assert channel_map["elitetrading_signals"]["enabled"] is False
+    assert channel_map["anabelsignals"]["assets"] == ["XAUUSD"]
+

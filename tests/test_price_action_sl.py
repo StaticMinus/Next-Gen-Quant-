@@ -309,11 +309,11 @@ def test_copier_m5_structure_trailing_integration():
 
 
 def test_get_min_noise_floor_distance():
-    assert PriceActionSLEngine.get_min_noise_floor_distance("XAUUSD") == 1.50
-    assert PriceActionSLEngine.get_min_noise_floor_distance("GOLD") == 1.50
-    assert PriceActionSLEngine.get_min_noise_floor_distance("EURUSD") == 0.00080
-    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPUSD") == 0.00080
-    assert PriceActionSLEngine.get_min_noise_floor_distance("USDJPY") == 0.08
+    assert PriceActionSLEngine.get_min_noise_floor_distance("XAUUSD") == 3.50
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GOLD") == 3.50
+    assert PriceActionSLEngine.get_min_noise_floor_distance("EURUSD") == 0.00150
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPUSD") == 0.00150
+    assert PriceActionSLEngine.get_min_noise_floor_distance("USDJPY") == 0.15
     assert PriceActionSLEngine.get_min_noise_floor_distance("US30") == 25.0
     assert PriceActionSLEngine.get_min_noise_floor_distance("BTCUSD") == 50.0
 
@@ -322,7 +322,7 @@ def test_structural_shield_rejects_sub_noise_tightening():
     """
     Forex incident test: Provider gave 1.11920 (7 pips from entry 1.11990).
     A micro-consolidation wick gave PASL of 1.11959 (3.1 pips from entry).
-    Because 3.1 pips is inside the noise floor (< 8 pips), PASL tightening
+    Because 3.1 pips is inside the noise floor (< 15 pips), PASL tightening
     must be DISCARDED and provider SL 1.11920 preserved.
     """
     lows = [1.11980, 1.11975, 1.11965, 1.11970, 1.11980, 1.11985]
@@ -344,14 +344,14 @@ def test_structural_shield_rejects_sub_noise_tightening():
 def test_structural_shield_allows_valid_macro_tightening():
     """
     When provider gives an overly wide SL (30 pips away) and a valid swing structure
-    exists outside the noise floor (e.g. 15 pips away), it should be tightened.
+    exists outside the noise floor (e.g. 18 pips away), it should be tightened.
     """
-    lows = [1.11880, 1.11860, 1.11850, 1.11890, 1.11930, 1.11960]
-    highs = [1.11920, 1.11900, 1.11890, 1.11930, 1.11970, 1.12000]
+    lows = [1.11800, 1.11780, 1.11760, 1.11800, 1.11850, 1.11900]
+    highs = [1.11850, 1.11820, 1.11810, 1.11850, 1.11900, 1.11950]
     df = create_sample_bars(lows, highs)
 
     sl, reason = PriceActionSLEngine.reconcile_structural_sl(
-        provider_sl=1.11690,  # 30 pips away
+        provider_sl=1.11650,  # 34 pips away
         df_bars=df,
         side="BUY",
         entry_price=1.11990,
@@ -359,8 +359,34 @@ def test_structural_shield_allows_valid_macro_tightening():
         max_allowed_distance=0.0050
     )
     assert reason == "STRUCTURAL_SHIELD_TIGHTENED"
-    assert sl > 1.11690
+    assert sl > 1.11650
     assert sl < 1.11990
-    assert round(1.11990 - sl, 5) >= 0.00080  # Outside noise floor
+    assert round(1.11990 - sl, 5) >= 0.00150  # Outside noise floor
+
+
+def test_gold_pasl_rejects_sub_3_5pt_tightening():
+    """
+    Invariant 33 Verification:
+    Provider posted SELL Gold with SL 4029.10 (entry 4020.96).
+    A micro-consolidation high at 4021.50 gives raw PASL 4022.54 ($1.58 away).
+    Because $1.58 is inside the Gold 3.50 pt noise floor, PASL tightening
+    MUST BE DISCARDED to prevent suffocation, preserving the provider SL 4029.10.
+    """
+    lows = [4019.0, 4019.5, 4020.0, 4019.8, 4020.2, 4020.5]
+    highs = [4021.0, 4021.3, 4021.5, 4021.2, 4021.4, 4021.5]
+    df = create_sample_bars(lows, highs)
+
+    sl, reason = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=4029.10,
+        df_bars=df,
+        side="SELL",
+        entry_price=4020.96,
+        symbol="XAUUSD",
+        max_allowed_distance=10.0,
+        spread_cushion=0.35
+    )
+    assert reason == "PROVIDER_EXACT"
+    assert sl == 4029.10
+
 
 

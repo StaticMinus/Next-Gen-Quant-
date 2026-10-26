@@ -26,15 +26,15 @@ class PriceActionSLEngine:
         """
         sym_upper = symbol.upper()
         if "XAU" in sym_upper or "GOLD" in sym_upper:
-            return 1.50   # 1.50 pts Gold (15 pips)
+            return 3.50   # Invariant 33: 3.50 pts Gold (35 pips) anti-suffocation floor
         elif "JPY" in sym_upper:
-            return 0.08   # 8 pips on JPY pairs (e.g. 0.080 on USDJPY)
+            return 0.15   # 15 pips on JPY pairs (e.g. 0.150 on USDJPY)
         elif any(k in sym_upper for k in ["BTC", "ETH"]):
             return 50.0   # $50 Crypto
         elif any(k in sym_upper for k in ["US30", "NAS100", "SPX", "NDX", "DJ30"]):
             return 25.0   # 25 pts Indices
         else:
-            return 0.00080 # 8.0 pips standard Forex (EURUSD, GBPUSD, etc.)
+            return 0.00150 # 15.0 pips standard Forex (EURUSD, GBPUSD, etc.)
 
     @staticmethod
     def calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
@@ -196,10 +196,27 @@ class PriceActionSLEngine:
             # INVARIANT: NEVER WIDEN PROVIDER SL.
             # INVARIANT: NEVER TIGHTEN PROVIDER SL INTO THE SUB-NOISE ZONE.
             # If provider set a valid SL, only tighten if PASL is outside the
-            # asset's noise floor (>= min_noise_floor_distance from entry).
+            # asset's noise floor (>= min_noise_floor_distance from entry)
+            # AND the underlying fractal structure itself was genuinely outside noise.
             if pasl is not None:
                 pasl_dist = abs(entry_price - pasl)
-                if pasl_dist >= min_noise:
+                natural_swing_valid = False
+                if df_bars is not None and not df_bars.empty:
+                    lookback_bars = 8
+                    scan_df = df_bars.iloc[-(lookback_bars + 1):-1] if len(df_bars) > (lookback_bars + 1) else df_bars.iloc[:-1]
+                    if not scan_df.empty:
+                        atr = cls.calculate_atr(df_bars, period=14)
+                        dynamic_buf = max(0.50 if "XAU" in sym_upper or "GOLD" in sym_upper else 0.0005, atr * 0.25)
+                        if side_upper == "BUY":
+                            raw_pasl = float(scan_df["low"].min()) - dynamic_buf
+                            if (entry_price - raw_pasl) >= min_noise:
+                                natural_swing_valid = True
+                        else:
+                            raw_pasl = float(scan_df["high"].max()) + dynamic_buf + max(0.0, spread_cushion)
+                            if (raw_pasl - entry_price) >= min_noise:
+                                natural_swing_valid = True
+
+                if pasl_dist >= min_noise and natural_swing_valid:
                     if side_upper == "BUY":
                         if candidate_sl < pasl < entry_price:
                             candidate_sl = pasl
@@ -211,7 +228,7 @@ class PriceActionSLEngine:
                 else:
                     logger.debug(
                         f"🛡️ [PASL Noise Floor Guard] Discarded PASL tightening {pasl}: "
-                        f"distance {pasl_dist:.5f} is below noise floor {min_noise:.5f}. Preserving provider SL {candidate_sl}."
+                        f"distance {pasl_dist:.5f} is below noise floor {min_noise:.5f} or swing is inside noise. Preserving provider SL {candidate_sl}."
                     )
 
         # 4. Strict Prop-Firm Risk Clamp

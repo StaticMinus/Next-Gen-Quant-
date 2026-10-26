@@ -49,13 +49,13 @@ STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 CHANNELS_CONFIG = [
     # === PURE INTRADAY & SESSION SCALPING FLEET (Resolves within active session • Invariant 28) ===
     {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 25.0, "peak_session": "London Pre-Market"},
-    {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
+    {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
     {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 35.7, "peak_session": "London Open"},
     {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 57.1, "peak_session": "New York"},
     {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 45.0, "peak_session": "London Open"},
     {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 37.8, "peak_session": "London Open"},
     {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 35.1, "peak_session": "New York/London"},
-    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 35.0, "peak_session": "London Open"},
+    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 35.0, "peak_session": "London Open"},
     {"id": "FreeForexSignals24", "name": "Free Forex Signals 24", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
     {"id": "gold_forex_signals", "name": "Gold & Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/NY"},
     {"id": "CryptoBullSignals", "name": "Crypto Bull Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "24/7 Asian/NY"},
@@ -337,6 +337,9 @@ class MultiChannelSignalParser:
             return None
         if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower or "stop loss" in text_lower):
             return None
+        # Invariant 32: Reject conversational chart forecasts/outlooks lacking author Stop Loss
+        if "(forecast)" in text_lower and not any(k in text_lower for k in ["stop loss", "stoploss", "sl:", "safe stop loss", "recommended stop loss"]):
+            return None
 
         # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
         m_ssf = re.search(r"\b(XAUUSD|GOLD)\s+(BUY|SELL)(?:\s+(?:STOP|LIMIT|NOW))?\s+([\d\.]+)\s+SL:\s*([\d\.]+)\s+TP:\s*([\d\.]+)", text_clean, re.IGNORECASE)
@@ -424,6 +427,10 @@ class MultiChannelSignalParser:
             m_ana_sl = re.search(r"(?:Stop\s*Loss|My\s*Stop\s*Loss|Recommended\s*Stop\s*Loss|Safe\s*Stop\s*Loss)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_target = re.search(r"(?:Target|Goal)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+
+            # Invariant 32: If post is a (forecast) or outlook without explicit Stop Loss, reject it
+            if "(forecast)" in text_lower and not m_ana_sl:
+                return None
 
             if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target)):
                 raw_sym = m_ana_header.group(1).upper()
@@ -986,7 +993,7 @@ class TelegramMultiSignalCopier:
         # USER DIRECTIVE: Authorized swing channels have full target pass-through
         authorized_swing_channels = {
             "forexgdpfree", "forexgdp", "oanda", "dailyforexpipsfree", "universalforexsignals",
-            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip", "elitetrading_signals"
+            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip"
         }
         is_swing_authorized = str(channel).lower() in authorized_swing_channels
         if dist_tp1 > max_intraday_tp and not is_swing_authorized:
