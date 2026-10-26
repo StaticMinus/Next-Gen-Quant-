@@ -167,7 +167,30 @@ class PriceActionSLEngine:
         sym_upper = symbol.upper()
         digits = 2 if any(k in sym_upper for k in ["XAU", "GOLD", "BTC", "ETH", "SPX", "NDX", "US30", "US2000"]) else 5
 
-        # 1. Calculate Price Action Stop Loss if bars are available
+        from src.strategies.order_block_engine import OrderBlockEngine, OrderBlock
+
+        min_noise = cls.get_min_noise_floor_distance(sym_upper)
+
+        # 1. Detect Institutional Order Block Stop-Loss (OB-PASL) Priority 1
+        ob_sl: Optional[float] = None
+        ob_obj: Optional[OrderBlock] = None
+        ob_reason: str = ""
+        if df_bars is not None and not df_bars.empty:
+            try:
+                ob_sl, ob_obj, ob_reason = OrderBlockEngine.calculate_order_block_sl(
+                    df=df_bars,
+                    side=side_upper,
+                    entry_price=entry_price,
+                    symbol=sym_upper,
+                    min_noise_distance=min_noise,
+                    max_allowed_distance=max_allowed_distance,
+                    spread_cushion=spread_cushion
+                )
+            except Exception as e:
+                logger.debug(f"OrderBlock calculation skipped: {e}")
+                ob_sl = None
+
+        # 2. Calculate Fractal Swing Stop Loss (Priority 2 Fallback)
         pasl = None
         if df_bars is not None and not df_bars.empty:
             try:
@@ -177,11 +200,12 @@ class PriceActionSLEngine:
             except Exception:
                 pasl = None
 
-        min_noise = cls.get_min_noise_floor_distance(sym_upper)
-
-        # 2. Determine initial candidate SL
+        # 3. Determine initial candidate SL
         if provider_sl is None or provider_sl <= 0:
-            if pasl is not None:
+            if ob_sl is not None:
+                candidate_sl = ob_sl
+                reason = f"ORDER_BLOCK_{ob_reason}"
+            elif pasl is not None:
                 candidate_sl = pasl
                 reason = "PASL_SYNTHESIZED"
             else:
@@ -192,13 +216,25 @@ class PriceActionSLEngine:
             candidate_sl = float(provider_sl)
             reason = "PROVIDER_EXACT"
 
-            # 3. Apply Asymmetric Structural Guard if PASL is available
-            # INVARIANT: NEVER WIDEN PROVIDER SL.
-            # INVARIANT: NEVER TIGHTEN PROVIDER SL INTO THE SUB-NOISE ZONE.
-            # If provider set a valid SL, only tighten if PASL is outside the
-            # asset's noise floor (>= min_noise_floor_distance from entry)
-            # AND the underlying fractal structure itself was genuinely outside noise.
-            if pasl is not None:
+            # 4. Check for Order Block Structural Tightening
+            # If provider set an overly wide SL, but an institutional Order Block invalidation
+            # is confirmed outside the noise floor, tighten to the Order Block!
+            # INVARIANT 11: NEVER WIDEN PROVIDER SL.
+            ob_tightened = False
+            if ob_sl is not None:
+                if side_upper == "BUY":
+                    if candidate_sl < ob_sl < entry_price:
+                        candidate_sl = ob_sl
+                        reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
+                        ob_tightened = True
+                else:
+                    if entry_price < ob_sl < candidate_sl:
+                        candidate_sl = ob_sl
+                        reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
+                        ob_tightened = True
+
+            # If no Order Block tightening was applied, apply Fractal Structural Shield Guard
+            if not ob_tightened and pasl is not None:
                 pasl_dist = abs(entry_price - pasl)
                 natural_swing_valid = False
                 if df_bars is not None and not df_bars.empty:

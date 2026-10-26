@@ -960,7 +960,10 @@ class TelegramMultiSignalCopier:
             max_allowed_distance=max_dist,
             spread_cushion=spread if side == "SELL" else 0.0
         )
-        logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
+        if "ORDER_BLOCK" in sl_reason:
+            logger.info(f"🏛️ [OB-PASL] Anchored SL to Institutional Order Block: {symbol} {side} @ {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
+        else:
+            logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
 
         tps = sig["tps"]
         # Sanitize targets relative to actual fill entry spot
@@ -1169,8 +1172,9 @@ class TelegramMultiSignalCopier:
                     tp_str = f"🎯 T1 {executed_orders[0]['tp']} · T2 {executed_orders[1]['tp']}"
 
                 rollover_badge = " [Rollover]" if sig.get("is_target_rollover") else ""
+                ob_badge = " [OB Invalidation]" if "ORDER_BLOCK" in sl_reason else ""
                 alert_msg = (
-                    f"⚡ <b>{side} {symbol} @ {entry}</b>{rollover_badge}\n"
+                    f"⚡ <b>{side} {symbol} @ {entry}</b>{rollover_badge}{ob_badge}\n"
                     f"🛡️ SL {safe_sl} · {tp_str}\n"
                     f"💰 Est. Profit: <b>{prof_str}</b>\n"
                     f"⏱️ Est. Time: <b>{time_str}</b>\n"

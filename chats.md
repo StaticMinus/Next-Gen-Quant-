@@ -1732,3 +1732,35 @@ To resume automated trading whenever you choose:
 - **`scripts/pre_live_system_check.py`**: **13 Passed | 0 Warnings | 0 Failures (🟢 GO — SYSTEM IS PREPARED FOR LIVE TRADING)**.
 - **Rules Updated**: [`.agents/rules/financial_signal_ingestion_standards.md`](file:///c:/Users/David/Music/Trade/AgentQuant-main/.agents/rules/financial_signal_ingestion_standards.md).
 
+---
+
+## 54. Institutional Order Block & Price Action Stop-Loss (OB-PASL) Engine Deployment
+
+**Date:** October 26, 2026 (14:35 UTC)  
+**Status:** **Architected via `/plan`, Implemented, 76/76 Tests Passing, Pre-Live Verified (🟢 GO)**
+
+### 1. Upgrade Motivation & Problem Statement:
+- Following the forensic audit of October 26, 2026 trades, Stop-Loss placement needed to transition away from retail round numbers and static pip offsets.
+- Retail signal providers frequently set stops inside liquidity sweeps where market makers hunt stops, or fail to account for institutional order flow footprints.
+- The user requested: *"lets make our SL based on price action or order block what do you think plan for this /plan"*.
+
+### 2. Architecture & Implementation:
+1. **Core Engine ([`src/strategies/order_block_engine.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/strategies/order_block_engine.py))**:
+   - **`OrderBlock` Dataclass**: Captures structural parameters (side, high, low, open, close, displacement magnitude, Fair Value Gap [FVG] size, mitigation status, invalidation price).
+   - **`detect_order_blocks()`**: Scans M5/M15 trendbars for institutional accumulation (Bullish OB) and distribution (Bearish OB) preceding strong momentum displacement candles ($body \ge 1.5 \times ATR$ or $\ge 55\%$ body ratio).
+   - **Mitigation & Invalidation Logic**: Prioritizes fresh unmitigated Order Blocks; invalidation sits at `OB_low - (ATR * 0.25)` for BUY and `OB_high + (ATR * 0.25) + spread_cushion` for SELL.
+   - **Anti-Suffocation Stepping (Invariant 33)**: If the closest Order Block is within the noise floor ($< 3.50$ pts on Gold, $< 15$ pips on Forex), automatically steps back to parent Order Block structure.
+2. **Strategy Integration ([`src/strategies/price_action_sl_engine.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/strategies/price_action_sl_engine.py))**:
+   - Integrated `OrderBlockEngine` as **Priority 1** structural invalidation layer in `reconcile_structural_sl()`.
+   - Adopts Order Block invalidation when provider SL is missing or wide (`ORDER_BLOCK_*`).
+   - Smoothly falls back to fractal swing high/low structure if no clean Order Block is present.
+3. **Execution Telemetry & Alerts ([`src/integrations/telegram_multi_signal_copier.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/telegram_multi_signal_copier.py))**:
+   - Added `🏛️ [OB-PASL]` execution logging and `[OB Invalidation]` badge to live Telegram execution alerts.
+
+### 3. Verification & Metrics:
+- **`pytest tests/test_order_block_sl.py -v`**: **7/7 PASSED in 0.41s** (Bullish/Bearish detection, Buy/Sell invalidation with spread cushion, anti-suffocation stepping, provider tightening).
+- **`pytest tests/test_order_block_sl.py tests/test_price_action_sl.py tests/test_telegram_multi_signal_copier.py -q`**: **76/76 PASSED in 108.9s**.
+- **`python scripts/pre_live_system_check.py`**: **13 Passed | 0 Warnings | 0 Failures (🟢 GO — SYSTEM IS PREPARED FOR LIVE TRADING)**.
+- **Artifacts**: Plan saved in [`order_block_price_action_sl_plan.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/0c056efe-6cd1-45ad-9ec2-31817edc5b87/order_block_price_action_sl_plan.md), Walkthrough saved in [`walkthrough.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/0c056efe-6cd1-45ad-9ec2-31817edc5b87/walkthrough.md).
+
+
