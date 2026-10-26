@@ -1679,12 +1679,14 @@ class TelegramMultiSignalCopier:
                             dist_from_zone = 0.0
 
                 if dist_from_zone > params["max_slippage"]:
-                    # Invariant 22/29: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
-                    # If spot has run past entry zone, scan all remaining candidate targets to find the first target offering >= 1.5:1 R:R
+                    # Invariant 22/29/31: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
+                    # Rollover is only permitted if the price has not severely deviated beyond max_rollover_slippage (max 1.5x max_slippage = 3.75 pts on Gold).
+                    # Chasing beyond this threshold risks buying the top / selling the bottom on stale re-broadcasts.
+                    max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
                     candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
                     rollover_executed = False
 
-                    if candidate_tps:
+                    if candidate_tps and dist_from_zone <= max_rollover_slip:
                         ratcheted_sl = round(e_max if side == "BUY" else e_min, 5)
                         ratcheted_risk = abs(curr_spot - ratcheted_sl)
                         min_risk_dist = params.get("be_buffer", 0.5)
@@ -1704,8 +1706,8 @@ class TelegramMultiSignalCopier:
                             remaining_tps = candidate_tps[viable_index:]
                             remaining_reward = abs(viable_tp - curr_spot)
                             logger.info(
-                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone, but target {viable_tp} "
-                                f"offers {remaining_reward:.2f} pts reward vs {eff_risk:.2f} pts ratcheted risk (>= 1.5 R:R). Proceeding with ratcheted SL {ratcheted_sl}."
+                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone (+{dist_from_zone:.2f} pts <= max {max_rollover_slip:.2f}), "
+                                f"target {viable_tp} offers {remaining_reward:.2f} pts reward vs {eff_risk:.2f} pts ratcheted risk (>= 1.5 R:R). Proceeding with ratcheted SL {ratcheted_sl}."
                             )
                             rollover_sig = copy.deepcopy(sig)
                             rollover_sig["sl"] = ratcheted_sl

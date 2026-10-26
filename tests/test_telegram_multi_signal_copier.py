@@ -1187,15 +1187,36 @@ def test_channel_asset_whitelist_filtering():
     assert copier.execute_signal.called
 
 
+def test_invariant_31_excessive_slippage_chase_rejected():
+    """
+    Verifies Invariant 31: When a signal is re-posted after market has moved excessively
+    (e.g. 5.7 pts away on Gold, exceeding max_rollover_slippage = 3.75 pts),
+    rollover is strictly blocked to prevent selling at the bottom / buying at the top.
+    """
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    # Spot is 4009.30 (5.7 pts below 4015.0 entry)
+    mock_ctrader.get_spot_price.return_value = {"bid": 4009.25, "ask": 4009.30}
 
+    copier = TelegramMultiSignalCopier(ctrader_client=mock_ctrader, dry_run=False)
+    copier.check_market_hours = MagicMock(return_value=True)
+    copier.check_conflicts = MagicMock(return_value=False)
+    copier.execute_signal = MagicMock()
+    copier.send_telegram_alert = MagicMock()
 
+    # Re-posted signal with 5 targets, where TP4 (3998) would otherwise qualify for Invariant 29
+    copier.fetch_channel_posts = MagicMock(return_value=[{
+        "post_id": "royal_pips_fx/16160",
+        "post_url": "https://t.me/royal_pips_fx/16160",
+        "text": "#GOLD SELL 4015 Tp1 4011 Tp2 4006 Tp3 4002 Tp4 3998 Tp5 3994 SL 4020"
+    }])
+    copier.state["watermarks"] = {"royal_pips_fx": "royal_pips_fx/16159"}
+    copier.state["executed_signal_keys"] = []
 
+    copier.poll_cycle()
 
-
-
-
-
-
-
-
-
+    # execute_signal must NOT be called because slippage 5.70 pts > max_rollover_slippage (3.75 pts)
+    assert not copier.execute_signal.called
+    assert copier.send_telegram_alert.called
+    sent_alert = copier.send_telegram_alert.call_args[0][0]
+    assert "Anti-Chase Limit Exceeded" in sent_alert

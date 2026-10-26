@@ -23,8 +23,8 @@ if hasattr(sys.stdout, "reconfigure"):
 load_dotenv()
 
 DEFAULT_URL = os.getenv("CTRADER_MCP_URL", "https://mcp.ctrader.com/trading/mcp")
-DEFAULT_TOKEN = os.getenv("CTRADER_ACCESS_TOKEN", "eyJwbGFudCI6ImZ1bmRlZG5leHQiLCJlbnZpcm9ubWVudCI6ImRlbW8iLCJ0b2tlbiI6ImZxRUUwRnFZcmYyVFpMRVZFNHd5VnRldkdQUHJES0wvWlltd3RUTnhlQTQ9In0")
-ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "3028655")
+DEFAULT_TOKEN = os.getenv("CTRADER_ACCESS_TOKEN", "eyJwbGFudCI6ImN0cmFkZXIiLCJlbnZpcm9ubWVudCI6ImRlbW8iLCJ0b2tlbiI6InZHK3lGajhQb0h6ZkhmTThXTWZCN1JyN3kvQkR0d2tFVDFqOW8rSkhZRjA9In0")
+ACCOUNT_ID = os.getenv("CTRADER_ACCOUNT_ID", "5947479")
 
 
 class RiskViolationError(RuntimeError):
