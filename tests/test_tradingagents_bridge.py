@@ -19,6 +19,40 @@ def test_symbol_resolution():
     assert ticker_gold == "GC=F"
     assert asset_type_gold == "commodity"
 
+    # Forex Majors
+    for fx_sym in ("EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"):
+        t, a, n = bridge.resolve_symbol(fx_sym)
+        assert t == f"{fx_sym}=X"
+        assert a == "forex"
+        assert len(n) > 0
+
+
+def test_calculate_lot_and_stops_forex():
+    runner = TradingAgentsRunner(dry_run=True)
+    # 5-decimal standard pair: EURUSD
+    eur_stops = runner.calculate_lot_and_stops(
+        symbol="EURUSD",
+        action="BUY",
+        spot_price=1.12000,
+        extracted_targets={"stop_loss": None, "take_profit": None}
+    )
+    assert eur_stops["lot_size"] == 0.01
+    assert eur_stops["stop_loss"] == 1.11700  # 30 pips below 1.12000
+    assert eur_stops["take_profit"] == 1.12600  # 60 pips above 1.12000
+    assert eur_stops["est_risk_usd"] == 3.0  # 30 pips * 0.10/pip on 0.01 lot
+
+    # 3-decimal JPY pair: USDJPY
+    jpy_stops = runner.calculate_lot_and_stops(
+        symbol="USDJPY",
+        action="SELL",
+        spot_price=155.000,
+        extracted_targets={"stop_loss": None, "take_profit": None}
+    )
+    assert jpy_stops["lot_size"] == 0.01
+    assert jpy_stops["stop_loss"] == 155.350  # 35 pips above
+    assert jpy_stops["take_profit"] == 154.300  # 70 pips below
+    assert jpy_stops["est_risk_usd"] <= 5.0
+
 
 def test_rating_to_action():
     bridge = TradingAgentsBridge()

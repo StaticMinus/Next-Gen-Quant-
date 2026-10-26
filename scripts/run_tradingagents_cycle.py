@@ -29,14 +29,29 @@ if str(ROOT_DIR) not in sys.path:
 from src.integrations.tradingagents_dry_runner import TradingAgentsRunner
 
 
+def parse_symbols(symbol_arg: str):
+    sym_clean = symbol_arg.strip().upper()
+    presets = {
+        "ALL": ["BTCUSD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY"],
+        "FOREX": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"],
+        "FOREX_MAJORS": ["EURUSD", "GBPUSD", "USDJPY"],
+        "CRYPTO": ["BTCUSD", "ETHUSD"],
+        "METALS": ["XAUUSD"],
+    }
+    if sym_clean in presets:
+        return presets[sym_clean]
+    if "," in sym_clean:
+        return [s.strip() for s in sym_clean.split(",") if s.strip()]
+    return [sym_clean]
+
+
 def main():
     parser = argparse.ArgumentParser(description="TradingAgents cTrader Cycle Runner")
     parser.add_argument(
         "--symbol",
         type=str,
         default="BTCUSD",
-        choices=["BTCUSD", "XAUUSD", "ALL"],
-        help="Target symbol to analyze and trade (BTCUSD, XAUUSD, or ALL)",
+        help="Target symbol(s) or preset (e.g. EURUSD, GBPUSD, USDJPY, FOREX, ALL, or comma-separated)",
     )
     parser.add_argument(
         "--live",
@@ -63,18 +78,17 @@ def main():
 
     args = parser.parse_args()
     is_dry_run = not args.live
+    symbols = parse_symbols(args.symbol)
 
     print("\n" + "=" * 65)
     print("🚀 TRADINGAGENTS + CTRADER PROP-FIRM RUNNER")
     print("=" * 65)
-    print(f"Target:       {args.symbol}")
+    print(f"Target(s):    {', '.join(symbols)}")
     print(f"Mode:         {'🧪 DRY-RUN (PAPER SIMULATION)' if is_dry_run else '⚡ LIVE EXECUTION'}")
     print(f"Loop:         {args.loop} (Interval: {args.interval_minutes}m)")
     print("=" * 65 + "\n")
 
     runner = TradingAgentsRunner(dry_run=is_dry_run)
-
-    symbols = ["BTCUSD", "XAUUSD"] if args.symbol == "ALL" else [args.symbol]
 
     while True:
         for sym in symbols:

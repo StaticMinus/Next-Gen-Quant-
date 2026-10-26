@@ -20,9 +20,18 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 from dotenv import load_dotenv
 
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.agents.rating import run_rating, parse_rating, RATING_REVIEW
+try:
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from tradingagents.agents.rating import run_rating, parse_rating, RATING_REVIEW
+    TRADINGAGENTS_AVAILABLE = True
+except ImportError:
+    DEFAULT_CONFIG = {}
+    TradingAgentsGraph = None
+    run_rating = None
+    parse_rating = None
+    RATING_REVIEW = "REVIEW"
+    TRADINGAGENTS_AVAILABLE = False
 
 logger = logging.getLogger("tradingagents_bridge")
 if not logger.handlers:
@@ -35,9 +44,23 @@ load_dotenv()
 
 # Symbol Mapping: cTrader Broker Symbol <-> TradingAgents Analysis Ticker
 SYMBOL_MAP = {
+    # Crypto
     "BTCUSD": {"ticker": "BTC-USD", "asset_type": "crypto", "name": "Bitcoin Spot"},
     "ETHUSD": {"ticker": "ETH-USD", "asset_type": "crypto", "name": "Ethereum Spot"},
+    # Commodities
     "XAUUSD": {"ticker": "GC=F", "asset_type": "commodity", "name": "Gold Spot / Comex"},
+    # Forex Majors (Standard 5-decimal & JPY 3-decimal pairs)
+    "EURUSD": {"ticker": "EURUSD=X", "asset_type": "forex", "name": "Euro / US Dollar"},
+    "GBPUSD": {"ticker": "GBPUSD=X", "asset_type": "forex", "name": "British Pound / US Dollar"},
+    "USDJPY": {"ticker": "USDJPY=X", "asset_type": "forex", "name": "US Dollar / Japanese Yen"},
+    "AUDUSD": {"ticker": "AUDUSD=X", "asset_type": "forex", "name": "Australian Dollar / US Dollar"},
+    "USDCAD": {"ticker": "USDCAD=X", "asset_type": "forex", "name": "US Dollar / Canadian Dollar"},
+    "USDCHF": {"ticker": "USDCHF=X", "asset_type": "forex", "name": "US Dollar / Swiss Franc"},
+    "NZDUSD": {"ticker": "NZDUSD=X", "asset_type": "forex", "name": "New Zealand Dollar / US Dollar"},
+    # Forex Crosses
+    "EURJPY": {"ticker": "EURJPY=X", "asset_type": "forex", "name": "Euro / Japanese Yen"},
+    "GBPJPY": {"ticker": "GBPJPY=X", "asset_type": "forex", "name": "British Pound / Japanese Yen"},
+    # Indices
     "SPX500": {"ticker": "SPY", "asset_type": "stock", "name": "S&P 500 Index"},
     "NDX100": {"ticker": "QQQ", "asset_type": "stock", "name": "Nasdaq 100 Index"},
 }
@@ -64,7 +87,7 @@ class TradingAgentsBridge:
         self.config = self._build_config()
 
     def _build_config(self) -> Dict[str, Any]:
-        cfg = DEFAULT_CONFIG.copy()
+        cfg = DEFAULT_CONFIG.copy() if DEFAULT_CONFIG else {}
         cfg["llm_provider"] = self.provider
         cfg["deep_think_llm"] = self.model
         cfg["quick_think_llm"] = self.model
@@ -101,11 +124,23 @@ class TradingAgentsBridge:
         ticker, asset_type, display_name = self.resolve_symbol(broker_symbol)
         date_str = trade_date or datetime.now().strftime("%Y-%m-%d")
 
+        if not TRADINGAGENTS_AVAILABLE or TradingAgentsGraph is None:
+            logger.error("TradingAgents package is not installed in this environment.")
+            return {
+                "success": False,
+                "error": "TradingAgents package not installed",
+                "broker_symbol": broker_symbol,
+                "ticker": ticker,
+                "trade_date": date_str,
+                "rating": "REVIEW",
+                "action": "HOLD",
+            }
+
         logger.info(f"Initializing TradingAgents for {broker_symbol} (Ticker: {ticker}, Type: {asset_type}) on {date_str}...")
 
-        # For crypto/commodities, skip SEC company fundamentals for speed & reliability
+        # For crypto/commodities/forex, skip SEC company fundamentals for speed & reliability
         active_analysts = analysts
-        if asset_type in ("crypto", "commodity") and "fundamentals" in active_analysts:
+        if asset_type in ("crypto", "commodity", "forex") and "fundamentals" in active_analysts:
             active_analysts = tuple(a for a in active_analysts if a != "fundamentals")
 
         # Initialize TradingAgentsGraph

@@ -81,40 +81,66 @@ class TradingAgentsRunner:
           Max risk capped at $30 (30 pts / $30.00).
         - Bitcoin (BTCUSD): 0.01 lot.
           Max risk capped at $40 (4000 pts / $40.00).
+        - Forex Majors (EURUSD, GBPUSD, AUDUSD, etc.): 0.01 lot (1,000 units, $0.10/pip).
+          Default 30-pip risk ($3.00), 60-pip target (1:2 R:R). 5-decimal precision.
+        - Forex JPY Pairs (USDJPY, EURJPY, GBPJPY): 0.01 lot.
+          Default 35-pip risk ($2.30), 70-pip target (1:2 R:R). 3-decimal precision.
         """
         sym = symbol.upper()
         raw_sl = extracted_targets.get("stop_loss")
         raw_tp = extracted_targets.get("take_profit")
 
+        is_jpy = "JPY" in sym
+        is_forex = sym in (
+            "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURJPY", "GBPJPY"
+        )
+
         if sym == "XAUUSD":
             default_risk_dist = 20.0  # 20 dollars gold move (~0.5%)
             default_target_dist = 40.0  # 40 dollars gold move (1:2 R:R)
             lot_size = 0.01
-            point_value = 1.0  # $1 per 1.0 point on 0.01 lot
+            risk_per_unit = 1.0  # $1 per 1.0 point on 0.01 lot
+            decimals = 2
         elif sym == "BTCUSD":
             default_risk_dist = spot_price * 0.025  # 2.5% stop
             default_target_dist = spot_price * 0.050  # 5.0% take profit
             lot_size = 0.01
-            point_value = 0.01  # $0.01 per $1 move on 0.01 BTC
+            risk_per_unit = 0.01  # $0.01 per $1 move on 0.01 BTC
+            decimals = 2
+        elif is_forex:
+            lot_size = 0.01  # 1,000 units micro lot
+            if is_jpy:
+                # JPY pairs: 1 pip = 0.010
+                default_risk_dist = 0.35  # 35 pips
+                default_target_dist = 0.70  # 70 pips (1:2 R:R)
+                risk_per_unit = (1000.0 / spot_price) if spot_price > 0 else 6.5
+                decimals = 3
+            else:
+                # 5-decimal pairs: 1 pip = 0.00010
+                default_risk_dist = 0.0030  # 30 pips
+                default_target_dist = 0.0060  # 60 pips (1:2 R:R)
+                risk_per_unit = 1000.0  # 0.01 lot = 1,000 units ($0.10/pip)
+                decimals = 5
         else:
             default_risk_dist = spot_price * 0.01
             default_target_dist = spot_price * 0.02
             lot_size = 0.01
-            point_value = 1.0
+            risk_per_unit = 1.0
+            decimals = 2
 
         if action == "BUY":
             sl = raw_sl if (raw_sl and raw_sl < spot_price) else (spot_price - default_risk_dist)
             tp = raw_tp if (raw_tp and raw_tp > spot_price) else (spot_price + default_target_dist)
-            risk_usd = (spot_price - sl) * (1.0 if sym == "XAUUSD" else (spot_price * 0.01 if sym == "BTCUSD" else 1.0)) * lot_size
+            risk_usd = (spot_price - sl) * risk_per_unit
         else:  # SELL
             sl = raw_sl if (raw_sl and raw_sl > spot_price) else (spot_price + default_risk_dist)
             tp = raw_tp if (raw_tp and raw_tp < spot_price) else (spot_price - default_target_dist)
-            risk_usd = (sl - spot_price) * (1.0 if sym == "XAUUSD" else (spot_price * 0.01 if sym == "BTCUSD" else 1.0)) * lot_size
+            risk_usd = (sl - spot_price) * risk_per_unit
 
         return {
             "lot_size": lot_size,
-            "stop_loss": round(sl, 2),
-            "take_profit": round(tp, 2),
+            "stop_loss": round(sl, decimals),
+            "take_profit": round(tp, decimals),
             "est_risk_usd": round(abs(risk_usd), 2),
             "risk_reward_ratio": "1:2.0"
         }

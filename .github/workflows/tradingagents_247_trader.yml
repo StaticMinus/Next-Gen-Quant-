@@ -7,12 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       symbol:
-        description: 'Target symbol (BTCUSD, XAUUSD, or ALL)'
+        description: 'Target symbol (ALL, FOREX, FOREX_MAJORS, BTCUSD, XAUUSD)'
         required: true
         default: 'ALL'
         type: choice
         options:
           - ALL
+          - FOREX
+          - FOREX_MAJORS
           - BTCUSD
           - XAUUSD
       mode:

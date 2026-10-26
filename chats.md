@@ -1812,5 +1812,33 @@ To guarantee **zero position collision and zero risk interference**, the user de
 - **Initial GitHub Actions Cloud Run**: Launched successfully on GitHub Actions (Run ID: `40354826035`).
 - **Artifacts**: Implementation Plan in [`tradingagents_ctrader_integration_plan.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/095e050a-d422-46fd-b942-0e467b35450c/tradingagents_ctrader_integration_plan.md), Walkthrough in [`walkthrough.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/095e050a-d422-46fd-b942-0e467b35450c/walkthrough.md).
 
+---
+
+## 56. Multi-Asset Expansion: Forex Majors Added to TradingAgents Bridge & Execution Engine
+
+**Date:** October 26, 2026 (18:00 UTC)  
+**Status:** **Implemented, Verified & Test Suite Passing (27/27)**
+
+### 1. Upgrade Motivation:
+- The user requested expanding beyond Bitcoin and Gold: *"to the traading bridge lets add forex majors"*.
+- Rather than waiting for setups on just BTC or Gold, expanding the universe across Forex majors enables the multi-agent LLM debate team to continuously scan high-liquidity currency pairs during London and New York market sessions.
+
+### 2. Architectural Additions:
+1. **Forex Majors Mapping in [`TradingAgentsBridge`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/tradingagents_bridge.py)**:
+   - Added standard 5-decimal pairs: `EURUSD` (`EURUSD=X`), `GBPUSD` (`GBPUSD=X`), `AUDUSD` (`AUDUSD=X`), `USDCAD` (`USDCAD=X`), `USDCHF` (`USDCHF=X`), `NZDUSD` (`NZDUSD=X`).
+   - Added JPY crosses: `USDJPY` (`USDJPY=X`), `EURJPY` (`EURJPY=X`), `GBPJPY` (`GBPJPY=X`).
+   - Tagged as `asset_type: "forex"` so the system automatically bypasses corporate SEC filings and prioritizes macro news, central bank sentiment, and technical analysis.
+2. **Pip-Accurate Micro Lot Sizing & Precision in [`TradingAgentsRunner`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/tradingagents_dry_runner.py)**:
+   - **5-Decimal Pairs**: 30-pip default stop loss (`0.00300`), 60-pip take profit (`0.00600`), 0.01 lot ($0.10/pip, ~$3.00 risk), rounded to 5 decimals.
+   - **JPY Pairs**: 35-pip default stop loss (`0.350`), 70-pip take profit (`0.700`), 0.01 lot (~$2.30 risk), rounded to 3 decimals.
+   - Preserves FundedNext strict prop firm safety limits ($180 daily drawdown floor).
+3. **CLI & Automation Presets in [`run_tradingagents_cycle.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/run_tradingagents_cycle.py)**:
+   - Added preset groups: `--symbol FOREX` (all 7 majors), `--symbol FOREX_MAJORS` (`EURUSD, GBPUSD, USDJPY`), `--symbol ALL` (`BTCUSD, XAUUSD, EURUSD, GBPUSD, USDJPY`), or comma-separated lists.
+
+### 3. Verification:
+- **`pytest tests/test_tradingagents_bridge.py -v`**: **6/6 PASSED** (includes Forex symbol resolution and 5-decimal / 3-decimal pip calculations).
+- **Regression Suite**: **27/27 PASSED** across Order Block SL and Price Action engines.
+
+
 
 
