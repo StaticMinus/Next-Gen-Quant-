@@ -1760,7 +1760,57 @@ To resume automated trading whenever you choose:
 ### 3. Verification & Metrics:
 - **`pytest tests/test_order_block_sl.py -v`**: **7/7 PASSED in 0.41s** (Bullish/Bearish detection, Buy/Sell invalidation with spread cushion, anti-suffocation stepping, provider tightening).
 - **`pytest tests/test_order_block_sl.py tests/test_price_action_sl.py tests/test_telegram_multi_signal_copier.py -q`**: **76/76 PASSED in 108.9s**.
-- **`python scripts/pre_live_system_check.py`**: **13 Passed | 0 Warnings | 0 Failures (🟢 GO — SYSTEM IS PREPARED FOR LIVE TRADING)**.
-- **Artifacts**: Plan saved in [`order_block_price_action_sl_plan.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/0c056efe-6cd1-45ad-9ec2-31817edc5b87/order_block_price_action_sl_plan.md), Walkthrough saved in [`walkthrough.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/0c056efe-6cd1-45ad-9ec2-31817edc5b87/walkthrough.md).
+---
+
+## 55. TradingAgents Multi-Agent Brain & cTrader Account 5947478 Integration (24/7 Cloud Architecture)
+
+**Date:** October 26, 2026 (17:00 UTC)  
+**Status:** **Architected via `/plan`, Implemented, Verified (60/60 Tests Passing), 24/7 GitHub Actions Cloud Deployed**
+
+### 1. Upgrade Motivation & Architectural Vision:
+- While previous quantitative strategies and Telegram signal copiers execute fast intraday setups, they lacked deep, multi-factor reasoning and were vulnerable to market consolidation chops and false breakouts.
+- The user initiated integration of **TradingAgents** (Tauric Research, v0.7.0, arXiv:2412.20138): *"lets get started I have all requirements already in my pc... for ctrade details can we use trading agents to make money lets begin /plan"*.
+- Rather than a single LLM with confirmation bias, TradingAgents runs a **courtroom-style adversarial debate**:
+  * **Parallel Analysts**: Technical Analyst (chart patterns, MACD, RSI), News Analyst (macro events, interest rates, geopolitics), Sentiment Analyst (market mood).
+  * **Adversarial Debate Team**: A **Bullish Researcher** (arguing for upside catalysts) debates a **Bearish Adversary** (actively attacking the bull case, finding liquidity traps and divergence).
+  * **Portfolio & Risk Manager**: Evaluates the debate and only approves trades (`BUY` / `SELL`) if the Bull or Bear thesis decisively defeats the adversary. Emits a canonical 5-tier rating (`Buy`, `Overweight`, `Hold`, `Underweight`, `Sell`).
+
+### 2. Complete Account & Fleet Isolation:
+To guarantee **zero position collision and zero risk interference**, the user designated two separate $6,000 FundedNext prop accounts:
+
+| Fleet System | Dedicated cTrader Account | Execution State File | Risk Limits | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Telegram Signal Copier** | **`5947479`** | `cache/telegram_multi_signal_state.json` | $180 Daily Loss / $360 Max DD | 🟢 55/55 Tests Passing (Untouched) |
+| **TradingAgents Multi-Agent Engine** | **`5947478`** | `cache/tradingagents_execution_state.json` | $180 Daily Loss / $360 Max DD | 🟢 Live Connected ($6,000 Balance Verified) |
+
+### 3. Implementation Details:
+1. **TradingAgents Bridge ([`src/integrations/tradingagents_bridge.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/tradingagents_bridge.py))**:
+   - Bridges `TradingAgentsGraph` to AgentQuant via **OpenRouter** (`deepseek/deepseek-chat`).
+   - Translates broker symbols: `BTCUSD` <-> `BTC-USD` (Crypto), `XAUUSD` <-> `GC=F` (Commodity).
+   - Dynamically tailors active analysts to skip equity SEC filings for non-stock assets.
+   - Extracts structured 5-tier rating, conviction, and regex price targets.
+2. **Execution & Dry-Runner ([`src/integrations/tradingagents_dry_runner.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/src/integrations/tradingagents_dry_runner.py))**:
+   - Dedicated cTrader client for Account `5947478` using secure environment credentials.
+   - Fetches live tick quotes at execution time via Remote MCP (`https://mcp.ctrader.com/trading/mcp`).
+   - Sizing: Strict 0.01 micro lots (1:2 R:R stop-loss and take-profit; max risk capped at $20–$30).
+   - Real-time rich Telegram alerts dispatched with full Bull/Bear debate summaries.
+3. **CLI & Background Automation**:
+   - [`scripts/run_tradingagents_cycle.py`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/run_tradingagents_cycle.py): CLI scanner (`--symbol ALL`, `--live`, `--dry-run`, `--loop`).
+   - [`scripts/run_247_tradingagents_background.bat`](file:///c:/Users/David/Music/Trade/AgentQuant-main/scripts/run_247_tradingagents_background.bat): One-click local 24/7 background runner.
+4. **24/7 Cloud Deployment ([`.github/workflows/tradingagents_247_trader.yml`](file:///c:/Users/David/Music/Trade/AgentQuant-main/.github/workflows/tradingagents_247_trader.yml))**:
+   - GitHub Actions workflow scheduled to run **every hour (`0 * * * *`), 24 hours a day, 7 days a week**.
+   - Cloud secrets (`CTRADER_TRADINGAGENTS_ACCOUNT_ID`, `CTRADER_TRADINGAGENTS_ACCESS_TOKEN`, `OPENROUTER_API_KEY`, Telegram tokens) configured directly via `gh secret set`.
+   - **Zero dependence on user laptop**: Works seamlessly when the laptop is closed or asleep.
+
+### 4. Verification & Live Execution:
+- **`pytest tests/test_tradingagents_bridge.py -v`**: **5/5 PASSED in 1.03s**.
+- **`pytest tests/test_telegram_multi_signal_copier.py -q`**: **55/55 PASSED in 94.45s** (Zero regressions).
+- **Live cTrader MCP Connection**: Account `5947478` balance verified at **$6,000.00**; live spot quotes verified for `BTCUSD` ($80,467) and `XAUUSD` ($4,017).
+- **Live Dry-Run Executions**:
+  * `BTCUSD`: Evaluated as `Hold` / `OBSERVED_HOLD`. Telegram alert delivered.
+  * `XAUUSD`: Evaluated as `Hold` / `OBSERVED_HOLD`. Telegram alert delivered.
+- **Initial GitHub Actions Cloud Run**: Launched successfully on GitHub Actions (Run ID: `40354826035`).
+- **Artifacts**: Implementation Plan in [`tradingagents_ctrader_integration_plan.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/095e050a-d422-46fd-b942-0e467b35450c/tradingagents_ctrader_integration_plan.md), Walkthrough in [`walkthrough.md`](file:///C:/Users/David/.gemini/antigravity-ide/brain/095e050a-d422-46fd-b942-0e467b35450c/walkthrough.md).
+
 
 
