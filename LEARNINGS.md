@@ -417,5 +417,16 @@ Operational diagnostics of the autonomous 24/7 TradingAgents multi-agent pipelin
 2. **Broker Client Interface Contract Invariant (Invariant 40):**
    Agent execution runners must strictly adhere to the parameter contracts of the underlying broker client (`side` vs `action`, `stop_loss_price` vs `stop_loss`, `take_profit_price` vs `take_profit`). Execution interfaces must be verified by automated regression tests with mock assertions to ensure parameter naming drift never causes runtime `TypeError` crashes during live market order submission.
 
+## 17. Phase 17 — Educational Commentary Filtering & Cloud Runner Schedule Continuity (Invariants 41 & 42)
+
+Forensic evaluation of multi-channel Telegram feeds (specifically `anabelsignals` on 2026-10-27) established two critical operational invariants:
+
+1. **Unhedged Forecast & Commentary Protection Guard (Invariant 41):**
+   Educational chart commentary, multi-hour swing forecasts, and zone outlooks containing only a speculative target (`⭐️Goal`) without a verified author `Stop Loss` must NEVER be converted into live market orders. Unhedged market orders violate institutional risk controls and introduce catastrophic liquidation exposure. Signals lacking a valid Stop Loss must be safely rejected with descriptive audit logs.
+
+2. **Cloud Runner Schedule Continuity & Anti-Chase Protection (Invariant 42):**
+   When executing signal copiers in ephemeral serverless cloud environments (e.g., GitHub Actions cron runners), intervals between scheduled container jobs create execution gaps. A signal arriving during a schedule gap (e.g., Anabel Post #9722 Gold BUY @ 3995.9 during the 09:00–11:21 UTC inter-run window) must NEVER be executed retroactively on container boot if the live market spot has already moved past the Anti-Chase slippage threshold (2.5 pts on Gold). Cold-start watermarks must anchor to the latest available post upon boot to ensure stale, hours-old trades are never chased at market tops.
+
+
 
 
