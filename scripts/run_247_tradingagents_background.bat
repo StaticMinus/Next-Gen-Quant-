@@ -10,11 +10,11 @@ echo.
 cd /d "%~dp0\.."
 
 :loop
-echo [%date% %time%] Running TradingAgents cycle...
-call .venv\Scripts\python.exe scripts\run_tradingagents_cycle.py --symbol ALL --live
+echo [%date% %time%] Running TradingAgents fast cycle (Gold, Bitcoin, then Forex Majors)...
+call .venv\Scripts\python.exe scripts\run_tradingagents_cycle.py --symbol FAST_MAJORS --live
 
 echo.
-echo [%date% %time%] Cycle completed. Waiting 60 minutes for next market scan...
+echo [%date% %time%] Fast cycle completed. Waiting 15 minutes for next scan...
 echo Press Ctrl+C to stop.
-timeout /t 3600 /nobreak >nul
+timeout /t 900 /nobreak >nul
 goto loop

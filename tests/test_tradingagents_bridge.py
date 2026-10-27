@@ -36,10 +36,13 @@ def test_calculate_lot_and_stops_forex():
         spot_price=1.12000,
         extracted_targets={"stop_loss": None, "take_profit": None}
     )
-    assert eur_stops["lot_size"] == 0.01
-    assert eur_stops["stop_loss"] == 1.11700  # 30 pips below 1.12000
-    assert eur_stops["take_profit"] == 1.12600  # 60 pips above 1.12000
-    assert eur_stops["est_risk_usd"] == 3.0  # 30 pips * 0.10/pip on 0.01 lot
+    assert eur_stops["ticket1"]["lot_size"] == 0.05
+    assert eur_stops["ticket2"]["lot_size"] == 0.07
+    assert eur_stops["lot_size"] == 0.05
+    assert eur_stops["stop_loss"] == 1.11750  # 25 pips below 1.12000
+    assert eur_stops["take_profit"] == 1.12400  # 40 pips TP1
+    assert eur_stops["ticket2"]["take_profit"] == 1.12750  # 75 pips TP2 runner
+    assert eur_stops["est_risk_usd"] <= 35.0  # Safe for $180 daily limit
 
     # 3-decimal JPY pair: USDJPY
     jpy_stops = runner.calculate_lot_and_stops(
@@ -48,10 +51,10 @@ def test_calculate_lot_and_stops_forex():
         spot_price=155.000,
         extracted_targets={"stop_loss": None, "take_profit": None}
     )
-    assert jpy_stops["lot_size"] == 0.01
-    assert jpy_stops["stop_loss"] == 155.350  # 35 pips above
-    assert jpy_stops["take_profit"] == 154.300  # 70 pips below
-    assert jpy_stops["est_risk_usd"] <= 5.0
+    assert jpy_stops["ticket1"]["lot_size"] == 0.05
+    assert jpy_stops["ticket2"]["lot_size"] == 0.07
+    assert jpy_stops["stop_loss"] == 155.300  # 30 pips above
+    assert jpy_stops["est_risk_usd"] <= 35.0
 
 
 def test_rating_to_action():
@@ -81,10 +84,10 @@ def test_calculate_lot_and_stops():
         spot_price=4000.0,
         extracted_targets={"stop_loss": 3980.0, "take_profit": 4040.0}
     )
-    assert gold_stops["lot_size"] == 0.01
-    assert gold_stops["stop_loss"] == 3980.0
-    assert gold_stops["take_profit"] == 4040.0
-    assert gold_stops["est_risk_usd"] <= 35.0  # Safe for $180 daily limit
+    assert gold_stops["ticket1"]["lot_size"] == 0.05
+    assert gold_stops["ticket2"]["lot_size"] == 0.07
+    assert gold_stops["stop_loss"] <= 4000.0
+    assert gold_stops["est_risk_usd"] <= 35.0  # Mathematically clamped to <= $35.00
 
 
 def test_runner_dry_run_cycle():
@@ -136,7 +139,7 @@ def test_runner_live_order_keyword_args():
         "rating": "Buy",
         "action": "BUY",
         "decision_text": "Strong breakout momentum confirmed by multiple analysts.",
-        "extracted_targets": {"stop_loss": 80000.0, "take_profit": 82000.0},
+        "extracted_targets": {"stop_loss": 80300.0, "take_profit": 82000.0},
         "bull_summary": "Accumulation.",
         "bear_summary": "None.",
     }
@@ -157,12 +160,23 @@ def test_runner_live_order_keyword_args():
     with patch.object(runner, "send_telegram_ticket"):
         result = runner.run_cycle_for_symbol("BTCUSD")
         assert result["success"] is True
-        mock_ctrader.place_market_order.assert_called_once_with(
+        assert mock_ctrader.place_market_order.call_count == 2
+        t1_ticket = result["ticket"]["ticket1"]
+        t2_ticket = result["ticket"]["ticket2"]
+        mock_ctrader.place_market_order.assert_any_call(
             symbol="BTCUSD",
             side="BUY",
-            volume_lots=0.01,
-            stop_loss_price=80000.0,
-            take_profit_price=82000.0,
-            comment="TradingAgents-Buy"
+            volume_lots=0.05,
+            stop_loss_price=t1_ticket["stop_loss"],
+            take_profit_price=t1_ticket["take_profit"],
+            comment="TradingAgents-Buy-T1"
+        )
+        mock_ctrader.place_market_order.assert_any_call(
+            symbol="BTCUSD",
+            side="BUY",
+            volume_lots=0.07,
+            stop_loss_price=t2_ticket["stop_loss"],
+            take_profit_price=t2_ticket["take_profit"],
+            comment="TradingAgents-Buy-T2"
         )
 

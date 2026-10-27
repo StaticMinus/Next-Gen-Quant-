@@ -2,21 +2,22 @@ name: TradingAgents 24/7 Multi-Agent Trader
 
 on:
   schedule:
-    # Runs every 1 hour, 24/7 (24 hours a day, 7 days a week)
-    - cron: '0 * * * *'
+    # Runs every 15 minutes, 24/7 (Gold & Bitcoin prioritized first, then Forex Majors)
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       symbol:
-        description: 'Target symbol (ALL, FOREX, FOREX_MAJORS, BTCUSD, XAUUSD)'
+        description: 'Target symbol (FAST_MAJORS, FAST, ALL, XAUUSD, BTCUSD)'
         required: true
-        default: 'ALL'
+        default: 'FAST_MAJORS'
         type: choice
         options:
+          - FAST_MAJORS
+          - FAST
           - ALL
-          - FOREX
-          - FOREX_MAJORS
-          - BTCUSD
           - XAUUSD
+          - BTCUSD
+          - FOREX_MAJORS
       mode:
         description: 'Execution Mode (live or dry-run)'
         required: true
@@ -52,6 +53,8 @@ jobs:
           OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'deepseek/deepseek-chat' }}
           TRADINGAGENTS_MODEL: ${{ secrets.TRADINGAGENTS_MODEL || 'deepseek/deepseek-chat' }}
           TRADINGAGENTS_LLM_PROVIDER: openrouter
+          TRADINGAGENTS_TICKET1_LOT_SIZE: '0.05'
+          TRADINGAGENTS_TICKET2_LOT_SIZE: '0.07'
           CTRADER_ACCOUNT_ID: ${{ secrets.CTRADER_TRADINGAGENTS_ACCOUNT_ID || '5947478' }}
           CTRADER_TRADINGAGENTS_ACCOUNT_ID: ${{ secrets.CTRADER_TRADINGAGENTS_ACCOUNT_ID || '5947478' }}
           CTRADER_ACCESS_TOKEN: ${{ secrets.CTRADER_TRADINGAGENTS_ACCESS_TOKEN || secrets.CTRADER_ACCESS_TOKEN }}
@@ -60,7 +63,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EXEC_MODE: ${{ inputs.mode || 'live' }}
-          TARGET_SYM: ${{ inputs.symbol || 'ALL' }}
+          TARGET_SYM: ${{ inputs.symbol || 'FAST_MAJORS' }}
         run: |
           if [ "$EXEC_MODE" = "live" ]; then
             python scripts/run_tradingagents_cycle.py --symbol "$TARGET_SYM" --live

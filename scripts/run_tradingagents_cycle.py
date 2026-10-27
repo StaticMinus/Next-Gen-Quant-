@@ -32,7 +32,9 @@ from src.integrations.tradingagents_dry_runner import TradingAgentsRunner
 def parse_symbols(symbol_arg: str):
     sym_clean = symbol_arg.strip().upper()
     presets = {
-        "ALL": ["BTCUSD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY"],
+        "ALL": ["XAUUSD", "BTCUSD", "EURUSD", "GBPUSD", "USDJPY"],
+        "FAST": ["XAUUSD", "BTCUSD"],
+        "FAST_MAJORS": ["XAUUSD", "BTCUSD", "EURUSD", "GBPUSD", "USDJPY"],
         "FOREX": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"],
         "FOREX_MAJORS": ["EURUSD", "GBPUSD", "USDJPY"],
         "CRYPTO": ["BTCUSD", "ETHUSD"],
@@ -50,8 +52,8 @@ def main():
     parser.add_argument(
         "--symbol",
         type=str,
-        default="BTCUSD",
-        help="Target symbol(s) or preset (e.g. EURUSD, GBPUSD, USDJPY, FOREX, ALL, or comma-separated)",
+        default="FAST_MAJORS",
+        help="Target symbol(s) or preset (e.g. FAST, FAST_MAJORS, XAUUSD, BTCUSD, ALL, or comma-separated)",
     )
     parser.add_argument(
         "--live",
@@ -72,8 +74,8 @@ def main():
     parser.add_argument(
         "--interval-minutes",
         type=int,
-        default=60,
-        help="Interval in minutes between cycles when running with --loop (default: 60)",
+        default=15,
+        help="Interval in minutes between cycles when running with --loop (default: 15)",
     )
 
     args = parser.parse_args()
