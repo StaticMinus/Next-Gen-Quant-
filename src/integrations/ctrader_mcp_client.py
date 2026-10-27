@@ -45,6 +45,7 @@ class CTraderMCPClient:
             "Accept": "application/json, text/event-stream"
         }
         self.rpc_id = 0
+        self.is_initialized = False
 
     def _next_id(self) -> int:
         self.rpc_id += 1
@@ -64,6 +65,10 @@ class CTraderMCPClient:
                     if resp.status_code not in (200, 202):
                         if resp.status_code == 404 or "Session not found" in resp.text:
                             self.session_id = None
+                            self.is_initialized = False
+                        elif "Server already initialized" in resp.text:
+                            self.is_initialized = True
+                            return {"result": {"status": "already_initialized"}}
                         print(f"[!] cTrader MCP HTTP Error {resp.status_code}: {resp.text[:300]}")
                         return None
 
@@ -83,6 +88,9 @@ class CTraderMCPClient:
         return None
 
     def initialize(self) -> bool:
+        if self.session_id and self.is_initialized:
+            return True
+
         init_payload = {
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -103,6 +111,7 @@ class CTraderMCPClient:
             "method": "notifications/initialized"
         }
         self._post_sse(notif_payload)
+        self.is_initialized = True
         return True
 
     def list_tools(self) -> List[dict]:

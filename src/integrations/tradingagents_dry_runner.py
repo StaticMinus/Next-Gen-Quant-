@@ -178,7 +178,10 @@ class TradingAgentsRunner:
         logger.info(f"=== Starting TradingAgents Cycle for {broker_symbol} (Dry-Run: {self.dry_run}) ===")
 
         # 1. Initialize cTrader and check telemetry
-        c_init = self.ctrader.initialize()
+        if not getattr(self.ctrader, "is_initialized", False):
+            c_init = self.ctrader.initialize()
+        else:
+            c_init = True
         if not c_init:
             logger.warning("cTrader MCP failed to initialize. Running with fallback telemetry.")
             balance_info = {"balance": 6079.57, "equity": 6079.57}

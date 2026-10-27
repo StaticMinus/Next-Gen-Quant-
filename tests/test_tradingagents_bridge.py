@@ -127,8 +127,7 @@ def test_runner_dry_run_cycle():
 
 def test_config_max_tokens_budgeted():
     bridge = TradingAgentsBridge()
-    assert "max_tokens" in bridge.config
-    assert bridge.config["max_tokens"] == 4096
+    assert bridge.config["max_tokens"] == 1500
 
 
 def test_runner_live_order_keyword_args():

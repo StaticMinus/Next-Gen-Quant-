@@ -369,13 +369,13 @@ class MultiChannelSignalParser:
         has_explicit_sl = any(k in text_lower for k in [
             "stop loss", "stoploss", "sl:", "sl -", "sl-", "sl =", "sl=", "safe stop loss", "recommended stop loss"
         ])
-        if has_forecast_indicator and not has_explicit_sl:
-            has_actionable = bool(
-                re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text_clean, re.IGNORECASE) and
-                re.search(r"(?:Target|Goal|TP|Take\s*Profit|level|trading on|tests|entry)\b", text_clean, re.IGNORECASE)
-            )
-            if not has_actionable:
-                return None
+        has_structured_target = bool(re.search(r"(?:⭐️|\b)(?:Target|Goal|TP\d?|Take\s*Profit)\s*[-:=]?\s*[\$]?\d", text_clean, re.IGNORECASE))
+        has_freeforecast_tag = any(k in text_lower for k in ["#freeforecast", "freeforecast", "#forecast"])
+
+        if has_freeforecast_tag and not has_explicit_sl:
+            return None
+        if has_forecast_indicator and not has_explicit_sl and not has_structured_target:
+            return None
 
         # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
         m_ssf = re.search(r"\b(XAUUSD|GOLD)\s+(BUY|SELL)(?:\s+(?:STOP|LIMIT|NOW))?\s+([\d\.]+)\s+SL:\s*([\d\.]+)\s+TP:\s*([\d\.]+)", text_clean, re.IGNORECASE)
@@ -577,9 +577,9 @@ class MultiChannelSignalParser:
                 "type": "ZONE_EXECUTION"
             }
 
-        # 7. DIRECT ACTION ENTRY FORMAT (e.g. "#XAUUSD BUY 4133", "BUY GOLD 4133", "BUY 4133", "SELL NOW 4150")
+        # 7. DIRECT ACTION ENTRY FORMAT (e.g. "#XAUUSD BUY 4133", "BUY GOLD 4133", "BUY 4133", "SELL NOW 4150", "BUY NOW ( 4059")
         m_action_direct = re.search(
-            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*(\d+(?:\.\d+)?)",
+            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*[\(@:]?\s*(\d+(?:\.\d+)?)",
             text_clean, re.IGNORECASE
         )
         if m_action_direct and side:
@@ -634,7 +634,13 @@ class MultiChannelSignalParser:
             }
 
         # 9. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
-        m_at_price = re.search(r"(?<!aiming\s)(?<!target\s)(?<!targeting\s)(?:@|\bAT\b)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_at_price = re.search(r"(?:@|\bAT\b)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        if m_at_price:
+            start_idx = m_at_price.start()
+            preceding_context = text_clean[max(0, start_idx - 25):start_idx].lower()
+            if any(w in preceding_context for w in ["aiming", "target", "targeting", "tp", "goal"]):
+                m_at_price = None
+
         if m_at_price and side:
             entry = float(m_at_price.group(1))
             tps = [float(x) for x in m_tp_tag]
@@ -656,11 +662,11 @@ class MultiChannelSignalParser:
             }
 
         m_direct = re.search(
-            r"(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?(?:([A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+)?(?:(BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)?\s*(\d+(?:\.\d+)?)",
+            r"(?:(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+|(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+|(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)\s*[\(@:]?\s*(\d+(?:\.\d+)?)",
             text_clean, re.IGNORECASE
         )
         if m_direct and side:
-            entry = float(m_direct.group(4))
+            entry = float(m_direct.group(1))
             tps = [float(x) for x in m_tp_tag]
             if m_sl_tag:
                 sl = float(m_sl_tag.group(1))

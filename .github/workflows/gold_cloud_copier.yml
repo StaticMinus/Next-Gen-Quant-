@@ -4,6 +4,13 @@ on:
   schedule:
     # Runs continuously every 6 hours Monday through Friday during active Forex market weeks
     - cron: '0 */6 * * 1-5'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/gold_cloud_copier.yml'
   workflow_dispatch:
     inputs:
       action:
@@ -18,6 +25,10 @@ on:
         description: 'Runner duration in hours (max 5.8 to fit within 6h GitHub Actions job limit)'
         required: true
         default: '5.8'
+
+concurrency:
+  group: gold-cloud-copier
+  cancel-in-progress: true
 
 permissions:
   contents: read

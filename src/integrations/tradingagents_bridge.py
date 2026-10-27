@@ -94,10 +94,9 @@ class TradingAgentsBridge:
         cfg["backend_url"] = "https://openrouter.ai/api/v1"
         cfg["max_debate_rounds"] = self.max_debate_rounds
         cfg["max_risk_discuss_rounds"] = self.max_risk_rounds
-        cfg["output_language"] = "English"
         cfg["checkpoint_enabled"] = False
-        cfg["max_tokens"] = 4096
-        
+        max_tokens_val = os.getenv("TRADINGAGENTS_MAX_TOKENS")
+        cfg["max_tokens"] = int(max_tokens_val) if max_tokens_val else 1500
         # Ensure OPENROUTER_API_KEY is available in env
         if not os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENAI_API_KEY"):
             os.environ["OPENROUTER_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
