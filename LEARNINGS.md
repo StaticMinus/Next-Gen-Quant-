@@ -394,3 +394,28 @@ Operational review of live multi-channel execution highlighted two critical edge
 2. **Atomic Protection vs. Sequential Amendment:**
    On broker APIs like cTrader Remote MCP, `create_order` returns an `orderId`, not a `positionId`. Attempting post-fill amendment using `orderId` causes broker rejection, leaving positions unhedged. Providing relative SL/TP points directly at order creation time (`relativeStopLoss`, `relativeTakeProfit`) guarantees zero-latency, atomic protection on fill.
 
+## 15. Phase 15 — Forex Micro-Tightening Fallacy, Asian Rollover Blackout & Commentary Guard
+
+Forensic analysis of live multi-channel losses across currency crosses (GBPCAD, CADCHF) established three foundational system invariants:
+
+1. **The Micro-Tightening Fallacy (Invariant 38):**
+   Tightening an H1/H4 macro swing trade's Stop Loss (e.g., 55 pips on GBPCAD) using local M5 intraday trendbars (20 pips) guarantees a 100% stop-out rate due to normal currency market breathing. Currency crosses require minimum 35-pip noise floors (`0.00350`), and authorized swing channels (`wallstreet_pips`, `forexgdp`, etc.) must bypass M5 down-tightening to preserve their macro invalidation structure.
+2. **Asian Rollover Spread Shield (Invariant 38):**
+   Between 21:00 UTC and 00:30 UTC, interbank currency liquidity drops precipitously and broker spreads expand by 3x–6x. All new Forex market entries are strictly blacked out during this window to eliminate spread-wick liquidations.
+3. **Conversational Commentary Guard (Invariant 39):**
+   Educational outlooks and supply/demand zone essays (e.g., from `signalsproviderfx`) must never be synthesized into live orders without an explicit, author-stated Stop Loss.
+4. **Broker Metric Contract Normalization:**
+   Audit scripts must always divide raw cTrader Forex volumes ($10,000,000$ per lot) by 100 to derive true units ($100,000$), preventing $100\times$ visual calculation distortions.
+
+## 16. Phase 16 — LLM Token Budgeting & Broker Parameter Contracts (TradingAgents Invariants)
+
+Operational diagnostics of the autonomous 24/7 TradingAgents multi-agent pipeline revealed two critical system invariants:
+
+1. **Worst-Case Context Reservation vs. Credit Balance (Invariant 39):**
+   Third-party API aggregators (e.g. OpenRouter) calculate account solvency upfront based on `max_tokens` (worst-case completion reservation). When unconfigured, LangChain/OpenAI clients request the model's full theoretical context limit (16,384+ tokens). If an account holds enough credits for 15,000 tokens, the request is rejected with `HTTP 402 Payment Required` even though the actual output would only be ~800 tokens. Always explicitly cap `max_tokens` (e.g. 4096) in agent configuration dictionaries to ensure multi-agent debate graphs execute smoothly within active credit budgets.
+
+2. **Broker Client Interface Contract Invariant (Invariant 40):**
+   Agent execution runners must strictly adhere to the parameter contracts of the underlying broker client (`side` vs `action`, `stop_loss_price` vs `stop_loss`, `take_profit_price` vs `take_profit`). Execution interfaces must be verified by automated regression tests with mock assertions to ensure parameter naming drift never causes runtime `TypeError` crashes during live market order submission.
+
+
+

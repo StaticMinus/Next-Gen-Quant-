@@ -311,8 +311,10 @@ def test_copier_m5_structure_trailing_integration():
 def test_get_min_noise_floor_distance():
     assert PriceActionSLEngine.get_min_noise_floor_distance("XAUUSD") == 3.50
     assert PriceActionSLEngine.get_min_noise_floor_distance("GOLD") == 3.50
-    assert PriceActionSLEngine.get_min_noise_floor_distance("EURUSD") == 0.00150
-    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPUSD") == 0.00150
+    assert PriceActionSLEngine.get_min_noise_floor_distance("EURUSD") == 0.00250  # 25 pips Majors
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPUSD") == 0.00250  # 25 pips Majors
+    assert PriceActionSLEngine.get_min_noise_floor_distance("GBPCAD") == 0.00350  # 35 pips Crosses
+    assert PriceActionSLEngine.get_min_noise_floor_distance("CADCHF") == 0.00350  # 35 pips Crosses
     assert PriceActionSLEngine.get_min_noise_floor_distance("USDJPY") == 0.15
     assert PriceActionSLEngine.get_min_noise_floor_distance("US30") == 25.0
     assert PriceActionSLEngine.get_min_noise_floor_distance("BTCUSD") == 50.0
@@ -322,7 +324,7 @@ def test_structural_shield_rejects_sub_noise_tightening():
     """
     Forex incident test: Provider gave 1.11920 (7 pips from entry 1.11990).
     A micro-consolidation wick gave PASL of 1.11959 (3.1 pips from entry).
-    Because 3.1 pips is inside the noise floor (< 15 pips), PASL tightening
+    Because 3.1 pips is inside the noise floor (< 25 pips), PASL tightening
     must be DISCARDED and provider SL 1.11920 preserved.
     """
     lows = [1.11980, 1.11975, 1.11965, 1.11970, 1.11980, 1.11985]
@@ -343,15 +345,15 @@ def test_structural_shield_rejects_sub_noise_tightening():
 
 def test_structural_shield_allows_valid_macro_tightening():
     """
-    When provider gives an overly wide SL (30 pips away) and a valid swing structure
-    exists outside the noise floor (e.g. 18 pips away), it should be tightened.
+    When provider gives an overly wide SL (55 pips away) and a valid swing structure
+    exists outside the 25 pip noise floor (e.g. 28 pips away), it can be tightened for scalpers.
     """
-    lows = [1.11800, 1.11780, 1.11760, 1.11800, 1.11850, 1.11900]
-    highs = [1.11850, 1.11820, 1.11810, 1.11850, 1.11900, 1.11950]
+    lows = [1.11700, 1.11680, 1.11660, 1.11700, 1.11750, 1.11800]
+    highs = [1.11750, 1.11720, 1.11710, 1.11750, 1.11800, 1.11850]
     df = create_sample_bars(lows, highs)
 
     sl, reason = PriceActionSLEngine.reconcile_structural_sl(
-        provider_sl=1.11650,  # 34 pips away
+        provider_sl=1.11440,  # 55 pips away
         df_bars=df,
         side="BUY",
         entry_price=1.11990,
@@ -359,9 +361,9 @@ def test_structural_shield_allows_valid_macro_tightening():
         max_allowed_distance=0.0050
     )
     assert reason == "STRUCTURAL_SHIELD_TIGHTENED"
-    assert sl > 1.11650
+    assert sl > 1.11440
     assert sl < 1.11990
-    assert round(1.11990 - sl, 5) >= 0.00150  # Outside noise floor
+    assert round(1.11990 - sl, 5) >= 0.00250  # Outside 25 pip noise floor
 
 
 def test_gold_pasl_rejects_sub_3_5pt_tightening():
@@ -387,6 +389,47 @@ def test_gold_pasl_rejects_sub_3_5pt_tightening():
     )
     assert reason == "PROVIDER_EXACT"
     assert sl == 4029.10
+
+
+def test_invariant_38_gbpcad_swing_channel_preserves_macro_sl():
+    """
+    Invariant 38 Verification:
+    Wallstreet Pips posted GBPCAD BUY with macro SL 1.86481 (55.7 pips away from 1.87038).
+    An M5 local consolidation has a swing low at 1.86779 (26 pips away).
+    Because wallstreet_pips is an authorized swing channel (is_swing_channel=True),
+    M5 down-tightening is BYPASSED and provider macro SL 1.86481 is preserved.
+    """
+    lows = [1.86800, 1.86790, 1.86779, 1.86810, 1.86830, 1.86850]
+    highs = [1.87000, 1.87020, 1.87040, 1.87030, 1.87050, 1.87060]
+    df = create_sample_bars(lows, highs)
+
+    sl, reason = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=1.86481,
+        df_bars=df,
+        side="BUY",
+        entry_price=1.87038,
+        symbol="GBPCAD",
+        max_allowed_distance=0.0070,
+        is_swing_channel=True
+    )
+    assert reason == "PROVIDER_EXACT"
+    assert sl == 1.86481
+
+
+def test_invariant_39_conversational_review_without_sl_rejected():
+    """
+    Invariant 39 Verification:
+    Signalsproviderfx post: 'CADCHF Will Go Lower From Resistance! Sell! ... technical review ... crucial zone of supply 0.589'
+    Lacks explicit author Stop Loss. Must be rejected by MultiChannelSignalParser.
+    """
+    from src.integrations.telegram_multi_signal_copier import MultiChannelSignalParser
+    text = (
+        "CADCHF Will Go Lower From Resistance! Sell! "
+        "Here is our detailed technical review for CADCHF. "
+        "The market is on a crucial zone of supply 0.589."
+    )
+    parsed = MultiChannelSignalParser.parse_message(text, "signalsproviderfx")
+    assert parsed is None
 
 
 

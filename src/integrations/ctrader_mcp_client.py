@@ -38,6 +38,7 @@ class CTraderMCPClient:
         self.token = token or DEFAULT_TOKEN
         self.session_id: Optional[str] = None
         self._symbols_cache: Optional[Dict[str, int]] = None
+        self._symbol_digits_cache: Optional[Dict[str, int]] = None
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -180,9 +181,14 @@ class CTraderMCPClient:
             return self._symbols_cache
         symbols = self.get_symbols()
         s_map = {}
+        d_map = {}
         for s in symbols:
-            s_map[s["symbolName"].upper()] = s["symbolId"]
+            s_name = s["symbolName"].upper()
+            s_map[s_name] = s["symbolId"]
+            if "digits" in s:
+                d_map[s_name] = int(s["digits"])
         self._symbols_cache = s_map
+        self._symbol_digits_cache = d_map
         return s_map
 
     def get_spot_price(self, symbol: str) -> Optional[dict]:
@@ -362,8 +368,31 @@ class CTraderMCPClient:
     def get_symbol_digits(self, symbol: Optional[str]) -> int:
         if not symbol:
             return 2
-        sym = symbol.upper().replace("-", "")
-        if "XRP" in sym or "EUR" in sym or "GBP" in sym or "AUD" in sym or "NZD" in sym or ("USD" in sym and not any(k in sym for k in ["BTC", "ETH", "SPX", "NDX", "US30", "US2000"])):
+        sym = symbol.upper().replace("-", "").replace("/", "").strip()
+
+        # 1. Primary: Broker ground-truth from cached get_symbols()
+        if self._symbol_digits_cache and sym in self._symbol_digits_cache:
+            return self._symbol_digits_cache[sym]
+
+        if self._symbol_digits_cache is None and getattr(self, "session_id", None):
+            try:
+                self.get_symbol_map()
+                if self._symbol_digits_cache and sym in self._symbol_digits_cache:
+                    return self._symbol_digits_cache[sym]
+            except Exception:
+                pass
+
+        # 2. Comprehensive Fallback: All ISO Forex currencies and crosses
+        forex_currencies = {
+            "EUR", "GBP", "USD", "AUD", "NZD", "CAD", "CHF", "JPY",
+            "SGD", "SEK", "NOK", "MXN", "ZAR", "CNH", "HKD", "TRY", "PLN", "CZK", "HUF"
+        }
+        # Standard 6-character forex pairs (e.g. CADCHF, CHFJPY, EURUSD)
+        if len(sym) == 6 and sym[:3] in forex_currencies and sym[3:] in forex_currencies:
+            return 3 if "JPY" in sym else 5
+
+        # Check pairs containing any recognized forex currency
+        if any(c in sym for c in ["EUR", "GBP", "AUD", "NZD", "CAD", "CHF", "USD"]) and not any(k in sym for k in ["BTC", "ETH", "SPX", "NDX", "US30", "US2000", "XAU", "GOLD"]):
             if "JPY" in sym:
                 return 3
             return 5
@@ -397,7 +426,7 @@ class CTraderMCPClient:
                     "Order rejected to prevent over-concurrency."
                 )
 
-            MAX_ALLOWED_CONCURRENT = 2
+            MAX_ALLOWED_CONCURRENT = int(os.getenv("MAX_CONCURRENT_POSITIONS", "6"))
             if len(live_positions) >= MAX_ALLOWED_CONCURRENT:
                 raise RiskViolationError(
                     f"CONCURRENCY VIOLATION: Cannot open {symbol}. Account already has "
@@ -567,7 +596,7 @@ class CTraderMCPClient:
                 )
 
             pending_orders = self.get_pending_orders()
-            MAX_ALLOWED_CONCURRENT = 2
+            MAX_ALLOWED_CONCURRENT = int(os.getenv("MAX_CONCURRENT_POSITIONS", "6"))
             total_active = len(live_positions) + len(pending_orders)
             if total_active >= MAX_ALLOWED_CONCURRENT:
                 raise RiskViolationError(

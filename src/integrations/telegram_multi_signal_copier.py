@@ -243,6 +243,19 @@ class MultiChannelSignalParser:
         has_dir = bool(re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text, re.IGNORECASE))
         has_asset = bool(re.search(r"\b(XAU|GOLD|EUR|GBP|USD|JPY|AUD|CAD|NZD|CHF|OIL|BTC)\b", text, re.IGNORECASE))
         is_spam = any(w in text.lower() for w in ["tournament", "bonus", "deposit", "affiliate", "weekend brief"])
+        has_forecast = any(k in text.lower() for k in [
+            "(forecast)", "#forecast", "#freeforecast", "freeforecast", "technical review",
+            "detailed technical review", "market review", "market outlook", "chart outlook",
+            "weekly outlook", "daily outlook", "technical outlook", "technical analysis",
+            "zone of supply", "zone of demand", "crucial zone", "in my opinion", "opinion on",
+            "my technical outlook", "my technical review", "what next?", "what next",
+            "buyers in panic", "sellers will dominate"
+        ])
+        has_sl = any(k in text.lower() for k in [
+            "stop loss", "stoploss", "sl:", "sl -", "sl-", "sl =", "sl=", "safe stop loss", "recommended stop loss"
+        ])
+        if has_forecast and not has_sl:
+            return False
         return has_dir and has_asset and not is_spam
 
     @classmethod
@@ -337,8 +350,19 @@ class MultiChannelSignalParser:
             return None
         if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower or "stop loss" in text_lower):
             return None
-        # Invariant 32: Reject conversational chart forecasts/outlooks lacking author Stop Loss
-        if "(forecast)" in text_lower and not any(k in text_lower for k in ["stop loss", "stoploss", "sl:", "safe stop loss", "recommended stop loss"]):
+        # Invariant 32, 35 & 39: Reject conversational chart forecasts/outlooks/reviews lacking author Stop Loss
+        has_forecast_indicator = any(k in text_lower for k in [
+            "(forecast)", "#forecast", "#freeforecast", "freeforecast", "technical review",
+            "detailed technical review", "market review", "market outlook", "chart outlook",
+            "weekly outlook", "daily outlook", "technical outlook", "technical analysis",
+            "zone of supply", "zone of demand", "crucial zone", "in my opinion", "opinion on",
+            "my technical outlook", "my technical review", "what next?", "what next",
+            "buyers in panic", "sellers will dominate"
+        ])
+        has_explicit_sl = any(k in text_lower for k in [
+            "stop loss", "stoploss", "sl:", "sl -", "sl-", "sl =", "sl=", "safe stop loss", "recommended stop loss"
+        ])
+        if has_forecast_indicator and not has_explicit_sl:
             return None
 
         # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
@@ -591,7 +615,7 @@ class MultiChannelSignalParser:
             }
 
         # 9. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
-        m_at_price = re.search(r"(?:@|AT)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_at_price = re.search(r"(?<!aiming\s)(?<!target\s)(?<!targeting\s)(?:@|\bAT\b)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
         if m_at_price and side:
             entry = float(m_at_price.group(1))
             tps = [float(x) for x in m_tp_tag]
@@ -871,6 +895,8 @@ class TelegramMultiSignalCopier:
                 "scalp_be_activation": 1.00,      # Lock BE at +10 pips gain (Invariant 27)
                 "trailing_distance": 3.00,       # 30 pips / 3.0 pts Gold
                 "trailing_activation": 4.00,     # Activate trailing once +4.0 pts in profit
+                "min_viable_reward": 1.20,       # 1.20 pts Gold ($12/ticket, covers spread + commission + net profit)
+                "min_be_profit": 1.00,           # Minimum 1.0 pt profit before Breakeven lock can engage
                 "pip_multiplier": 1.0
             }
         elif "JPY" in sym:
@@ -884,6 +910,8 @@ class TelegramMultiSignalCopier:
                 "scalp_be_activation": 0.15,      # 15 pips
                 "trailing_distance": 0.30,       # 30 pips
                 "trailing_activation": 0.40,     # Activate trailing once +40 pips in profit
+                "min_viable_reward": 0.10,        # 10 pips JPY
+                "min_be_profit": 0.10,
                 "pip_multiplier": 100.0
             }
         elif "BTC" in sym:
@@ -897,6 +925,8 @@ class TelegramMultiSignalCopier:
                 "scalp_be_activation": 150.0,
                 "trailing_distance": 150.0,
                 "trailing_activation": 250.0,
+                "min_viable_reward": 150.0,
+                "min_be_profit": 100.0,
                 "pip_multiplier": 1.0
             }
         elif "OIL" in sym or "USOIL" in sym:
@@ -910,6 +940,8 @@ class TelegramMultiSignalCopier:
                 "scalp_be_activation": 0.30,
                 "trailing_distance": 0.50,
                 "trailing_activation": 0.80,
+                "min_viable_reward": 0.30,
+                "min_be_profit": 0.25,
                 "pip_multiplier": 1.0
             }
         else:
@@ -923,6 +955,8 @@ class TelegramMultiSignalCopier:
                 "scalp_be_activation": 0.0015, # 15 pips
                 "trailing_distance": 0.0030,     # 30 pips
                 "trailing_activation": 0.0040,   # Activate trailing once +40 pips in profit
+                "min_viable_reward": 0.0008,      # 8 pips standard FX
+                "min_be_profit": 0.0008,
                 "pip_multiplier": 10000.0
             }
 
@@ -934,6 +968,30 @@ class TelegramMultiSignalCopier:
         entry = spot_price  # Fill at live market spot
         raw_sl = sig.get("sl")
         max_dist = params["max_sl_distance"]
+
+        # Invariant 38: Asian Rollover Spread Shield (21:00 - 00:30 UTC)
+        # Protects Forex currency pairs from illiquid interbank rollover spread blowouts.
+        now_utc = datetime.now(timezone.utc)
+        is_forex = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL"])
+        if is_forex:
+            h = now_utc.hour
+            m = now_utc.minute
+            is_rollover = (h == 21 and m >= 0) or (h == 22) or (h == 23) or (h == 0 and m <= 30)
+            if is_rollover:
+                logger.warning(
+                    f"🛑 [Invariant 38 Rollover Shield] Rejecting {symbol} {side} from {channel}: "
+                    f"Current time {now_utc.strftime('%H:%M')} UTC falls inside Asian Rollover window "
+                    f"(21:00 - 00:30 UTC). Prohibiting entry to prevent spread-wick out."
+                )
+                return None
+
+        # Check if channel is authorized swing channel
+        authorized_swing_channels = {
+            "forexgdpfree", "forexgdp", "oanda", "dailyforexpipsfree", "universalforexsignals",
+            "vipfx1", "ultreos_forex", "forexpipsfactory", "purefxvip", "wallstreet_pips", "wallst"
+        }
+        channel_clean = str(channel).lower().lstrip("@")
+        is_swing_authorized = channel_clean in authorized_swing_channels
 
         # Invariant 24: Institutional Price Action Stop-Loss (PASL) & Structural Shield Guard
         df_bars = None
@@ -958,12 +1016,25 @@ class TelegramMultiSignalCopier:
             entry_price=entry,
             symbol=symbol,
             max_allowed_distance=max_dist,
-            spread_cushion=spread if side == "SELL" else 0.0
+            spread_cushion=spread if side == "SELL" else 0.0,
+            is_swing_channel=is_swing_authorized
         )
         if "ORDER_BLOCK" in sl_reason:
             logger.info(f"🏛️ [OB-PASL] Anchored SL to Institutional Order Block: {symbol} {side} @ {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
         else:
             logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
+
+        # Invariant 36: Live Entry Anti-Suffocation Guard
+        # Ensure effective distance between live entry fill and Stop Loss strictly respects min_noise_floor
+        min_noise_floor = PriceActionSLEngine.get_min_noise_floor_distance(symbol)
+        sl_distance = abs(entry - safe_sl)
+        if sl_distance < min_noise_floor:
+            logger.warning(
+                f"🛑 [Invariant 36] Anti-Suffocation Guard triggered for {symbol} {side}: "
+                f"Live fill ~{entry} is within noise floor distance of SL {safe_sl} "
+                f"(dist {sl_distance:.5f} < min_floor {min_noise_floor:.5f}). Aborting execution to prevent spread-wick out."
+            )
+            return None
 
         tps = sig["tps"]
         # Sanitize targets relative to actual fill entry spot
@@ -972,10 +1043,22 @@ class TelegramMultiSignalCopier:
         else:
             tps = [tp for tp in tps if tp < entry]
 
+        # Invariant 37: Minimum Viable Remaining Target Distance Guard
+        min_viable = params.get("min_viable_reward", 0.0008)
         if not tps:
-            # Fallback 1.5:1 R:R target
-            dist = abs(entry - safe_sl)
-            tps = [round(entry + (dist * 1.5) if side == "BUY" else entry - (dist * 1.5), 5)]
+            # All advertised targets were already reached by the market prior to execution fill!
+            logger.warning(
+                f"🛑 [Invariant 37] All advertised targets already consumed before execution fill for {symbol} {side} "
+                f"(Live Spot ~{entry} vs Provider Targets {sig.get('tps')}). Aborting to prevent entering exhausted move."
+            )
+            return None
+        elif abs(tps[0] - entry) < min_viable:
+            logger.warning(
+                f"🛑 [Invariant 37] Insufficient Remaining Reward: {symbol} {side} live fill ~{entry} "
+                f"has only {abs(tps[0] - entry):.4f} distance to TP1 {tps[0]} (min required {min_viable:.4f}). "
+                f"Aborting execution to prevent spread/commission wipeout."
+            )
+            return None
 
         # Invariant 28: Target Scaling & Intraday Ceilings (Never Reject Good Signals)
         # USER DIRECTIVE: A good signal must NEVER be rejected simply because its TP target is far away!
@@ -1025,10 +1108,16 @@ class TelegramMultiSignalCopier:
         scalp_tp1 = params.get("scalp_tp1_dist", 2.0)
         dist_to_tp = abs(tps[0] - entry)
 
-        # Strict Invariant 25: 0.07 lots per ticket (0.14 lots total across twin tickets)
-        ticket_vol = max(0.07, lot_size)
+        channel_clean = str(channel).lower().lstrip("@")
+        is_forexgdp = channel_clean in ["forexgdpfree", "forexgdp"]
 
-        # Invariant 26: Dynamic Capacity & Twin-Slot Allocation.
+        # Strict Invariant 25: 0.07 lots per ticket standard, or dedicated FOREX_GDP_LOT_SIZE (0.50) for Forex GDP
+        if is_forexgdp:
+            ticket_vol = float(os.getenv("FOREX_GDP_LOT_SIZE", "0.50"))
+        else:
+            ticket_vol = max(0.07, lot_size)
+
+        # Invariant 26: Dynamic Capacity & Slot Allocation.
         # Check current active positions on broker to determine available slots.
         try:
             live_pos = self.ctrader.get_positions_strict() if not self.dry_run else [p for p in self.state.get("active_positions", [])]
@@ -1043,9 +1132,36 @@ class TelegramMultiSignalCopier:
             logger.warning(f"🛑 [Invariant 26] Max Concurrent Positions limit ({max_allowed_pos}) reached ({current_count} active). Skipping signal for {symbol}.")
             return None
 
-        # Universal Twin-Ticket Allocation:
-        # Every trade executes twin tickets of 0.07 lots (0.14 total) when at least 2 slots are free.
-        if has_multi_targets:
+        if is_forexgdp:
+            # Forex GDP Dedicated 3-Ticket Scaling Architecture:
+            # Ticket 1 (0.50L): Targets TP1 (Banker)
+            # Ticket 2 (0.50L): Targets TP2 (Mid-Swing Runner)
+            # Ticket 3 (0.50L): Targets TP3 (Deep Runner)
+            if len(tps) >= 3:
+                target_tps = [tps[0], tps[1], tps[2]]
+            elif len(tps) == 2:
+                target_tps = [tps[0], tps[1], tps[1]]
+            else:
+                ext_tp2 = round(tps[0] + (scalp_tp1 if side == "BUY" else -scalp_tp1), 5)
+                ext_tp3 = round(tps[0] + (scalp_tp1 * 2 if side == "BUY" else -scalp_tp1 * 2), 5)
+                target_tps = [tps[0], ext_tp2, ext_tp3]
+
+            if free_slots >= 3:
+                tickets_plan = [
+                    {"ticket": 1, "vol": ticket_vol, "tp": target_tps[0]},
+                    {"ticket": 2, "vol": ticket_vol, "tp": target_tps[1]},
+                    {"ticket": 3, "vol": ticket_vol, "tp": target_tps[2]}
+                ]
+            elif free_slots == 2:
+                tickets_plan = [
+                    {"ticket": 1, "vol": ticket_vol, "tp": target_tps[0]},
+                    {"ticket": 2, "vol": ticket_vol, "tp": target_tps[-1]}
+                ]
+            else:
+                tickets_plan = [
+                    {"ticket": 1, "vol": ticket_vol, "tp": target_tps[0]}
+                ]
+        elif has_multi_targets:
             if free_slots == 1:
                 tickets_plan = [{"ticket": 1, "vol": ticket_vol, "tp": tps[0]}]
             else:
@@ -1164,6 +1280,13 @@ class TelegramMultiSignalCopier:
                     prof_str = f"+${total_est_profit:.2f}"
                     time_str = profits_and_times[0][1]
                     tp_str = f"🎯 TP {executed_orders[0]['tp']}"
+                elif len(executed_orders) == 3:
+                    t1_p, t1_t = profits_and_times[0]
+                    t2_p, t2_t = profits_and_times[1]
+                    t3_p, t3_t = profits_and_times[2]
+                    prof_str = f"+${total_est_profit:.2f} (T1 +${t1_p:.0f} · T2 +${t2_p:.0f} · T3 +${t3_p:.0f})"
+                    time_str = f"{t1_t} (T1) · {t2_t} (T2) · {t3_t} (T3)"
+                    tp_str = f"🎯 T1 {executed_orders[0]['tp']} · T2 {executed_orders[1]['tp']} · T3 {executed_orders[2]['tp']}"
                 else:
                     t1_p, t1_t = profits_and_times[0]
                     t2_p, t2_t = profits_and_times[1]
@@ -1246,7 +1369,7 @@ class TelegramMultiSignalCopier:
                 comment = lp.get("comment") or ""
                 label = lp.get("label") or ""
                 if (comment.startswith("Sig_") or label == "AgentQuant") and not any(p.get("positionId") == lp_id for p in active):
-                    ticket_num = 2 if "_T2" in comment else (1 if "_T1" in comment else 1)
+                    ticket_num = 3 if "_T3" in comment else (2 if "_T2" in comment else (1 if "_T1" in comment else 1))
                     active.append({
                         "positionId": lp_id,
                         "ticket": ticket_num,
@@ -1260,12 +1383,13 @@ class TelegramMultiSignalCopier:
                     })
 
             # 2. Invariant 23: Direct Broker-Label-Linked Reconciliation & Companion Breakeven
-            # First, reconcile broker-level positions tagged with _T2 if companion _T1 has closed
+            # First, reconcile broker-level positions tagged with _T2 or _T3 if companion _T1 has closed
             for lp in live_positions:
                 lp_id = lp.get("positionId")
                 comment = lp.get("comment") or ""
-                if "_T2" in comment:
-                    t1_comment = comment.replace("_T2", "_T1")
+                t_match = 3 if "_T3" in comment else (2 if "_T2" in comment else None)
+                if t_match:
+                    t1_comment = comment.replace(f"_T{t_match}", "_T1")
                     t1_open = any((p.get("comment") or "") == t1_comment for p in live_positions)
                     if not t1_open:
                         # T1 has already closed on the broker!
@@ -1275,7 +1399,7 @@ class TelegramMultiSignalCopier:
                             sym_name = lp.get("symbolName") or "XAUUSD"
                             pos_in_active = {
                                 "positionId": lp_id,
-                                "ticket": 2,
+                                "ticket": t_match,
                                 "symbol": sym_name,
                                 "side": lp.get("tradeSide", "BUY"),
                                 "entry": float(lp.get("entryPrice", 0.0)),
@@ -1286,21 +1410,23 @@ class TelegramMultiSignalCopier:
                             }
                             active.append(pos_in_active)
 
-            # Check if Ticket 1 has hit TP1 to advance Ticket 2 to Breakeven
+            # Check if Ticket 1 has hit TP1 to advance companion Ticket 2 and Ticket 3 to Breakeven
             t1_items = [p for p in active if p.get("ticket") == 1]
-            remaining_tickets = [p for p in active if p.get("ticket") == 2]
+            t2_items = [p for p in active if p.get("ticket") == 2]
+            t3_items = [p for p in active if p.get("ticket") == 3]
+            remaining_companion_tickets = [p for p in active if p.get("ticket") in (2, 3)]
 
             for t1 in t1_items:
                 t1_id = t1.get("positionId")
                 if t1_id and t1_id not in live_pos_ids:
-                    # Ticket 1 closed! Move companion Ticket 2 to Breakeven
+                    # Ticket 1 closed! Move companion Ticket 2 and Ticket 3 to Breakeven
                     entry_p = t1.get("entry")
                     side = t1.get("side", "BUY")
                     sym = t1.get("symbol")
                     params = self.get_asset_parameters(sym)
                     be_price = round(entry_p + params["be_buffer"] if side == "BUY" else entry_p - params["be_buffer"], 5)
 
-                    for rem in remaining_tickets:
+                    for rem in remaining_companion_tickets:
                         rem_id = rem.get("positionId")
                         if rem_id and rem_id in live_pos_ids and not rem.get("be_locked") and rem.get("symbol") == sym:
                             spot = self.ctrader.get_spot_price(sym)
@@ -1311,9 +1437,10 @@ class TelegramMultiSignalCopier:
                                     self.ctrader.amend_position(rem_id, stop_loss=be_price, symbol=sym)
                                     rem["be_locked"] = True
                                     rem["sl"] = be_price
-                                    logger.info(f"🛡️ Ticket #1 filled! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
+                                    t_label = rem.get("ticket", 2)
+                                    logger.info(f"🛡️ Ticket #1 filled! Ticket #{t_label} (#{rem_id}) SL moved to Breakeven {be_price}")
                                     self.send_telegram_alert(
-                                        f"🎯 <b>T1 Banked: {sym}</b> (#2)\n"
+                                        f"🎯 <b>T1 Banked: {sym}</b> (#{t_label})\n"
                                         f"SL moved to Breakeven @ <code>{be_price}</code>"
                                     )
                                 except Exception as ae:
@@ -1322,8 +1449,40 @@ class TelegramMultiSignalCopier:
                                 rem["be_pending"] = True
                                 logger.info(f"⏳ Ticket #1 filled, but spot {curr_price} is adverse to BE {be_price}. Awaiting price recovery for #{rem_id}.")
 
-            # Also check any pending Ticket 2s whose T1 is confirmed closed
-            for rem in remaining_tickets:
+            # Multi-Stage Protection: When Ticket 2 closes, advance Ticket 3 to lock profit at TP1
+            for t2 in t2_items:
+                t2_id = t2.get("positionId")
+                if t2_id and t2_id not in live_pos_ids:
+                    entry_p = t2.get("entry")
+                    side = t2.get("side", "BUY")
+                    sym = t2.get("symbol")
+                    t1_match = next((p for p in t1_items if p.get("symbol") == sym), None)
+                    tp1_target = t1_match.get("tp") if (t1_match and t1_match.get("tp")) else None
+                    if not tp1_target:
+                        t2_tp = t2.get("tp", entry_p)
+                        tp1_target = round(entry_p + (t2_tp - entry_p) * 0.5, 5)
+
+                    for t3 in t3_items:
+                        t3_id = t3.get("positionId")
+                        if t3_id and t3_id in live_pos_ids and not t3.get("t2_locked") and t3.get("symbol") == sym:
+                            spot = self.ctrader.get_spot_price(sym)
+                            curr_price = float(spot["bid"] if side == "BUY" else spot["ask"]) if spot else None
+                            can_lock = (curr_price >= tp1_target) if (curr_price and side == "BUY") else (curr_price <= tp1_target if curr_price else True)
+                            if can_lock:
+                                try:
+                                    self.ctrader.amend_position(t3_id, stop_loss=tp1_target, symbol=sym)
+                                    t3["t2_locked"] = True
+                                    t3["sl"] = tp1_target
+                                    logger.info(f"🎯 Ticket #2 filled! Ticket #3 (#{t3_id}) SL advanced to lock TP1 profit @ {tp1_target}")
+                                    self.send_telegram_alert(
+                                        f"🎯 <b>T2 Banked: {sym}</b> (#3)\n"
+                                        f"SL advanced to lock profit at TP1 @ <code>{tp1_target}</code>"
+                                    )
+                                except Exception as ae:
+                                    logger.error(f"Failed to amend Ticket 3 #{t3_id} to TP1 lock: {ae}")
+
+            # Also check any pending companion tickets whose T1 is confirmed closed
+            for rem in remaining_companion_tickets:
                 rem_id = rem.get("positionId")
                 if rem_id and rem_id in live_pos_ids and not rem.get("be_locked") and rem.get("be_pending"):
                     sym = rem.get("symbol")
@@ -1340,16 +1499,18 @@ class TelegramMultiSignalCopier:
                             rem["be_locked"] = True
                             rem["sl"] = be_price
                             rem["be_pending"] = False
-                            logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) SL moved to Breakeven {be_price}")
+                            t_label = rem.get("ticket", 2)
+                            logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #{t_label} (#{rem_id}) SL moved to Breakeven {be_price}")
                             self.send_telegram_alert(
-                                f"🎯 <b>BE Activated: {sym}</b> (#2)\n"
+                                f"🎯 <b>BE Activated: {sym}</b> (#{t_label})\n"
                                 f"SL locked @ <code>{be_price}</code>"
                             )
                         except Exception as ae:
                             logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
                     else:
                         rem["be_pending"] = True
-                        logger.info(f"⏳ [Invariant 23] T1 closed! Ticket #2 (#{rem_id}) awaiting price {curr_price} to reach BE {be_price}")
+                        logger.info(f"⏳ [Invariant 23] T1 closed! Ticket #{rem.get('ticket', 2)} (#{rem_id}) awaiting price {curr_price} to reach BE {be_price}")
+
 
             # 3. Dynamic Breakeven for individual running tickets past 50% TP distance & Companion Sync
             for pos in active:
@@ -1370,8 +1531,9 @@ class TelegramMultiSignalCopier:
                 gain = (curr_price - entry) if side == "BUY" else (entry - curr_price)
                 half_tp_distance = abs(pos.get("tp", entry) - entry) * 0.50
                 scalp_be_thresh = params.get("scalp_be_activation", half_tp_distance)
+                min_be_profit = params.get("min_be_profit", scalp_be_thresh)
 
-                if not pos.get("be_locked") and (gain >= half_tp_distance or gain >= scalp_be_thresh):
+                if not pos.get("be_locked") and gain >= min_be_profit and (gain >= half_tp_distance or gain >= scalp_be_thresh):
                     be_price = round(entry + params["be_buffer"] if side == "BUY" else entry - params["be_buffer"], 5)
                     try:
                         self.ctrader.amend_position(pos_id, stop_loss=be_price)
@@ -1420,8 +1582,8 @@ class TelegramMultiSignalCopier:
                 if not pos_id or pos_id not in live_pos_ids:
                     continue
 
-                # Trailing stop actively protects Ticket 2 runners or any position with BE already secured
-                if pos.get("ticket") != 2 and not pos.get("be_locked"):
+                # Trailing stop actively protects Ticket 2 & 3 runners or any position with BE already secured
+                if pos.get("ticket") not in (2, 3) and not pos.get("be_locked"):
                     continue
 
                 symbol = pos.get("symbol")
@@ -1650,19 +1812,22 @@ class TelegramMultiSignalCopier:
                 raw_sl = sig.get("sl")
                 dist_from_zone = 0.0
 
+                from src.strategies.price_action_sl_engine import PriceActionSLEngine
+                min_noise_floor = PriceActionSLEngine.get_min_noise_floor_distance(symbol)
+
                 if side == "BUY":
                     if curr_spot > e_max:
                         # Price is running away upwards towards TP (Adverse Chasing)
                         dist_from_zone = curr_spot - e_max
                     elif curr_spot < e_min:
                         # Price is at a discount (favorable dip for scalping!)
-                        if raw_sl and curr_spot <= (raw_sl + params["be_buffer"]):
-                            # Price dipped too far and has breached or reached the Stop Loss
-                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
+                        if raw_sl and curr_spot <= (raw_sl + min_noise_floor):
+                            # Price dipped too far and is inside or has breached the Stop Loss noise zone
+                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or within noise floor ({min_noise_floor}) of SL {raw_sl}. Skipping.")
                             if not self.dry_run:
                                 self.send_telegram_alert(
                                     f"⏭️ <b>Aborted: {side} {symbol}</b>\n"
-                                    f"Market hit SL ({raw_sl}) before entry\n"
+                                    f"Market reached SL zone ({raw_sl}) before entry\n"
                                     f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
                             continue
@@ -1675,19 +1840,70 @@ class TelegramMultiSignalCopier:
                         dist_from_zone = e_min - curr_spot
                     elif curr_spot > e_max:
                         # Price rallied into a premium (favorable rally for selling!)
-                        if raw_sl and curr_spot >= (raw_sl - params["be_buffer"]):
-                            # Price spiked too high and reached Stop Loss
-                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or breached SL {raw_sl}. Skipping.")
+                        if raw_sl and curr_spot >= (raw_sl - min_noise_floor):
+                            # Price spiked too high and is inside or has reached Stop Loss noise zone
+                            logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or within noise floor ({min_noise_floor}) of SL {raw_sl}. Skipping.")
                             if not self.dry_run:
                                 self.send_telegram_alert(
                                     f"⏭️ <b>Aborted: {side} {symbol}</b>\n"
-                                    f"Market hit SL ({raw_sl}) before entry\n"
+                                    f"Market reached SL zone ({raw_sl}) before entry\n"
                                     f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
-                            continue
                         else:
                             # Valid premium scalp entry!
                             dist_from_zone = 0.0
+
+                # Invariant 37: Target Exhaustion & Adverse Chasing Guard
+                # If the market has already surged to or near TP1 prior to execution, abort immediately to prevent buying the top/selling the bottom.
+                if sig.get("tps"):
+                    tp1 = sig["tps"][0]
+                    entry_ref = sig.get("entry_mid", (e_min + e_max) / 2.0)
+                    total_target_span = abs(tp1 - entry_ref)
+                    min_viable_reward = params.get("min_viable_reward", 0.0008)
+
+                    is_exhausted = False
+                    exhaustion_reason = ""
+
+                    if side == "BUY":
+                        if curr_spot >= tp1:
+                            is_exhausted = True
+                            exhaustion_reason = f"Spot {curr_spot} already reached or exceeded TP1 ({tp1})"
+                        elif curr_spot > e_max and total_target_span > 0:
+                            rem_reward = tp1 - curr_spot
+                            consumed_ratio = (curr_spot - entry_ref) / total_target_span
+                            if consumed_ratio >= 0.40 or rem_reward < min_viable_reward:
+                                is_exhausted = True
+                                exhaustion_reason = (
+                                    f"Spot {curr_spot} consumed {consumed_ratio*100:.1f}% of target span "
+                                    f"(remaining reward {rem_reward:.3f} < min required {min_viable_reward:.3f})"
+                                )
+                    else:  # SELL
+                        if curr_spot <= tp1:
+                            is_exhausted = True
+                            exhaustion_reason = f"Spot {curr_spot} already reached or exceeded TP1 ({tp1})"
+                        elif curr_spot < e_min and total_target_span > 0:
+                            rem_reward = curr_spot - tp1
+                            consumed_ratio = (entry_ref - curr_spot) / total_target_span
+                            if consumed_ratio >= 0.40 or rem_reward < min_viable_reward:
+                                is_exhausted = True
+                                exhaustion_reason = (
+                                    f"Spot {curr_spot} consumed {consumed_ratio*100:.1f}% of target span "
+                                    f"(remaining reward {rem_reward:.3f} < min required {min_viable_reward:.3f})"
+                                )
+
+                    if is_exhausted:
+                        candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
+                        max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
+                        if not candidate_tps or len(sig.get("tps", [])) <= 1 or dist_from_zone > max_rollover_slip:
+                            logger.info(f"🛑 [Invariant 37] Target Exhaustion Guard: {symbol} {side} skipped. {exhaustion_reason}.")
+                            if not self.dry_run:
+                                self.send_telegram_alert(
+                                    f"🛑 <b>SIGNAL ABORTED: Target Exhausted</b>\n"
+                                    f"Action: {side} {symbol} (Target {tp1})\n"
+                                    f"Reason: {exhaustion_reason}\n"
+                                    f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
+                                )
+                            continue
 
                 if dist_from_zone > params["max_slippage"]:
                     # Invariant 22/29/31: Smart Multi-Target Rollover & Momentum Anti-Chase Gate

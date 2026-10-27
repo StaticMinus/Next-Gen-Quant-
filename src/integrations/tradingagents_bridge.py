@@ -96,6 +96,7 @@ class TradingAgentsBridge:
         cfg["max_risk_discuss_rounds"] = self.max_risk_rounds
         cfg["output_language"] = "English"
         cfg["checkpoint_enabled"] = False
+        cfg["max_tokens"] = 4096
         
         # Ensure OPENROUTER_API_KEY is available in env
         if not os.getenv("OPENROUTER_API_KEY") and os.getenv("OPENAI_API_KEY"):

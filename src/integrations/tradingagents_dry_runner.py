@@ -225,10 +225,10 @@ class TradingAgentsRunner:
                 logger.info(f"⚡ [LIVE] Executing {action} order on cTrader...")
                 res = self.ctrader.place_market_order(
                     symbol=broker_symbol,
-                    action=action,
+                    side=action,
                     volume_lots=sizing["lot_size"],
-                    stop_loss=sizing["stop_loss"],
-                    take_profit=sizing["take_profit"],
+                    stop_loss_price=sizing["stop_loss"],
+                    take_profit_price=sizing["take_profit"],
                     comment=f"TradingAgents-{rating}"
                 )
                 trade_ticket["execution_result"] = res

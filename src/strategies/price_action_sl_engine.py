@@ -33,8 +33,12 @@ class PriceActionSLEngine:
             return 50.0   # $50 Crypto
         elif any(k in sym_upper for k in ["US30", "NAS100", "SPX", "NDX", "DJ30"]):
             return 25.0   # 25 pts Indices
+        elif any(k in sym_upper for k in ["CAD", "CHF", "NZD", "AUD"]) and not any(k in sym_upper for k in ["USD"]):
+            return 0.00350 # Invariant 38: 35.0 pips for cross currency pairs (GBPCAD, CADCHF, EURCAD, etc.)
+        elif any(k in sym_upper for k in ["GBPCAD", "CADCHF", "EURCAD", "GBPAUD", "EURAUD", "GBPNZD", "EURNZD"]):
+            return 0.00350 # Invariant 38: 35.0 pips Crosses
         else:
-            return 0.00150 # 15.0 pips standard Forex (EURUSD, GBPUSD, etc.)
+            return 0.00250 # Invariant 38: 25.0 pips Major Forex (EURUSD, GBPUSD, USDCAD, USDCHF)
 
     @staticmethod
     def calculate_atr(df: pd.DataFrame, period: int = 14) -> float:
@@ -149,7 +153,8 @@ class PriceActionSLEngine:
         entry_price: float,
         symbol: str,
         max_allowed_distance: float,
-        spread_cushion: float = 0.0
+        spread_cushion: float = 0.0,
+        is_swing_channel: bool = False
     ) -> Tuple[float, str]:
         """
         Reconciles provider-written SL with real-time Price Action market structure.
@@ -216,12 +221,21 @@ class PriceActionSLEngine:
             candidate_sl = float(provider_sl)
             reason = "PROVIDER_EXACT"
 
-            # 4. Check for Order Block Structural Tightening
-            # If provider set an overly wide SL, but an institutional Order Block invalidation
-            # is confirmed outside the noise floor, tighten to the Order Block!
-            # INVARIANT 11: NEVER WIDEN PROVIDER SL.
+            # Invariant 38: For authorized swing channels with explicit provider SL,
+            # NEVER allow micro M5 down-tightening to suffocate macro structure.
+            # Preserve provider SL exactly (clamping only to prop firm max_allowed_distance).
             ob_tightened = False
-            if ob_sl is not None:
+            if is_swing_channel:
+                ob_tightened = True
+                logger.info(
+                    f"🏛️ [Invariant 38 Swing Shield] Preserving macro provider SL {candidate_sl} "
+                    f"for swing channel on {symbol}. Micro M5 tightening bypassed."
+                )
+            elif ob_sl is not None:
+                # 4. Check for Order Block Structural Tightening
+                # If provider set an overly wide SL, but an institutional Order Block invalidation
+                # is confirmed outside the noise floor, tighten to the Order Block!
+                # INVARIANT 11: NEVER WIDEN PROVIDER SL.
                 if side_upper == "BUY":
                     if candidate_sl < ob_sl < entry_price:
                         candidate_sl = ob_sl

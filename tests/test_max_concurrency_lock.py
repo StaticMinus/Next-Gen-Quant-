@@ -23,6 +23,7 @@ class TestMaxConcurrencyLock(unittest.TestCase):
         self.client.session_id = "mock_session_123"
         self.client._symbols_cache = {"XAUUSD": 41, "NDX100": 112, "SPX500": 113}
 
+    @patch.dict("os.environ", {"MAX_CONCURRENT_POSITIONS": "2"})
     @patch.object(CTraderMCPClient, "get_positions_strict")
     def test_place_market_order_blocked_when_two_positions_open(self, mock_get_pos):
         """Must raise RiskViolationError when 2 positions already exist."""

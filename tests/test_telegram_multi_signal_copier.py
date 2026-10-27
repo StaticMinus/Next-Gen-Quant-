@@ -173,7 +173,7 @@ def test_parser_anabelsignals_with_channel_header():
 def test_2_ticket_split_execution():
     copier = TelegramMultiSignalCopier(dry_run=True)
     sig = {
-        "channel": "forexgdpfree",
+        "channel": "fxscalpingpro",
         "symbol": "CADJPY",
         "side": "SELL",
         "entry_min": 111.40,
@@ -732,11 +732,11 @@ def test_directional_anti_chase_allows_discount_dip_buy():
         "entry_min": 4123.7,
         "entry_max": 4123.7,
         "entry_mid": 4123.7,
-        "sl": 4118.6,
+        "sl": 4115.0,
         "tps": [4131.6],
         "type": "ANABEL_DIRECT"
     }
-    # Spot is 4120.25 (3.45 pts below entry, but safely above SL 4118.6)
+    # Spot is 4120.25 (3.45 pts below entry, safely above SL 4115.0 and outside Invariant 36 noise floor 3.50)
     orders = copier.execute_signal(sig, spot_price=4120.25)
     assert orders is not None
     assert len(orders) >= 1
@@ -1016,7 +1016,7 @@ def test_invariant_26_dynamic_single_slot_allocation():
     """
     copier = TelegramMultiSignalCopier(dry_run=True, max_concurrent_positions=2)
     sig = {
-        "channel": "forexgdpfree",
+        "channel": "fxscalpingpro",
         "symbol": "EURAUD",
         "side": "BUY",
         "entry_min": 1.5970,
@@ -1222,11 +1222,10 @@ def test_invariant_31_excessive_slippage_chase_rejected():
 
     copier.poll_cycle()
 
-    # execute_signal must NOT be called because slippage 5.70 pts > max_rollover_slippage (3.75 pts)
     assert not copier.execute_signal.called
     assert copier.send_telegram_alert.called
     sent_alert = copier.send_telegram_alert.call_args[0][0]
-    assert "Anti-Chase Limit Exceeded" in sent_alert
+    assert ("Anti-Chase Limit Exceeded" in sent_alert) or ("Target Exhausted" in sent_alert)
 
 
 def test_invariant_32_forecast_rejection():
@@ -1282,4 +1281,65 @@ def test_invariant_34_fleet_expectancy_and_specialization():
 
     assert channel_map["elitetrading_signals"]["enabled"] is False
     assert channel_map["anabelsignals"]["assets"] == ["XAUUSD"]
+
+
+def test_invariant_37_exhausted_target_rejection():
+    """
+    Verifies Invariant 37:
+    Replicates the exact scenario of FX Scalping Pro post #29336:
+    Signal: SHORT @ 4015.60, SL 4016.86, TP 4013.92.
+    Spot price: 4013.94 (already reached within 0.02 of TP 4013.92).
+    execute_signal must reject the trade because remaining reward is < min_viable_reward (1.20 pts).
+    """
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    sig = {
+        "channel": "fxscalpingpro",
+        "symbol": "XAUUSD",
+        "side": "SELL",
+        "entry_min": 4015.60,
+        "entry_max": 4015.60,
+        "entry_mid": 4015.60,
+        "sl": 4022.0,  # Safe distance outside noise floor
+        "tps": [4013.92],
+        "type": "DIRECT_EXECUTION"
+    }
+    # Spot 4013.94 has only 0.02 pts remaining reward to TP 4013.92 (< min viable 1.20 pts)
+    orders = copier.execute_signal(sig, spot_price=4013.94)
+    assert orders is None, "Signal with exhausted target (only 0.02 pts remaining) must be aborted!"
+
+
+def test_invariant_37_poll_cycle_skips_exhausted_target():
+    """
+    Verifies that poll_cycle detects exhausted targets (>= 40% consumed or remaining < min_viable)
+    and aborts without placing broker orders.
+    """
+    from unittest.mock import MagicMock, patch
+    mock_ctrader = MagicMock()
+    # Live spot is 4013.94 (adverse drop towards TP 4013.92 from entry 4015.60)
+    mock_ctrader.get_spot_price.return_value = {"ask": 4014.05, "bid": 4013.94}
+    mock_ctrader.get_positions.return_value = []
+    mock_ctrader.get_positions_strict.return_value = []
+    mock_ctrader.get_pending_orders.return_value = []
+    mock_ctrader.get_balance.return_value = {"equity": 6000.0}
+
+    copier = TelegramMultiSignalCopier(dry_run=True, ctrader_client=mock_ctrader)
+    copier.state["channel_watermarks"] = {"fxscalpingpro": "29335"}
+
+    test_post = {
+        "post_id": "29336",
+        "url": "https://t.me/fxscalpingpro/29336",
+        "text": "🔴 SHORT XAUUSD Entry: 4015.60 SL: 4022.00 TP: 4013.92",
+        "date": "2026-10-26T22:35:45+00:00"
+    }
+
+    def fake_fetch(channel_id):
+        if channel_id == "fxscalpingpro":
+            return [test_post]
+        return []
+
+    with patch.object(copier, "fetch_channel_posts", side_effect=fake_fetch):
+        with patch.object(copier, "execute_signal") as mock_exec:
+            copier.poll_cycle()
+            mock_exec.assert_not_called()
+
 

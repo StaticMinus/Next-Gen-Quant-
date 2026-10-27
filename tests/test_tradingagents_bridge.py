@@ -120,3 +120,49 @@ def test_runner_dry_run_cycle():
         assert ticket["status"] == "SIMULATED_FILLED"
         assert ticket["dry_run"] is True
         mock_tg.assert_called_once()
+
+
+def test_config_max_tokens_budgeted():
+    bridge = TradingAgentsBridge()
+    assert "max_tokens" in bridge.config
+    assert bridge.config["max_tokens"] == 4096
+
+
+def test_runner_live_order_keyword_args():
+    mock_bridge = MagicMock()
+    mock_bridge.analyze_symbol.return_value = {
+        "success": True,
+        "broker_symbol": "BTCUSD",
+        "rating": "Buy",
+        "action": "BUY",
+        "decision_text": "Strong breakout momentum confirmed by multiple analysts.",
+        "extracted_targets": {"stop_loss": 80000.0, "take_profit": 82000.0},
+        "bull_summary": "Accumulation.",
+        "bear_summary": "None.",
+    }
+
+    mock_ctrader = MagicMock()
+    mock_ctrader.initialize.return_value = True
+    mock_ctrader.get_balance.return_value = {"balance": 6000.0, "equity": 6000.0}
+    mock_ctrader.get_positions.return_value = []
+    mock_ctrader.get_spot_price.return_value = {"bid": 80500.0, "ask": 80510.0}
+    mock_ctrader.place_market_order.return_value = {"orderId": 9999, "isError": False}
+
+    runner = TradingAgentsRunner(
+        bridge=mock_bridge,
+        ctrader_client=mock_ctrader,
+        dry_run=False
+    )
+
+    with patch.object(runner, "send_telegram_ticket"):
+        result = runner.run_cycle_for_symbol("BTCUSD")
+        assert result["success"] is True
+        mock_ctrader.place_market_order.assert_called_once_with(
+            symbol="BTCUSD",
+            side="BUY",
+            volume_lots=0.01,
+            stop_loss_price=80000.0,
+            take_profit_price=82000.0,
+            comment="TradingAgents-Buy"
+        )
+
