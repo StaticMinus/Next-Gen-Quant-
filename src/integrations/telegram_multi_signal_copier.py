@@ -204,11 +204,13 @@ class MultiChannelSignalParser:
             return False, "Missing side or entry price"
 
         # Invariant 20: Auto-synthesize Stop Loss if missing or paywalled
-        if sl is None or sig.get("sl_paywalled"):
-            sl_dist = cls.get_default_sl_distance(sig.get("symbol", "XAUUSD"), entry, tps)
-            sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            sig["sl"] = sl
+        if sl is None or sig.get("sl_paywalled") or sig.get("sl_synthesized"):
+            if sl is None or sig.get("sl_paywalled"):
+                sl_dist = cls.get_default_sl_distance(sig.get("symbol", "XAUUSD"), entry, tps)
+                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                sig["sl"] = sl
             sig["sl_synthesized"] = True
+            sig["sl_source"] = "PRICE_ACTION_SL"
             sig["sl_paywalled"] = False
 
         if side == "BUY":
@@ -255,7 +257,12 @@ class MultiChannelSignalParser:
             "stop loss", "stoploss", "sl:", "sl -", "sl-", "sl =", "sl=", "safe stop loss", "recommended stop loss"
         ])
         if has_forecast and not has_sl:
-            return False
+            has_actionable = bool(
+                re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text, re.IGNORECASE) and
+                re.search(r"(?:Target|Goal|TP|Take\s*Profit|level|trading on|tests|entry)\b", text, re.IGNORECASE)
+            )
+            if not has_actionable:
+                return False
         return has_dir and has_asset and not is_spam
 
     @classmethod
@@ -350,7 +357,7 @@ class MultiChannelSignalParser:
             return None
         if "to get full trade management" in text_lower and not ("sl:" in text_lower or "tp:" in text_lower or "stop loss" in text_lower):
             return None
-        # Invariant 32, 35 & 39: Reject conversational chart forecasts/outlooks/reviews lacking author Stop Loss
+        # Reject conversational chart forecasts/outlooks/reviews if they lack actionable trade parameters
         has_forecast_indicator = any(k in text_lower for k in [
             "(forecast)", "#forecast", "#freeforecast", "freeforecast", "technical review",
             "detailed technical review", "market review", "market outlook", "chart outlook",
@@ -363,7 +370,12 @@ class MultiChannelSignalParser:
             "stop loss", "stoploss", "sl:", "sl -", "sl-", "sl =", "sl=", "safe stop loss", "recommended stop loss"
         ])
         if has_forecast_indicator and not has_explicit_sl:
-            return None
+            has_actionable = bool(
+                re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text_clean, re.IGNORECASE) and
+                re.search(r"(?:Target|Goal|TP|Take\s*Profit|level|trading on|tests|entry)\b", text_clean, re.IGNORECASE)
+            )
+            if not has_actionable:
+                return None
 
         # 1. SSFGOLD FORMAT: "XAUUSD BUY 4179.76  SL:  4169.76 TP:  4199.76" or "XAUUSD BUY STOP 4177.4 SL: 4167.4 TP: 4197.4"
         m_ssf = re.search(r"\b(XAUUSD|GOLD)\s+(BUY|SELL)(?:\s+(?:STOP|LIMIT|NOW))?\s+([\d\.]+)\s+SL:\s*([\d\.]+)\s+TP:\s*([\d\.]+)", text_clean, re.IGNORECASE)
@@ -452,11 +464,7 @@ class MultiChannelSignalParser:
             m_ana_target = re.search(r"(?:Target|Goal)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
 
-            # Invariant 32: If post is a (forecast) or outlook without explicit Stop Loss, reject it
-            if "(forecast)" in text_lower and not m_ana_sl:
-                return None
-
-            if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target)):
+            if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target) or m_ana_target):
                 raw_sym = m_ana_header.group(1).upper()
                 if "GOLD" in raw_sym:
                     raw_sym = "XAUUSD"
@@ -464,16 +472,25 @@ class MultiChannelSignalParser:
                 entry = float(m_ana_level.group(1)) if m_ana_level else None
                 tp = float(m_ana_target.group(1)) if m_ana_target else None
 
+                sl_synth = False
                 if m_ana_sl:
                     sl = float(m_ana_sl.group(1))
                     if not entry:
                         entry = sl + 10.0 if side == "SELL" else sl - 10.0
                 else:
+                    sl_synth = True
                     if entry and tp:
                         dist = abs(tp - entry)
                         sl = (entry - dist) if side == "BUY" else (entry + dist)
+                    elif tp:
+                        dist = 10.0 if "XAU" in raw_sym or "GOLD" in raw_sym else 0.0020
+                        entry = round(tp - dist if side == "BUY" else tp + dist, 5)
+                        sl = round(entry - dist if side == "BUY" else entry + dist, 5)
+                    elif entry:
+                        dist = 10.0 if "XAU" in raw_sym or "GOLD" in raw_sym else 0.0020
+                        sl = (entry - dist) if side == "BUY" else (entry + dist)
                     else:
-                        sl = (entry - 10.0) if side == "BUY" else (entry + 10.0)
+                        sl = None
 
                 tps = [tp] if tp else []
                 return {
@@ -483,9 +500,11 @@ class MultiChannelSignalParser:
                     "entry_min": entry,
                     "entry_max": entry,
                     "entry_mid": entry,
-                    "sl": round(sl, 5),
+                    "sl": round(sl, 5) if sl is not None else None,
                     "tps": tps,
-                    "type": "ANABEL_DIRECT"
+                    "type": "ANABEL_DIRECT",
+                    "sl_synthesized": sl_synth,
+                    "sl_source": "PRICE_ACTION_SL" if sl_synth else "PROVIDER"
                 }
 
         # --- UNIVERSAL EXPANDED MULTI-CHANNEL PARSER ---
@@ -1009,8 +1028,12 @@ class TelegramMultiSignalCopier:
             spread = 0.0
 
         from src.strategies.price_action_sl_engine import PriceActionSLEngine
+        # If signal lacked an author Stop Loss, pass provider_sl=None so PriceActionSLEngine
+        # determines the true structural Stop Loss from Order Blocks and Fractal Swings.
+        effective_provider_sl = None if (sig.get("sl_synthesized") or sig.get("sl_source") == "PRICE_ACTION_SL") else raw_sl
+
         safe_sl, sl_reason = PriceActionSLEngine.reconcile_structural_sl(
-            provider_sl=raw_sl,
+            provider_sl=effective_provider_sl,
             df_bars=df_bars,
             side=side,
             entry_price=entry,
@@ -1295,7 +1318,7 @@ class TelegramMultiSignalCopier:
                     tp_str = f"🎯 T1 {executed_orders[0]['tp']} · T2 {executed_orders[1]['tp']}"
 
                 rollover_badge = " [Rollover]" if sig.get("is_target_rollover") else ""
-                ob_badge = " [OB Invalidation]" if "ORDER_BLOCK" in sl_reason else ""
+                ob_badge = " [OB Invalidation]" if "ORDER_BLOCK" in sl_reason else (" [Price Action SL]" if (sig.get("sl_synthesized") or sig.get("sl_source") == "PRICE_ACTION_SL") else "")
                 alert_msg = (
                     f"⚡ <b>{side} {symbol} @ {entry}</b>{rollover_badge}{ob_badge}\n"
                     f"🛡️ SL {safe_sl} · {tp_str}\n"

@@ -137,8 +137,9 @@ def test_conflict_detection():
 
 def test_parser_anabelsignals_forecast_auto_sl():
     """
-    Invariant 32: Anabel's 4H conversational forecast without author Stop Loss
-    must be rejected to prevent synthesizing arbitrary tight stops on swing setups.
+    User Directive / Invariant 20 & 43: When Anabel posts a 4H forecast without author Stop Loss,
+    it is parsed with sl_synthesized=True and sl_source='PRICE_ACTION_SL' so the Price Action SL engine
+    anchors the stop to market structure.
     """
     text = """✍️EURCAD Massive Long! BUY!
 The market is trading on 1.6036 pivot level.
@@ -147,19 +148,29 @@ The market is trading on 1.6036 pivot level.
 💐#EURCAD
 ↗️Time Frame: 4H (forecast)"""
     sig = MultiChannelSignalParser.parse_message(text, "anabelsignals")
-    assert sig is None
+    assert sig is not None
+    assert sig["symbol"] == "EURCAD"
+    assert sig["side"] == "BUY"
+    assert sig["entry_mid"] == 1.6036
+    assert sig["sl_synthesized"] is True
+    assert sig["sl_source"] == "PRICE_ACTION_SL"
+    assert sig["is_valid"] is True
 
 
 def test_parser_anabelsignals_with_channel_header():
     """
-    Invariant 32: 4H forecast with channel header and no author SL is rejected.
-    When Safe Stop Loss is provided, it is parsed cleanly.
+    User Directive: 4H forecast with channel header and no author SL is accepted with Price Action SL.
+    When Safe Stop Loss is provided, provider SL is preserved.
     """
     text_forecast = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
 
 ✍️AUDJPY Massive Short! SELL!👍My dear subscribers,This is my opinion on the AUDJPY next move:The instrument tests an important psychological level 110.54Bias - Bearish⭐️Target - 110.08——————————💐#AUDJPY↗️Time Frame: 4H (forecast)——————————WISH YOU ALL LUCK🍀@anabelsignalscontact"""
     sig = MultiChannelSignalParser.parse_message(text_forecast, "anabelsignals")
-    assert sig is None
+    assert sig is not None
+    assert sig["symbol"] == "AUDJPY"
+    assert sig["side"] == "SELL"
+    assert sig["sl_synthesized"] is True
+    assert sig["sl_source"] == "PRICE_ACTION_SL"
 
     text_signal = """🌸AnabelSignals🌸 Best Free Forex & Gold Signals
 
@@ -1228,12 +1239,12 @@ def test_invariant_31_excessive_slippage_chase_rejected():
     assert ("Anti-Chase Limit Exceeded" in sent_alert) or ("Target Exhausted" in sent_alert)
 
 
-def test_invariant_32_forecast_rejection():
+def test_invariant_32_forecast_adopts_price_action_sl():
     """
-    Verifies Invariant 32:
-    - High-timeframe conversational posts marked '(forecast)' without an author Stop Loss
-      must be rejected (return None) to prevent synthesizing tight stops on swing ideas.
-    - Actionable signals with explicit author Stop Loss (even from Anabel) must be accepted.
+    User Directive / Invariant 43:
+    - High-timeframe conversational posts marked '(forecast)' with target/pivot level
+      are accepted and tagged with sl_source='PRICE_ACTION_SL' to adopt Order Block / Fractal SL.
+    - Actionable signals with explicit author Stop Loss (even from Anabel) preserve provider SL.
     """
     # Incident message from today: EURUSD 4H forecast with no Stop Loss
     forecast_text = (
@@ -1248,7 +1259,12 @@ def test_invariant_32_forecast_rejection():
         "WISH YOU ALL LUCK🍀@anabelsignalscontact"
     )
     parsed_forecast = MultiChannelSignalParser.parse_message(forecast_text, "anabelsignals")
-    assert parsed_forecast is None, "Forecast without author Stop Loss must be rejected!"
+    assert parsed_forecast is not None, "Forecast with actionable target/level must be accepted with Price Action SL!"
+    assert parsed_forecast["symbol"] == "EURUSD"
+    assert parsed_forecast["side"] == "BUY"
+    assert parsed_forecast["sl_synthesized"] is True
+    assert parsed_forecast["sl_source"] == "PRICE_ACTION_SL"
+    assert parsed_forecast["is_valid"] is True
 
     # Actionable Gold signal from today: Gold 30m with Safe Stop Loss 4024.8
     signal_text = (
@@ -1341,5 +1357,55 @@ def test_invariant_37_poll_cycle_skips_exhausted_target():
         with patch.object(copier, "execute_signal") as mock_exec:
             copier.poll_cycle()
             mock_exec.assert_not_called()
+
+
+def test_anabel_signal_without_sl_executes_with_order_block_sl():
+    """
+    User Directive: When an Anabel signal arrives without author Stop Loss,
+    execute_signal must invoke PriceActionSLEngine to calculate the Order Block Stop Loss
+    rather than skipping or aborting the trade.
+    """
+    import pandas as pd
+    from unittest.mock import MagicMock
+
+    # Create M5 trendbars containing a confirmed Bullish Order Block at 3988.0
+    df_bars = pd.DataFrame([
+        {"open": 3992.0, "high": 3993.0, "low": 3988.0, "close": 3988.5, "volume": 100},
+        {"open": 3988.5, "high": 4002.0, "low": 3988.0, "close": 4001.0, "volume": 500},
+        {"open": 4001.0, "high": 4005.0, "low": 3999.0, "close": 4004.0, "volume": 300},
+    ])
+
+    mock_ctrader = MagicMock()
+    mock_ctrader.get_trendbars_dataframe.return_value = df_bars
+    mock_ctrader.get_spot_price.return_value = {"ask": 3996.0, "bid": 3995.8}
+    mock_ctrader.get_positions_strict.return_value = []
+    mock_ctrader.place_market_order.return_value = {"positionId": 9999}
+
+    copier = TelegramMultiSignalCopier(dry_run=False, ctrader_client=mock_ctrader)
+
+    # Anabel signal with NO Stop Loss
+    sig = {
+        "channel": "anabelsignals",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 3995.9,
+        "entry_max": 3995.9,
+        "entry_mid": 3995.9,
+        "sl": None,
+        "tps": [4005.2],
+        "type": "ANABEL_DIRECT",
+        "sl_synthesized": True,
+        "sl_source": "PRICE_ACTION_SL",
+        "is_valid": True
+    }
+
+    orders = copier.execute_signal(sig, spot_price=3995.9)
+    assert orders is not None
+    assert len(orders) >= 1
+    # Safe SL is anchored by PASL/Order Block, clamped strictly to max allowed distance (5.0 pts on Gold)
+    assert orders[0]["sl"] <= 3991.0
+    assert orders[0]["sl"] >= 3985.0
+
+
 
 
