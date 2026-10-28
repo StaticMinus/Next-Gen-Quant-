@@ -53,7 +53,7 @@ jobs:
           OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'deepseek/deepseek-chat' }}
           TRADINGAGENTS_MODEL: ${{ secrets.TRADINGAGENTS_MODEL || 'deepseek/deepseek-chat' }}
           TRADINGAGENTS_LLM_PROVIDER: openrouter
-          TRADINGAGENTS_MAX_TOKENS: '1500'
+          TRADINGAGENTS_MAX_TOKENS: '800'
           TRADINGAGENTS_TICKET1_LOT_SIZE: '0.05'
           TRADINGAGENTS_TICKET2_LOT_SIZE: '0.07'
           CTRADER_ACCOUNT_ID: ${{ secrets.CTRADER_TRADINGAGENTS_ACCOUNT_ID || '5947478' }}
