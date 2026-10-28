@@ -1407,5 +1407,64 @@ def test_anabel_signal_without_sl_executes_with_order_block_sl():
     assert orders[0]["sl"] >= 3985.0
 
 
+def test_forex_gold_trading_space_and_paywalled_sl():
+    """
+    Verifies that Forex Gold Trading (XAUUSD_GOLD_TRADING_FOREX) signal from 6:53 AM
+    with intra-digit spaces ('4 030') and paywalled SL is parsed accurately:
+    - Symbol: XAUUSD
+    - Side: SELL @ 4035.0
+    - TPs: [4030.0, 4027.0, 4020.0] (no corruption from spaces)
+    - SL: Synthesized to 4040.0 (5.0 pts max risk)
+    """
+    raw_msg = (
+        "#XAUUSD  SELL 4035 🚀 ¹/TAKE PROFIT     4 030 🔘 🚀 "
+        "²/TAKE PROFIT    4 027 🔘 🚀 3/TAKE PROFIT     4 020 "
+        "🛑 STOP LOSS VIP GROUP 🔘 Regular Quantity ❤️"
+    )
+    sig = MultiChannelSignalParser.parse_message(raw_msg, "XAUUSD_GOLD_TRADING_FOREX")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 4035.0
+    assert sig["tps"] == [4030.0, 4027.0, 4020.0]
+    assert sig["sl"] == 4040.0
+    assert sig["is_valid"] is True
+
+
+def test_tnvgold_bot_parenthesized_sl_tp():
+    """
+    Verifies that @TNVGold_bot automated messages with parenthesized '(SL)' and '(TP)'
+    correctly extract both Stop Loss and Take Profit without being discarded.
+    """
+    msg = (
+        "📡 AUTO SIGNAL (by @TNVGold_bot )\n"
+        "🔴 SHORT | Score: 10/10 ✅\n"
+        "🔹 Entry: $4033.80\n"
+        "🔹 Stop Loss (SL): $4036.58\n"
+        "🔹 Take Profit (TP): $4025.00"
+    )
+    sig = MultiChannelSignalParser.parse_message(msg, "fxscalpingpro")
+    assert sig is not None
+    assert sig["symbol"] == "XAUUSD"
+    assert sig["side"] == "SELL"
+    assert sig["entry_mid"] == 4033.80
+    assert sig["sl"] == 4036.58
+    assert sig["tps"] == [4025.00]
+    assert sig["is_valid"] is True
+
+
+def test_us30_forex_signals_gold_whitelist_authorized():
+    """
+    Verifies that US30_Forex_Signals has XAUUSD authorized in its asset whitelist,
+    preventing Invariant 30 false rejections on Gold setups.
+    """
+    from src.integrations.telegram_multi_signal_copier import CHANNELS_CONFIG
+    channel_map = {c["id"]: c for c in CHANNELS_CONFIG}
+    assert "XAUUSD" in channel_map["US30_Forex_Signals"]["assets"]
+    assert "XAUUSD_GOLD_TRADING_FOREX" in channel_map
+    assert channel_map["XAUUSD_GOLD_TRADING_FOREX"]["enabled"] is True
+
+
+
 
 

@@ -47,49 +47,49 @@ PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 
 CHANNELS_CONFIG = [
-    # === PURE INTRADAY & SESSION SCALPING FLEET (Resolves within active session • Invariant 28) ===
+    # === PURE INTRADAY & SESSION SCALPING FLEET (Active, Consistent & Audited) ===
     {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 25.0, "peak_session": "London Pre-Market"},
+    {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Forex Gold Trading", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 80.0, "peak_session": "London Open"},
     {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
     {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 35.7, "peak_session": "London Open"},
-    {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 57.1, "peak_session": "New York"},
-    {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 45.0, "peak_session": "London Open"},
-    {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 37.8, "peak_session": "London Open"},
-    {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 35.1, "peak_session": "New York/London"},
-    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 35.0, "peak_session": "London Open"},
-    {"id": "FreeForexSignals24", "name": "Free Forex Signals 24", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
-    {"id": "gold_forex_signals", "name": "Gold & Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/NY"},
-    {"id": "CryptoBullSignals", "name": "Crypto Bull Signals", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "24/7 Asian/NY"},
+    {"id": "US30_Forex_Signals", "name": "US30 Index & Gold Signals", "enabled": True, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 1, "yield_pct": 65.0, "peak_session": "New York Open"},
+    {"id": "royal_pips_fx", "name": "Royal Pips FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 78.9, "peak_session": "London Pre-Market"},
+    {"id": "fxscalpingpro", "name": "FX Scalping Pro", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
     {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "London/Asian"},
-    {"id": "pipchasers", "name": "PipChasers", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.0, "peak_session": "Asian/London"},
     {"id": "prosignalsfxx", "name": "ProSignalsFx", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 11.1, "peak_session": "London/NY"},
-    {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 66.7, "peak_session": "New York"},
-    {"id": "US30_Forex_Signals", "name": "US30 Index Signals", "enabled": True, "assets": ["US30", "NAS100"], "tier": 2, "yield_pct": 20.0, "peak_session": "New York Open"},
-    {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "New York Killzone"},
     {"id": "signalsproviderfx", "name": "Signals Provider FX", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 76.5, "peak_session": "London/Tokyo"},
     {"id": "forexgdpfree", "name": "Forex GDP Free Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 84.0, "peak_session": "London/NY"},
-    # === CATEGORY A: SNIPER ENTRY SPECIALISTS (Order Blocks, SMC, Tight SL) ===
     {"id": "elite_pips_hunter", "name": "Elite Pips Hunter", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
-    {"id": "fxscalpingpro", "name": "FX Scalping Pro", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
-    {"id": "royal_pips_fx", "name": "Royal Pips FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 78.9, "peak_session": "London Pre-Market"},
-    {"id": "price_action_traders", "name": "Price Action Traders", "enabled": True, "assets": ["EURUSD", "GBPUSD", "XAUUSD"], "tier": 1, "yield_pct": 35.0, "peak_session": "London Open"},
     {"id": "smart_pips_signals", "name": "Smart Pips Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 40.0, "peak_session": "New York Open"},
-    {"id": "purepipsofficial", "name": "Pure Pips Official", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 40.0, "peak_session": "London/NY"},
-    {"id": "alphatradesfx", "name": "Alpha Trades FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 41.2, "peak_session": "New York Open"},
-    # === CATEGORY B: MULTI-DAY SWING TRADERS (Forex GDP Style, 60-150+ Pip Targets) ===
-    {"id": "oanda", "name": "Oanda Swings", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 100.0, "peak_session": "London/Tokyo"},
-    {"id": "DailyForexPipsFree", "name": "Daily Forex Pips Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
-    {"id": "UniversalForexSignals", "name": "Universal Forex Signals", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London Open"},
-    {"id": "vipfx1", "name": "VIP FX Crosses", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 75.0, "peak_session": "London/Tokyo"},
     {"id": "ultreos_forex", "name": "Ultreos Forex", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London Open"},
-    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 42.5, "peak_session": "London/NY"},
-    {"id": "purefxvip", "name": "Pure FX VIP", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 55.0, "peak_session": "London Open"},
-    # === CATEGORY C: MACRO & CPI VOLATILITY SPECIALISTS (US CPI, NFP, Indices) ===
-    {"id": "dow_jones_signals", "name": "Dow Jones Signals", "enabled": True, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 1, "yield_pct": 45.0, "peak_session": "New York Open"},
-    {"id": "protrades1", "name": "Pro Trades Macro", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 70.0, "peak_session": "New York/London"},
     {"id": "fx_signals", "name": "FX Signals Macro", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "London/NY"},
     {"id": "wallstreet_pips", "name": "Wall Street Pips", "enabled": True, "assets": ["NAS100", "US30", "XAUUSD", "ALL"], "tier": 1, "yield_pct": 42.1, "peak_session": "New York Open"},
-    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals Free", "enabled": True, "assets": ["ALL"], "tier": 1, "yield_pct": 38.9, "peak_session": "London Open"},
-    {"id": "UniversalCryptoSignals", "name": "Universal Crypto Macro", "enabled": True, "assets": ["BTCUSD", "ETHUSD", "XAUUSD"], "tier": 1, "yield_pct": 30.0, "peak_session": "24/7 Asian/NY"}
+
+    # === DORMANT / INACTIVE CHANNELS (Disabled to prevent wasted polling & latency) ===
+    {"id": "XAUUSDSignalsFree", "name": "XAUUSD Signals Free", "enabled": False, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "ForexEliteSignals", "name": "Forex Elite Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "PrimeForexSignals", "name": "Prime Forex Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "xauusd_signals", "name": "Gold Signals VIP", "enabled": False, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "elitetrading_signals", "name": "Elite Trading Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "FreeForexSignals24", "name": "Free Forex Signals 24", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "gold_forex_signals", "name": "Gold & Forex Signals", "enabled": False, "assets": ["XAUUSD", "ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "CryptoBullSignals", "name": "Crypto Bull Signals", "enabled": False, "assets": ["BTCUSD", "ETHUSD", "ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "pipchasers", "name": "PipChasers", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "BestForexSignalsFree", "name": "Best Forex Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "ICT_Forex_Signals", "name": "ICT Forex Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "price_action_traders", "name": "Price Action Traders", "enabled": False, "assets": ["EURUSD", "GBPUSD", "XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "purepipsofficial", "name": "Pure Pips Official", "enabled": False, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "alphatradesfx", "name": "Alpha Trades FX", "enabled": False, "assets": ["XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "oanda", "name": "Oanda Swings", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "DailyForexPipsFree", "name": "Daily Forex Pips Free", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "UniversalForexSignals", "name": "Universal Forex Signals", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "vipfx1", "name": "VIP FX Crosses", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "ForexPipsFactory", "name": "Forex Pips Factory", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "purefxvip", "name": "Pure FX VIP", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "dow_jones_signals", "name": "Dow Jones Signals", "enabled": False, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "protrades1", "name": "Pro Trades Macro", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals Free", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
+    {"id": "UniversalCryptoSignals", "name": "Universal Crypto Macro", "enabled": False, "assets": ["BTCUSD", "ETHUSD", "XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"}
 ]
 
 
@@ -114,6 +114,8 @@ class MultiChannelSignalParser:
         t = re.sub(r'(\d+),(\d+)', r'\1\2', t)
         # Fix numbers split across newlines by channel admins (e.g. "41\n38" -> "4138")
         t = re.sub(r'(\b\d{2})\s*\n\s*(\d{2}\b)', r'\1\2', t)
+        # Fix numbers with spaces between digits (e.g. "4 030" -> "4030", "4 027" -> "4027")
+        t = re.sub(r'(\b[1-9]\d?)\s+(\d{3}(?:\.\d+)?\b)', r'\1\2', t)
         # Expand shorthand ranges (e.g. "4150-60" -> "4150-4160")
         t = re.sub(r'(\b\d{2})(\d{2})\s*-\s*(\d{2}\b)', r'\1\2-\1\3', t)
         # Normalize en-dash and em-dash to regular hyphen
@@ -527,8 +529,8 @@ class MultiChannelSignalParser:
 
         # Standardized parameter tags
         m_entry_tag = re.search(r"(?:Entry(?:\s*Level)?|CURRENT\s*PRICE|Precio(?:\s*de\s*referencia)?|Precio|BUY\s*AREA|SELL\s*AREA)\s*[:=\-@]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_sl_tag = re.search(r"(?:Stop\s*Loss|Stoploss|SL|Safe\s*Stop\s*Loss|Recommended\s*Stop\s*Loss)\s*[:=\-]?\s*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        m_tp_tag = re.findall(r"(?:\b(?:Take\s*Profit|Target(?:\s*Level)?|TP|Goal)(?:\s*[1-9¹²³⁴])?\b|\bTP[1-9]\b)[\s:=-–—]*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_sl_tag = re.search(r"(?:Stop\s*Loss|Stoploss|SL|Safe\s*Stop\s*Loss|Recommended\s*Stop\s*Loss)(?:\s*\([A-Z]+\))?\s*[:=\-]?\s*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+        m_tp_tag = re.findall(r"(?:\b(?:Take\s*Profit|Target(?:\s*Level)?|TP|Goal)(?:\s*\([A-Z]+\))?(?:\s*[1-9¹²³⁴](?!\d))?|\bTP[1-9]\b)[\s:=-–—]*[\(\[]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
 
         # 5. TAG STRUCTURED FORMAT (EliteTradingSignals, ProSignalsFx, xauusd_signals, TopTradingSignals, BestForexSignals)
         if m_entry_tag and side:
@@ -792,7 +794,8 @@ class TelegramMultiSignalCopier:
             from concurrent.futures import ThreadPoolExecutor
             def init_wm(ch):
                 ch_id = ch["id"]
-                if not watermarks.get(ch_id):
+                wm = str(watermarks.get(ch_id, ""))
+                if not wm or not wm.lower().startswith(f"{ch_id.lower()}/"):
                     try:
                         msgs = self.fetch_channel_posts(ch_id)
                         if msgs:

@@ -32,6 +32,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   cloud_copier:
@@ -82,3 +83,11 @@ jobs:
           DURATION="${{ inputs.duration_hours || '5.8' }}"
           echo "Starting AgentQuant Cloud Runner with action=$ACTION, duration=$DURATION hours..."
           python scripts/run_github_actions_copier.py --action "$ACTION" --duration-hours "$DURATION"
+
+      - name: Trigger Next Seamless Cloud Cycle
+        if: always() && inputs.action != 'diagnostic_check_only'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering next seamless continuous cloud cycle..."
+          gh workflow run gold_cloud_copier.yml -f action=start_live_copier -f duration_hours=5.8 || true
