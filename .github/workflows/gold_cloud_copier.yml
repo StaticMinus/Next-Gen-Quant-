@@ -28,7 +28,7 @@ on:
 
 concurrency:
   group: gold-cloud-copier
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -49,6 +49,14 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+
+      - name: Restore Copier State Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cache/multi_signal_copier_state.json
+          key: copier-state-${{ github.run_id }}
+          restore-keys: |
+            copier-state-
 
       - name: Install System & Python Dependencies
         run: |
@@ -74,6 +82,7 @@ jobs:
           # Execution Rules
           GOLD_COPIER_TICKET_MODE: ${{ secrets.GOLD_COPIER_TICKET_MODE || 'TWO_TICKETS' }}
           GOLD_COPIER_LOT_SIZE: '0.07'
+          MAX_CONCURRENT_POSITIONS: '6'
           DAILY_DRAWDOWN_FLOOR: ${{ secrets.DAILY_DRAWDOWN_FLOOR || '5650.0' }}
           AI_SIGNAL_EXTRACTION_ENABLED: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -83,6 +92,13 @@ jobs:
           DURATION="${{ inputs.duration_hours || '5.8' }}"
           echo "Starting AgentQuant Cloud Runner with action=$ACTION, duration=$DURATION hours..."
           python scripts/run_github_actions_copier.py --action "$ACTION" --duration-hours "$DURATION"
+
+      - name: Save Copier State Cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache/multi_signal_copier_state.json
+          key: copier-state-${{ github.run_id }}
 
       - name: Trigger Next Seamless Cloud Cycle
         if: always() && inputs.action != 'diagnostic_check_only'

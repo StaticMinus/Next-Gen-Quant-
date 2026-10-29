@@ -203,7 +203,8 @@ class CTraderMCPClient:
     def get_spot_price(self, symbol: str) -> Optional[dict]:
         """
         Returns latest bid and ask for symbol (e.g. 'SPX500', 'NDX100', 'XAUUSD').
-        Checks real-time streaming cache first for sub-millisecond instant return.
+        Checks real-time streaming cache first for sub-millisecond instant return,
+        retries transient empty MCP responses up to 3x, and falls back to latest M1 trendbar close.
         """
         try:
             from src.integrations.ctrader_streamer import get_streamed_spot_price
@@ -217,25 +218,59 @@ class CTraderMCPClient:
         sym_id = s_map.get(symbol.upper())
         if not sym_id:
             return None
-        raw = self.call_tool("get_spot_prices", {"symbolId": [sym_id]})
-        data = self._parse_content_json(raw)
-        if data and isinstance(data, dict) and "prices" in data and len(data["prices"]) > 0:
-            p = data["prices"][0]
-            # S&P and indices/gold are 5 decimal digits
-            div = 100000.0
-            bid_v = p.get("bid")
-            ask_v = p.get("ask")
-            high_v = p.get("high")
-            low_v = p.get("low")
-            return {
-                "symbol": symbol,
-                "symbolId": sym_id,
-                "bid": (float(bid_v) / div) if bid_v is not None else 0.0,
-                "ask": (float(ask_v) / div) if ask_v is not None else 0.0,
-                "high": (float(high_v) / div) if high_v is not None else 0.0,
-                "low": (float(low_v) / div) if low_v is not None else 0.0,
-                "timestamp": p.get("timestamp")
-            }
+
+        div = 100000.0
+        for attempt in range(3):
+            raw = self.call_tool("get_spot_prices", {"symbolId": [sym_id]})
+            data = self._parse_content_json(raw)
+            if data and isinstance(data, dict) and "prices" in data and len(data["prices"]) > 0:
+                p = next(
+                    (item for item in data["prices"] if isinstance(item, dict) and item.get("symbolId") in (sym_id, None)),
+                    None
+                )
+                if p is None:
+                    continue
+                bid_v = p.get("bid")
+                ask_v = p.get("ask")
+                high_v = p.get("high")
+                low_v = p.get("low")
+                bid_f = (float(bid_v) / div) if bid_v is not None else 0.0
+                ask_f = (float(ask_v) / div) if ask_v is not None else 0.0
+                if bid_f > 0 or ask_f > 0:
+                    if bid_f <= 0:
+                        bid_f = ask_f
+                    if ask_f <= 0:
+                        ask_f = bid_f
+                    return {
+                        "symbol": symbol,
+                        "symbolId": sym_id,
+                        "bid": bid_f,
+                        "ask": ask_f,
+                        "high": (float(high_v) / div) if high_v is not None else 0.0,
+                        "low": (float(low_v) / div) if low_v is not None else 0.0,
+                        "timestamp": p.get("timestamp")
+                    }
+            if "PYTEST_CURRENT_TEST" not in os.environ and attempt < 2:
+                time.sleep(0.2)
+
+        # Fallback: derive synthetic spot from latest M1 trendbar close when spot quote feed hiccups
+        try:
+            df = self.get_trendbars_dataframe(symbol, period="M_1", count=2)
+            if df is not None and hasattr(df, "empty") and not df.empty and "close" in df:
+                last_close = float(df["close"].iloc[-1])
+                if last_close > 0:
+                    return {
+                        "symbol": symbol,
+                        "symbolId": sym_id,
+                        "bid": last_close,
+                        "ask": last_close,
+                        "high": float(df["high"].iloc[-1]) if "high" in df else last_close,
+                        "low": float(df["low"].iloc[-1]) if "low" in df else last_close,
+                        "timestamp": int(time.time() * 1000),
+                        "source": "trendbar_fallback"
+                    }
+        except Exception:
+            pass
         return None
 
     def get_positions_strict(self) -> Optional[List[dict]]:
@@ -303,9 +338,12 @@ class CTraderMCPClient:
             if "XAU" in sym_name or "GOLD" in sym_name:
                 lots = raw_vol / 10000.0
                 multiplier = 100.0  # 100 oz per lot
-            elif "SPX" in sym_name or "NDX" in sym_name or "US30" in sym_name:
+            elif "SPX" in sym_name or "NDX" in sym_name or "US30" in sym_name or "BTC" in sym_name or "ETH" in sym_name:
                 lots = raw_vol / 100.0
-                multiplier = 1.0    # 1 index contract per lot
+                multiplier = 1.0    # 1 index/crypto contract per lot
+            elif self.get_symbol_digits(sym_name) in (3, 5):
+                lots = raw_vol / 10000000.0
+                multiplier = 100000.0
             else:
                 lots = raw_vol / 100.0
                 multiplier = 1.0    # 1 share per lot
@@ -435,16 +473,29 @@ class CTraderMCPClient:
                     "Order rejected to prevent over-concurrency."
                 )
 
+            def _is_risk_free_be_runner(pos: dict) -> bool:
+                try:
+                    ep = float(pos.get("entryPrice") or 0.0)
+                    slp = float(pos.get("stopLoss") or 0.0)
+                    if ep <= 0 or slp <= 0:
+                        return False
+                    p_side = str(pos.get("tradeSide", "BUY")).upper()
+                    return (slp >= ep) if p_side == "BUY" else (slp <= ep)
+                except Exception:
+                    return False
+
+            at_risk_positions = [p for p in live_positions if not _is_risk_free_be_runner(p)]
+
             MAX_ALLOWED_CONCURRENT = int(os.getenv("MAX_CONCURRENT_POSITIONS", "6"))
-            if len(live_positions) >= MAX_ALLOWED_CONCURRENT:
+            if len(at_risk_positions) >= MAX_ALLOWED_CONCURRENT:
                 raise RiskViolationError(
                     f"CONCURRENCY VIOLATION: Cannot open {symbol}. Account already has "
-                    f"{len(live_positions)}/{MAX_ALLOWED_CONCURRENT} active positions."
+                    f"{len(at_risk_positions)}/{MAX_ALLOWED_CONCURRENT} active positions."
                 )
 
             s_map = self.get_symbol_map()
             target_sym_id = s_map.get(symbol.upper())
-            for p in live_positions:
+            for p in at_risk_positions:
                 p_sym_id = p.get("symbolId")
                 p_sym_name = str(p.get("symbolName", "")).upper() if p.get("symbolName") else None
                 if (target_sym_id and p_sym_id == target_sym_id) or (p_sym_name and p_sym_name == symbol.upper()):
@@ -776,19 +827,47 @@ class CTraderMCPClient:
         """
         existing_sl = None
         existing_tp = None
-        if stop_loss is None or take_profit is None:
+        resolved_sym = symbol
+        if stop_loss is None or take_profit is None or not resolved_sym:
             raw_det = self.call_tool("get_position_details", {"positionId": position_id})
             data_det = self._parse_content_json(raw_det)
             if data_det and isinstance(data_det, dict):
                 pos_obj = data_det.get("position", data_det)
-                if pos_obj:
+                if pos_obj and isinstance(pos_obj, dict):
                     existing_sl = pos_obj.get("stopLoss")
                     existing_tp = pos_obj.get("takeProfit")
+                    if not resolved_sym:
+                        if pos_obj.get("symbolName"):
+                            resolved_sym = str(pos_obj["symbolName"]).upper()
+                        elif pos_obj.get("symbolId"):
+                            try:
+                                s_map = self.get_symbol_map()
+                                id_to_sym = {v: k for k, v in s_map.items()}
+                                resolved_sym = id_to_sym.get(pos_obj.get("symbolId"))
+                            except Exception:
+                                pass
+                # cTrader get_position_details stores active SL/TP on the STOP_LOSS_TAKE_PROFIT order in data_det["orders"]
+                orders_list = data_det.get("orders", []) if isinstance(data_det.get("orders"), list) else []
+                for ord_obj in orders_list:
+                    if isinstance(ord_obj, dict) and ord_obj.get("orderType") == "STOP_LOSS_TAKE_PROFIT":
+                        if existing_sl is None and ord_obj.get("stopPrice") is not None:
+                            existing_sl = ord_obj.get("stopPrice")
+                        if existing_tp is None and ord_obj.get("limitPrice") is not None:
+                            existing_tp = ord_obj.get("limitPrice")
 
         final_sl = stop_loss if stop_loss is not None else existing_sl
         final_tp = take_profit if take_profit is not None else existing_tp
 
-        digits = self.get_symbol_digits(symbol) if symbol else 2
+        if resolved_sym:
+            digits = self.get_symbol_digits(resolved_sym)
+        else:
+            ref_p = float(final_sl if final_sl is not None else (final_tp if final_tp is not None else 0.0))
+            if 0.0 < ref_p < 20.0:
+                digits = 5
+            elif 20.0 <= ref_p < 400.0 and len(str(ref_p).split(".")[-1]) == 3:
+                digits = 3
+            else:
+                digits = 2
         args = {"positionId": int(position_id)}
         if final_sl is not None:
             args["stopLoss"] = round(float(final_sl), digits)
@@ -906,9 +985,12 @@ class CTraderMCPClient:
                 if "XAU" in sym_name or "GOLD" in sym_name:
                     lots = raw_vol / 10000.0
                     mult = 100.0
-                elif any(k in sym_name for k in ["SPX", "NDX", "US30", "US2000"]):
+                elif any(k in sym_name for k in ["SPX", "NDX", "US30", "US2000", "BTC", "ETH"]):
                     lots = raw_vol / 100.0
                     mult = 1.0
+                elif self.get_symbol_digits(sym_name) in (3, 5):
+                    lots = raw_vol / 10000000.0
+                    mult = 100000.0
                 else:
                     lots = raw_vol / 100.0
                     mult = 1.0

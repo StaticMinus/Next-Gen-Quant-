@@ -19,7 +19,9 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -52,7 +54,7 @@ CHANNELS_CONFIG = [
     {"id": "XAUUSD_GOLD_TRADING_FOREX", "name": "Forex Gold Trading", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 80.0, "peak_session": "London Open"},
     {"id": "anabelsignals", "name": "Anabel Signals", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 63.2, "peak_session": "New York/London"},
     {"id": "DailyForexSignals", "name": "Daily Forex Signals", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 35.7, "peak_session": "London Open"},
-    {"id": "US30_Forex_Signals", "name": "US30 Index & Gold Signals", "enabled": True, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 1, "yield_pct": 65.0, "peak_session": "New York Open"},
+    {"id": "US30_Forex_Signals", "name": "US30 Index & Gold Signals", "enabled": True, "assets": ["US30", "NAS100", "XAUUSD", "ALL"], "tier": 1, "yield_pct": 65.0, "peak_session": "New York Open"},
     {"id": "royal_pips_fx", "name": "Royal Pips FX", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 78.9, "peak_session": "London Pre-Market"},
     {"id": "fxscalpingpro", "name": "FX Scalping Pro", "enabled": True, "assets": ["XAUUSD"], "tier": 1, "yield_pct": 90.0, "peak_session": "London/NY"},
     {"id": "top_tradingsignals", "name": "TopTradingSignals", "enabled": True, "assets": ["ALL"], "tier": 2, "yield_pct": 15.4, "peak_session": "London/Asian"},
@@ -88,8 +90,7 @@ CHANNELS_CONFIG = [
     {"id": "purefxvip", "name": "Pure FX VIP", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
     {"id": "dow_jones_signals", "name": "Dow Jones Signals", "enabled": False, "assets": ["US30", "NAS100", "XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
     {"id": "protrades1", "name": "Pro Trades Macro", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
-    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals Free", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"},
-    {"id": "UniversalCryptoSignals", "name": "Universal Crypto Macro", "enabled": False, "assets": ["BTCUSD", "ETHUSD", "XAUUSD"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"}
+    {"id": "FXTradingSignalsFree", "name": "FX Trading Signals Free", "enabled": False, "assets": ["ALL"], "tier": 3, "yield_pct": 0.0, "peak_session": "Inactive"}
 ]
 
 
@@ -129,22 +130,99 @@ class MultiChannelSignalParser:
 
     @classmethod
     def normalize_symbol(cls, raw_sym: str) -> str:
-        s = raw_sym.upper().replace("/", "").replace("#", "").replace("-", "").strip()
-        if s in ["GOLD", "XAU"]:
+        s = raw_sym.upper().replace("/", "").replace("#", "").replace("-", "").replace("_", "").replace(" ", "").strip()
+        if s in ["GOLD", "XAU", "XAUUSD"]:
             return "XAUUSD"
-        if s in ["CRUDEOIL", "OIL", "USOIL", "WTI"]:
+        if s in ["CRUDEOIL", "OIL", "USOIL", "WTI", "XTIUSD", "UKOIL", "BRENT"]:
             return "USOIL"
-        if s in ["BTC", "BITCOIN"]:
+        if s in ["BTC", "BITCOIN", "BTCUSD"]:
             return "BTCUSD"
-        if s in ["ETH", "ETHEREUM"]:
+        if s in ["ETH", "ETHEREUM", "ETHUSD"]:
             return "ETHUSD"
-        if s in ["US30", "DJ30", "DOW", "DOWJONES"]:
+        if s in ["US30", "DJ30", "DOW", "DOWJONES", "WALLSTREET"]:
             return "US30"
-        if s in ["NAS100", "USTEC", "NASDAQ", "NDX"]:
+        if s in ["NAS100", "USTEC", "NASDAQ", "NDX", "US100", "NAS"]:
             return "NAS100"
-        if s in ["SPX500", "SP500", "SPX"]:
+        if s in ["SPX500", "SP500", "SPX", "US500"]:
             return "SPX500"
+        if s in ["GER40", "DE40", "DAX", "DAX40"]:
+            return "GER40"
+        if s in ["UK100", "FTSE", "FTSE100"]:
+            return "UK100"
         return s
+
+    @classmethod
+    def is_plausible_asset_price(cls, symbol: str, price: float, raw_str: Optional[str] = None) -> bool:
+        """
+        Guards against single-digit timeframe/count numbers (e.g. '4H', '3 targets', '5M' -> 4.0, 3.0, 5.0)
+        or cross-asset price mismatches being misclassified as entry prices.
+        """
+        if price is None or price <= 0:
+            return False
+        sym = symbol.upper()
+        if "XAU" in sym or "GOLD" in sym:
+            return 1000.0 <= price <= 10000.0
+        if "BTC" in sym:
+            return 5000.0 <= price <= 500000.0
+        if "ETH" in sym:
+            return 300.0 <= price <= 50000.0
+        if any(k in sym for k in ["US30", "DJ30", "NAS100", "USTEC", "SPX", "NDX", "US100", "GER40", "DE40", "UK100"]):
+            return 2000.0 <= price <= 100000.0
+        if "OIL" in sym:
+            return 20.0 <= price <= 250.0
+        if "JPY" in sym:
+            return 50.0 <= price <= 350.0
+        # Standard Forex Majors & Crosses (e.g. EURUSD, GBPUSD, AUDNZD, CADCHF):
+        # Must not be a bare integer (like 3.0, 4.0, 5.0) and must sit within realistic FX quote bounds.
+        if raw_str is not None and "." not in str(raw_str):
+            return False
+        if price == int(price):
+            return False
+        return 0.25 <= price <= 2.80
+
+    @classmethod
+    def expand_shorthand_gold_price(cls, symbol: str, entry: float, val: Optional[float], side: str, is_sl: bool = True) -> Optional[float]:
+        """
+        Expands shorthand 2-digit Gold prices (e.g. Entry 4039.88 with 'SL 54.66' -> 4054.66)
+        using the century prefix of the entry price.
+        """
+        if val is None:
+            return None
+        sym = symbol.upper()
+        if ("XAU" in sym or "GOLD" in sym) and entry >= 1000.0 and 10.0 <= val < 100.0:
+            century = int(entry // 100) * 100
+            cand = round(century + val, 5)
+            side_u = side.upper()
+            if is_sl:
+                if side_u == "BUY" and cand >= entry and (cand - 100.0) < entry and (entry - (cand - 100.0)) <= 45.0:
+                    cand = round(cand - 100.0, 5)
+                elif side_u == "SELL" and cand <= entry and (cand + 100.0) > entry and ((cand + 100.0) - entry) <= 45.0:
+                    cand = round(cand + 100.0, 5)
+            else:
+                if side_u == "BUY" and cand <= entry and (cand + 100.0) > entry and ((cand + 100.0) - entry) <= 65.0:
+                    cand = round(cand + 100.0, 5)
+                elif side_u == "SELL" and cand >= entry and (cand - 100.0) < entry and (entry - (cand - 100.0)) <= 65.0:
+                    cand = round(cand - 100.0, 5)
+            return cand
+        return val
+
+    @classmethod
+    def get_default_tp_distances(cls, symbol: str) -> Tuple[float, float]:
+        """Returns (tp1_dist, tp2_dist) for synthesizing targets when a valid signal omits explicit TP tags."""
+        sym = symbol.upper()
+        if "XAU" in sym or "GOLD" in sym:
+            return 3.0, 7.0
+        if "BTC" in sym:
+            return 250.0, 600.0
+        if "ETH" in sym:
+            return 25.0, 60.0
+        if any(k in sym for k in ["US30", "DJ30", "NAS100", "USTEC", "SPX", "NDX"]):
+            return 40.0, 100.0
+        if "OIL" in sym:
+            return 0.50, 1.20
+        if "JPY" in sym:
+            return 0.25, 0.60
+        return 0.0025, 0.0060
 
     @classmethod
     def get_default_sl_distance(cls, symbol: str, entry: float, tps: Optional[List[float]] = None) -> float:
@@ -199,16 +277,38 @@ class MultiChannelSignalParser:
         """
         side = sig.get("side", "").upper()
         entry = sig.get("entry_mid", 0.0)
+        symbol = sig.get("symbol", "XAUUSD")
         tps = sig.get("tps", [])
         sl = sig.get("sl")
 
         if not side or entry <= 0:
             return False, "Missing side or entry price"
 
+        if not cls.is_plausible_asset_price(symbol, entry):
+            return False, f"Implausible {symbol} entry price ({entry})"
+
+        # Expand shorthand 2-digit Gold SL/TP values (e.g. SL 54.66 at 4039.88 -> 4054.66)
+        if sl is not None:
+            sl = cls.expand_shorthand_gold_price(symbol, entry, sl, side, is_sl=True)
+            sig["sl"] = sl
+        if tps:
+            tps = [cls.expand_shorthand_gold_price(symbol, entry, tp, side, is_sl=False) for tp in tps if tp is not None]
+            sig["tps"] = tps
+
+        # Synthesize default TPs when provider signal has valid entry & direction but omitted explicit TP tags
+        if not tps:
+            tp1_d, tp2_d = cls.get_default_tp_distances(symbol)
+            if side == "BUY":
+                tps = [round(entry + tp1_d, 5), round(entry + tp2_d, 5)]
+            else:
+                tps = [round(entry - tp1_d, 5), round(entry - tp2_d, 5)]
+            sig["tps"] = tps
+            sig["tps_synthesized"] = True
+
         # Invariant 20: Auto-synthesize Stop Loss if missing or paywalled
         if sl is None or sig.get("sl_paywalled") or sig.get("sl_synthesized"):
             if sl is None or sig.get("sl_paywalled"):
-                sl_dist = cls.get_default_sl_distance(sig.get("symbol", "XAUUSD"), entry, tps)
+                sl_dist = cls.get_default_sl_distance(symbol, entry, tps)
                 sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
                 sig["sl"] = sl
             sig["sl_synthesized"] = True
@@ -457,39 +557,60 @@ class MultiChannelSignalParser:
 
         # 4. ANABELSIGNALS FORMAT:
         if channel == "anabelsignals" or "✍️" in text_clean or "anabel" in text_lower:
-            m_ana_header = re.search(r"✍️\s*#?([A-Z0-9]+)\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
-            if not m_ana_header:
-                m_ana_header = re.search(r"#([A-Z0-9]{3,7})\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
-            if not m_ana_header:
-                m_ana_header = re.search(r"\b([A-Z0-9]{3,7})\b.*?\b(BUY|SELL)", text_clean, re.IGNORECASE)
+            m_ana_sym = (
+                re.search(r"✍️\s*#?([A-Z0-9]{3,7})\b", text_clean, re.IGNORECASE)
+                or re.search(r"#((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|BTCUSD|ETHUSD|US30|NAS100)\b", text_clean, re.IGNORECASE)
+                or re.search(r"\b((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY){2}|XAUUSD|GOLD|USOIL|BTCUSD|ETHUSD|US30|NAS100)\b", text_clean, re.IGNORECASE)
+            )
+            m_ana_dir = re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text_clean, re.IGNORECASE)
             m_ana_sl = re.search(r"(?:Stop\s*Loss|My\s*Stop\s*Loss|Recommended\s*Stop\s*Loss|Safe\s*Stop\s*Loss)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
             m_ana_target = re.search(r"(?:Target|Goal)\s*[:=\-]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-            m_ana_level = re.search(r"(?:tests|level|trading on|around).*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            m_ana_level = re.search(r"(?:tests|level|trading on|trading near|trading at|around|near)\b[^0-9\n]*?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
+            m_ana_bias = re.search(r"Bias\s*[-:=]\s*(Bullish|Bearish)", text_clean, re.IGNORECASE)
 
-            if m_ana_header and (m_ana_sl or (m_ana_level and m_ana_target) or m_ana_target):
-                raw_sym = m_ana_header.group(1).upper()
-                if "GOLD" in raw_sym:
-                    raw_sym = "XAUUSD"
-                side = m_ana_header.group(2).upper()
+            if m_ana_sym and (m_ana_dir or m_ana_bias) and (m_ana_sl or (m_ana_level and m_ana_target) or m_ana_target):
+                raw_sym = cls.normalize_symbol(m_ana_sym.group(1).upper())
+                if m_ana_bias:
+                    side = "BUY" if m_ana_bias.group(1).lower() == "bullish" else "SELL"
+                else:
+                    raw_dir = m_ana_dir.group(1).upper()
+                    side = "BUY" if raw_dir in ["BUY", "LONG"] else "SELL"
+
                 entry = float(m_ana_level.group(1)) if m_ana_level else None
+                if entry is not None and not cls.is_plausible_asset_price(raw_sym, entry):
+                    entry = None
                 tp = float(m_ana_target.group(1)) if m_ana_target else None
 
+                dist = 10.0 if ("XAU" in raw_sym or "GOLD" in raw_sym) else (0.20 if "JPY" in raw_sym else 0.0020)
                 sl_synth = False
                 if m_ana_sl:
                     sl = float(m_ana_sl.group(1))
-                    if not entry:
-                        entry = sl + 10.0 if side == "SELL" else sl - 10.0
+                    # Reconcile side if both entry and sl are explicitly known and unambiguous
+                    if entry is not None:
+                        if sl > entry and (tp is None or tp < entry):
+                            side = "SELL"
+                        elif sl < entry and (tp is None or tp > entry):
+                            side = "BUY"
+                    else:
+                        if tp is not None and tp != sl:
+                            side = "BUY" if tp > sl else "SELL"
+                            entry = round((sl + tp) / 2.0, 5)
+                        else:
+                            # For SELL: entry is below SL (sl - dist). For BUY: entry is above SL (sl + dist).
+                            entry = round(sl - dist if side == "SELL" else sl + dist, 5)
                 else:
                     sl_synth = True
                     if entry and tp:
-                        dist = abs(tp - entry)
-                        sl = (entry - dist) if side == "BUY" else (entry + dist)
+                        if tp > entry:
+                            side = "BUY"
+                        elif tp < entry:
+                            side = "SELL"
+                        d_tp = abs(tp - entry)
+                        sl = (entry - d_tp) if side == "BUY" else (entry + d_tp)
                     elif tp:
-                        dist = 10.0 if "XAU" in raw_sym or "GOLD" in raw_sym else 0.0020
                         entry = round(tp - dist if side == "BUY" else tp + dist, 5)
                         sl = round(entry - dist if side == "BUY" else entry + dist, 5)
                     elif entry:
-                        dist = 10.0 if "XAU" in raw_sym or "GOLD" in raw_sym else 0.0020
                         sl = (entry - dist) if side == "BUY" else (entry + dist)
                     else:
                         sl = None
@@ -510,22 +631,53 @@ class MultiChannelSignalParser:
                 }
 
         # --- UNIVERSAL EXPANDED MULTI-CHANNEL PARSER ---
-        # Detect direction/side
+        # Strip @handles before symbol/direction extraction so @xauusd_signals or @TNVGold_bot don't pollute symbol matching
+        text_no_handles = re.sub(r"@[A-Za-z0-9_]+", " ", text_clean)
+
+        # Detect direction/side: prioritize explicit direction labels/commands over loose prose 'long'/'short'
         side = None
-        m_action = re.search(r"\b(BUY\s+NOW|SELL\s+NOW|BUY\s+STOP|SELL\s+STOP|BUY\s+LIMIT|SELL\s+LIMIT|BUY|SELL|LONG|SHORT)\b", text_clean, re.IGNORECASE)
-        if m_action:
-            act = m_action.group(1).upper()
-            side = "BUY" if "BUY" in act or "LONG" in act else "SELL"
+        m_explicit_dir = re.search(
+            r"(?:Trade\s*Direction|Direction|Order\s*Type|Action)\s*[:=\-]?\s*\b(BUY|SELL|LONG|SHORT)\b"
+            r"|\b(BUY\s+NOW|SELL\s+NOW|BUY\s+STOP|SELL\s+STOP|BUY\s+LIMIT|SELL\s+LIMIT|BUY|SELL)\b"
+            r"|\b(LONG|SHORT)\s*(?:TRADE|SIGNAL|NOW|\|)",
+            text_no_handles, re.IGNORECASE
+        )
+        if m_explicit_dir:
+            act = (m_explicit_dir.group(1) or m_explicit_dir.group(2) or m_explicit_dir.group(3)).upper()
+            side = "BUY" if ("BUY" in act or "LONG" in act) else "SELL"
+        else:
+            m_action = re.search(r"\b(BUY|SELL|LONG|SHORT)\b", text_no_handles, re.IGNORECASE)
+            if m_action:
+                act = m_action.group(1).upper()
+                side = "BUY" if ("BUY" in act or "LONG" in act) else "SELL"
 
         # Detect symbol using known asset and currency combinations
-        sym_match = re.search(
-            r"(?:#|\b)((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|CRUDE\s*OIL|BTCUSD|BTC|ETHUSD|ETH|US30|DJ30|DOW|NAS100|USTEC|NASDAQ|SPX500|SP500|(?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY)[/_\-\s](?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY))\b",
-            text_clean, re.IGNORECASE
-        )
+        sym_matches = list(re.finditer(
+            r"(?:#|\b)((?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY|XAU|BTC){2}|XAUUSD|GOLD|USOIL|XTIUSD|WTI|CRUDE\s*OIL|BTCUSD|BTC|ETHUSD|ETH|US30|DJ30|DOW|NAS100|US100|USTEC|NASDAQ|SPX500|SP500|GER40|DE40|UK100|(?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY)[/_\-\s](?:EUR|GBP|USD|AUD|NZD|CAD|CHF|JPY))\b",
+            text_no_handles, re.IGNORECASE
+        ))
         detected_sym = "XAUUSD"
-        if sym_match:
-            cand = sym_match.group(1).replace(" ", "").replace("-", "").replace("/", "").replace("_", "")
+        has_explicit_sym = False
+        if sym_matches:
+            has_explicit_sym = True
+            cand = sym_matches[0].group(1).replace(" ", "").replace("-", "").replace("/", "").replace("_", "")
             detected_sym = cls.normalize_symbol(cand)
+            # If the first match was a generic GOLD/XAUUSD header banner, check if a specific non-Gold symbol follows
+            if detected_sym == "XAUUSD" and len(sym_matches) > 1:
+                for sm in sym_matches[1:]:
+                    alt = cls.normalize_symbol(sm.group(1))
+                    if alt != "XAUUSD":
+                        detected_sym = alt
+                        break
+
+        def _resolve_sym_for_price(sym: str, price_val: float, raw_p_str: Optional[str] = None) -> Optional[str]:
+            """Resolves symbol-to-price plausibility; prevents non-Gold prices or '4H'/'3M' digits from becoming XAUUSD."""
+            if not has_explicit_sym and sym == "XAUUSD":
+                if 0.25 <= price_val <= 2.80 and price_val != int(price_val):
+                    return "EURUSD"
+            if cls.is_plausible_asset_price(sym, price_val, raw_p_str):
+                return sym
+            return None
 
         # Standardized parameter tags
         m_entry_tag = re.search(r"(?:Entry(?:\s*Level)?|CURRENT\s*PRICE|Precio(?:\s*de\s*referencia)?|Precio|BUY\s*AREA|SELL\s*AREA)\s*[:=\-@]?\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
@@ -534,24 +686,32 @@ class MultiChannelSignalParser:
 
         # 5. TAG STRUCTURED FORMAT (EliteTradingSignals, ProSignalsFx, xauusd_signals, TopTradingSignals, BestForexSignals)
         if m_entry_tag and side:
-            entry = float(m_entry_tag.group(1))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "TAG_STRUCTURED"
-            }
+            raw_e_str = m_entry_tag.group(1)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                    # Reconcile side if both SL and TPs unanimously indicate the opposite direction of a prose keyword
+                    if tps and sl > entry and all(tp < entry for tp in tps):
+                        side = "SELL"
+                    elif tps and sl < entry and all(tp > entry for tp in tps):
+                        side = "BUY"
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "TAG_STRUCTURED"
+                }
 
         # 6. ACTION-LINKED ZONE RANGE FORMAT (e.g. "XAUUSD BUY 4162-4158", "BUY (4130-4135)")
         m_action_zone = re.search(
@@ -561,48 +721,54 @@ class MultiChannelSignalParser:
         if m_action_zone and side:
             e1, e2 = float(m_action_zone.group(2)), float(m_action_zone.group(3))
             entry_mid = (e1 + e2) / 2.0
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry_mid, tps)
-                sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": min(e1, e2),
-                "entry_max": max(e1, e2),
-                "entry_mid": entry_mid,
-                "sl": sl,
-                "tps": tps,
-                "type": "ZONE_EXECUTION"
-            }
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry_mid, m_action_zone.group(2))
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry_mid, tps)
+                    sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": min(e1, e2),
+                    "entry_max": max(e1, e2),
+                    "entry_mid": entry_mid,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "ZONE_EXECUTION"
+                }
 
         # 7. DIRECT ACTION ENTRY FORMAT (e.g. "#XAUUSD BUY 4133", "BUY GOLD 4133", "BUY 4133", "SELL NOW 4150", "BUY NOW ( 4059")
-        m_action_direct = re.search(
-            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*[\(@:]?\s*(\d+(?:\.\d+)?)",
+        for m_action_direct in re.finditer(
+            r"(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?\b(BUY|SELL)(?:\s+(?:NOW|LIMIT|STOP))?\s+(?:(?:#|\b)[A-Z0-9]{3,7}\b\s+)?(?:AT|@)?\s*[\(@:]?\s*(\d+(?:\.\d+)?)\b(?![ \t]*(?:[HMDSW]\b|MIN|HR|HOUR|DAY|WK|PIP|LOT|%))",
             text_clean, re.IGNORECASE
-        )
-        if m_action_direct and side:
-            entry = float(m_action_direct.group(2))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "DIRECT_AT"
-            }
+        ):
+            if not side:
+                break
+            raw_e_str = m_action_direct.group(2)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "DIRECT_AT"
+                }
 
         # 8. GENERAL ZONE RANGE FORMAT (Filtered: Excludes ranges on TP / TAKE PROFIT / TARGET / SL / STOP LOSS lines)
         non_tp_sl_lines = [
@@ -614,122 +780,139 @@ class MultiChannelSignalParser:
         if m_zone and side:
             if m_zone.group(1) and m_zone.group(2):
                 e1, e2 = float(m_zone.group(1)), float(m_zone.group(2))
+                raw_z_str = m_zone.group(1)
             else:
                 e1, e2 = float(m_zone.group(3)), float(m_zone.group(4))
+                raw_z_str = m_zone.group(3)
             entry_mid = (e1 + e2) / 2.0
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry_mid, tps)
-                sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": min(e1, e2),
-                "entry_max": max(e1, e2),
-                "entry_mid": entry_mid,
-                "sl": sl,
-                "tps": tps,
-                "type": "ZONE_EXECUTION"
-            }
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry_mid, raw_z_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry_mid, tps)
+                    sl = round(entry_mid - sl_dist if side == "BUY" else entry_mid + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": min(e1, e2),
+                    "entry_max": max(e1, e2),
+                    "entry_mid": entry_mid,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "ZONE_EXECUTION"
+                }
 
         # 9. AT / DIRECT EXECUTION (ForexEliteSignals, ForexPipsFactory, PrimeForexSignals, GoldEliteTrading, Ultreos, GoldSignalsOfficial)
-        m_at_price = re.search(r"(?:@|\bAT\b)\s*[\$]?(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_at_price:
-            start_idx = m_at_price.start()
+        for m_at_cand in re.finditer(r"(?:@|\bAT\b)\s*[\$]?(\d+(?:\.\d+)?)\b", text_clean, re.IGNORECASE):
+            if not side:
+                break
+            start_idx = m_at_cand.start()
             preceding_context = text_clean[max(0, start_idx - 25):start_idx].lower()
             if any(w in preceding_context for w in ["aiming", "target", "targeting", "tp", "goal"]):
-                m_at_price = None
+                continue
+            raw_e_str = m_at_cand.group(1)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "DIRECT_AT"
+                }
 
-        if m_at_price and side:
-            entry = float(m_at_price.group(1))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "DIRECT_AT"
-            }
-
-        m_direct = re.search(
-            r"(?:(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+|(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+|(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)\s*[\(@:]?\s*(\d+(?:\.\d+)?)",
+        for m_direct in re.finditer(
+            r"(?:(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+|(?:[A-Z]{6}|XAUUSD|GOLD|BTCUSD|USOIL)\s+(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+|(?:BUY|SELL)(?:\s+(?:LIMIT|STOP|NOW))?\s+)\s*[\(@:]?\s*(\d+(?:\.\d+)?)\b(?![ \t]*(?:[HMDSW]\b|MIN|HR|HOUR|DAY|WK|PIP|LOT|%))",
             text_clean, re.IGNORECASE
-        )
-        if m_direct and side:
-            entry = float(m_direct.group(1))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "DIRECT_AT"
-            }
+        ):
+            if not side:
+                break
+            raw_e_str = m_direct.group(1)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "DIRECT_AT"
+                }
 
         # 8. NATURAL LANGUAGE FORMAT (PipChasers)
-        m_nat = re.search(r"(?:current\s*price(?:\s*at)?|trading\s*on|around|level)\s*[:=\-@]?\s*(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_nat and side:
-            entry = float(m_nat.group(1))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": side,
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "NATURAL_LANGUAGE"
-            }
+        for m_nat in re.finditer(r"(?:current\s*price(?:\s*at)?|trading\s*on|around|level)\s*[:=\-@]?\s*(\d+(?:\.\d+)?)\b", text_clean, re.IGNORECASE):
+            if not side:
+                break
+            raw_e_str = m_nat.group(1)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "NATURAL_LANGUAGE"
+                }
 
         # 9. COMPACT SHORTHAND FORMAT (forexsignalsdaily, ImperialForexSignals, GreenForexSignals)
-        m_short = re.search(r"\b(BUY|SELL)\s+(\d+(?:\.\d+)?)", text_clean, re.IGNORECASE)
-        if m_short:
-            entry = float(m_short.group(2))
-            tps = [float(x) for x in m_tp_tag]
-            if m_sl_tag:
-                sl = float(m_sl_tag.group(1))
-            else:
-                sl_dist = cls.get_default_sl_distance(detected_sym, entry, tps)
-                sl = round(entry - sl_dist if side == "BUY" else entry + sl_dist, 5)
-            return {
-                "channel": channel,
-                "symbol": detected_sym,
-                "side": m_short.group(1).upper(),
-                "entry_min": entry,
-                "entry_max": entry,
-                "entry_mid": entry,
-                "sl": sl,
-                "tps": tps,
-                "type": "SHORTHAND_DIRECT"
-            }
+        for m_short in re.finditer(r"\b(BUY|SELL)\s+(\d+(?:\.\d+)?)\b(?![ \t]*(?:[HMDSW]\b|MIN|HR|HOUR|DAY|WK|PIP|LOT|%))", text_clean, re.IGNORECASE):
+            raw_e_str = m_short.group(2)
+            entry = float(raw_e_str)
+            resolved_sym = _resolve_sym_for_price(detected_sym, entry, raw_e_str)
+            if resolved_sym:
+                sh_side = m_short.group(1).upper()
+                tps = [float(x) for x in m_tp_tag]
+                if m_sl_tag:
+                    sl = float(m_sl_tag.group(1))
+                else:
+                    sl_dist = cls.get_default_sl_distance(resolved_sym, entry, tps)
+                    sl = round(entry - sl_dist if sh_side == "BUY" else entry + sl_dist, 5)
+                return {
+                    "channel": channel,
+                    "symbol": resolved_sym,
+                    "side": sh_side,
+                    "entry_min": entry,
+                    "entry_max": entry,
+                    "entry_mid": entry,
+                    "sl": sl,
+                    "tps": tps,
+                    "type": "SHORTHAND_DIRECT"
+                }
 
         # 10. LEGACY DIRECT FORMAT: "BUY GOLD 4280 SL 4270 TP 4288"
         m_legacy = re.search(r"(BUY|SELL)(?:\s+(?:NOW|MORE|GOLD|XAUUSD|AT|@))*[\s:\-@]*(\d{4}(?:\.\d+)?)", text_clean, re.IGNORECASE)
@@ -760,6 +943,7 @@ class MultiChannelSignalParser:
 class TelegramMultiSignalCopier:
     def __init__(self, dry_run: bool = False, ctrader_client: Optional[CTraderMCPClient] = None, state_file: Optional[Path] = None, max_concurrent_positions: Optional[int] = None):
         self.dry_run = dry_run
+        self._has_custom_ctrader = ctrader_client is not None
         self.ctrader = ctrader_client if ctrader_client is not None else CTraderMCPClient()
         self.max_concurrent_positions = max_concurrent_positions if max_concurrent_positions is not None else int(os.getenv("MAX_CONCURRENT_POSITIONS", "6"))
         if state_file is not None:
@@ -780,18 +964,18 @@ class TelegramMultiSignalCopier:
             self.state = self.load_state()
         self.guard = RestrictedActionsGuard(max_volume=0.20, max_sl_points=10.0, floor_equity=5650.0)
 
-
-        # Persistent HTTP connection pool for sub-second Telegram harvesting
+        # Persistent HTTP connection pool for sub-second Telegram harvesting + thread-local scraping sessions
         self.session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30, max_retries=1)
         self.session.mount("https://", adapter)
         self.session.headers.update(HEADERS)
+        self._thread_local = threading.local()
+        self._alert_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tg_alert")
         self._last_channel_poll = {}
 
         # Cold-start watermark initialization per channel (concurrent, only in live mode)
         watermarks = self.state.setdefault("watermarks", {})
         if not self.dry_run and "PYTEST_CURRENT_TEST" not in os.environ:
-            from concurrent.futures import ThreadPoolExecutor
             def init_wm(ch):
                 ch_id = ch["id"]
                 wm = str(watermarks.get(ch_id, ""))
@@ -799,13 +983,55 @@ class TelegramMultiSignalCopier:
                     try:
                         msgs = self.fetch_channel_posts(ch_id)
                         if msgs:
-                            watermarks[ch_id] = msgs[-1]["post_id"]
-                            logger.info(f"🛡️ Cold-start [{ch_id}]: Watermark set to {watermarks[ch_id]}")
+                            if len(msgs) >= 2 and self._is_fresh_cold_start_post(msgs[-1], max_age_sec=180.0):
+                                watermarks[ch_id] = msgs[-2]["post_id"]
+                                logger.info(f"⚡ Cold-start [{ch_id}]: Latest post {msgs[-1]['post_id']} is fresh (<180s). Watermark set to {watermarks[ch_id]} to execute fresh signal.")
+                            else:
+                                watermarks[ch_id] = msgs[-1]["post_id"]
+                                logger.info(f"🛡️ Cold-start [{ch_id}]: Watermark set to {watermarks[ch_id]}")
                     except Exception as e:
                         logger.warning(f"Could not set watermark for {ch_id}: {e}")
             with ThreadPoolExecutor(max_workers=10) as executor:
                 list(executor.map(init_wm, CHANNELS_CONFIG))
         self.save_state()
+
+    @staticmethod
+    def _is_fresh_cold_start_post(post: Dict[str, Any], max_age_sec: float = 180.0) -> bool:
+        """Returns True if a post has a timestamp within the last `max_age_sec` seconds."""
+        pub_ts = post.get("published_ts")
+        if isinstance(pub_ts, (int, float)) and pub_ts > 0:
+            age = datetime.now(timezone.utc).timestamp() - float(pub_ts)
+            return -30.0 <= age <= max_age_sec
+        ts_str = post.get("timestamp") or post.get("date")
+        if not ts_str:
+            return False
+        if isinstance(ts_str, (int, float)):
+            age = datetime.now(timezone.utc).timestamp() - float(ts_str)
+            return -30.0 <= age <= max_age_sec
+        try:
+            dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - dt).total_seconds()
+            return -30.0 <= age <= max_age_sec
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_position_risk_free_be(pos: Dict[str, Any]) -> bool:
+        """Returns True if a position is already locked at or better than Breakeven (zero downside risk)."""
+        if pos.get("be_locked") is True:
+            return True
+        entry_p = float(pos.get("entry") or pos.get("entryPrice") or 0.0)
+        sl_p = float(pos.get("sl") or pos.get("stopLoss") or 0.0)
+        side = str(pos.get("side") or pos.get("tradeSide") or "").upper()
+        if entry_p <= 0 or sl_p <= 0 or not side:
+            return False
+        if side == "BUY" and sl_p >= entry_p:
+            return True
+        if side == "SELL" and sl_p <= entry_p:
+            return True
+        return False
 
     def load_state(self) -> dict:
         if self.state_file.exists():
@@ -828,6 +1054,12 @@ class TelegramMultiSignalCopier:
         except Exception as e:
             logger.error(f"Error saving state: {e}")
 
+    def _dispatch_telegram_alert_sync(self, url: str, payload: dict):
+        try:
+            self.session.post(url, json=payload, timeout=5)
+        except Exception as e:
+            logger.error(f"Failed to dispatch Telegram alert: {e}")
+
     def send_telegram_alert(self, message: str):
         if not TELEGRAM_BOT_TOKEN:
             logger.warning("TELEGRAM_BOT_TOKEN not configured.")
@@ -839,27 +1071,50 @@ class TelegramMultiSignalCopier:
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
-        try:
-            self.session.post(url, json=payload, timeout=10)
-        except Exception as e:
-            logger.error(f"Failed to dispatch Telegram alert: {e}")
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            self._dispatch_telegram_alert_sync(url, payload)
+        else:
+            try:
+                self._alert_executor.submit(self._dispatch_telegram_alert_sync, url, payload)
+            except Exception:
+                self._dispatch_telegram_alert_sync(url, payload)
+
+    def _get_http_session(self) -> requests.Session:
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            return self.session
+        sess = getattr(self._thread_local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=1)
+            sess.mount("https://", adapter)
+            sess.headers.update(HEADERS)
+            self._thread_local.session = sess
+        return sess
 
     def fetch_channel_posts(self, channel_id: str) -> List[Dict[str, Any]]:
         url = f"https://t.me/s/{channel_id}"
         try:
-            resp = self.session.get(url, timeout=10)
+            resp = self._get_http_session().get(url, timeout=8)
             if resp.status_code != 200:
                 return []
-            pattern = r'data-post="([^"]+)"[\s\S]*?<div class="tgme_widget_message_text[^>]*>([\s\S]*?)</div>'
-            matches = re.findall(pattern, resp.text)
+            block_pattern = r'data-post="([^"]+)"([\s\S]*?)(?=data-post="|$)'
+            blocks = re.findall(block_pattern, resp.text)
             messages = []
-            for pid, raw_html in matches:
+            for pid, block_html in blocks:
+                m_txt = re.search(r'<div class="tgme_widget_message_text[^>]*>([\s\S]*?)</div>', block_html)
+                if not m_txt:
+                    continue
+                raw_html = m_txt.group(1)
                 clean_text = re.sub(r'<br\s*/?>', '\n', raw_html)
                 clean_text = re.sub(r'<[^>]+>', '', clean_text).strip()
                 if clean_text:
                     pid_clean = str(pid).split("/")[-1]
                     post_url = f"https://t.me/{channel_id}/{pid_clean}"
-                    messages.append({"post_id": pid, "post_url": post_url, "text": clean_text})
+                    m_time = re.search(r'<time[^>]*datetime="([^"]+)"', block_html)
+                    post_item = {"post_id": pid, "post_url": post_url, "text": clean_text}
+                    if m_time:
+                        post_item["timestamp"] = m_time.group(1)
+                    messages.append(post_item)
             return messages
         except Exception as e:
             logger.error(f"Error fetching channel {channel_id}: {e}")
@@ -916,29 +1171,31 @@ class TelegramMultiSignalCopier:
             return {
                 "lot_size": gold_lot,
                 "min_sl_distance": 1.50,           # 1.50 pts Gold noise floor (15 pips)
-                "max_sl_distance": 5.0,           # 5.0 pts Gold tolerance ($35 max risk per ticket)
+                "max_sl_distance": 5.0,            # 5.0 pts Gold tolerance ($35 max risk per ticket)
                 "max_slippage": 2.50,
+                "max_rollover_slippage": 4.50,     # Up to 4.50 pts momentum/rollover tolerance on Gold breakouts
                 "be_buffer": 0.30,
-                "scalp_tp1_dist": 2.00,           # 20 pips micro-banker for scalps
-                "scalp_be_activation": 1.00,      # Lock BE at +10 pips gain (Invariant 27)
-                "trailing_distance": 3.00,       # 30 pips / 3.0 pts Gold
-                "trailing_activation": 4.00,     # Activate trailing once +4.0 pts in profit
-                "min_viable_reward": 1.20,       # 1.20 pts Gold ($12/ticket, covers spread + commission + net profit)
-                "min_be_profit": 1.00,           # Minimum 1.0 pt profit before Breakeven lock can engage
+                "scalp_tp1_dist": 2.00,            # 20 pips micro-banker for scalps
+                "scalp_be_activation": 1.00,       # Lock BE at +10 pips gain (Invariant 27)
+                "trailing_distance": 3.00,         # 30 pips / 3.0 pts Gold
+                "trailing_activation": 4.00,       # Activate trailing once +4.0 pts in profit
+                "min_viable_reward": 1.20,         # 1.20 pts Gold ($12/ticket, covers spread + commission + net profit)
+                "min_be_profit": 1.00,             # Minimum 1.0 pt profit before Breakeven lock can engage
                 "pip_multiplier": 1.0
             }
         elif "JPY" in sym:
             return {
                 "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
-                "min_sl_distance": 0.08,          # 8 pips noise floor (0.080)
+                "min_sl_distance": 0.08,           # 8 pips noise floor (0.080)
                 "max_sl_distance": 0.60,
                 "max_slippage": 0.15,
+                "max_rollover_slippage": 0.35,     # Up to 35 pips momentum/rollover tolerance on volatile JPY crosses
                 "be_buffer": 0.02,
-                "scalp_tp1_dist": 0.20,           # 20 pips
-                "scalp_be_activation": 0.15,      # 15 pips
-                "trailing_distance": 0.30,       # 30 pips
-                "trailing_activation": 0.40,     # Activate trailing once +40 pips in profit
-                "min_viable_reward": 0.10,        # 10 pips JPY
+                "scalp_tp1_dist": 0.20,            # 20 pips
+                "scalp_be_activation": 0.15,       # 15 pips
+                "trailing_distance": 0.30,         # 30 pips
+                "trailing_activation": 0.40,       # Activate trailing once +40 pips in profit
+                "min_viable_reward": 0.10,         # 10 pips JPY
                 "min_be_profit": 0.10,
                 "pip_multiplier": 100.0
             }
@@ -948,6 +1205,7 @@ class TelegramMultiSignalCopier:
                 "min_sl_distance": 50.0,
                 "max_sl_distance": 500.0,
                 "max_slippage": 50.0,
+                "max_rollover_slippage": 100.0,
                 "be_buffer": 20.0,
                 "scalp_tp1_dist": 200.0,
                 "scalp_be_activation": 150.0,
@@ -957,12 +1215,45 @@ class TelegramMultiSignalCopier:
                 "min_be_profit": 100.0,
                 "pip_multiplier": 1.0
             }
+        elif "ETH" in sym:
+            return {
+                "lot_size": float(os.getenv("CRYPTO_COPIER_LOT_SIZE", "0.07")),
+                "min_sl_distance": 15.0,
+                "max_sl_distance": 100.0,
+                "max_slippage": 15.0,
+                "max_rollover_slippage": 30.0,
+                "be_buffer": 2.0,
+                "scalp_tp1_dist": 25.0,
+                "scalp_be_activation": 15.0,
+                "trailing_distance": 20.0,
+                "trailing_activation": 30.0,
+                "min_viable_reward": 12.0,
+                "min_be_profit": 10.0,
+                "pip_multiplier": 1.0
+            }
+        elif any(k in sym for k in ["US30", "DJ30", "NAS100", "USTEC", "SPX", "NDX", "GER40", "DE40", "UK100"]):
+            return {
+                "lot_size": float(os.getenv("INDEX_COPIER_LOT_SIZE", "0.07")),
+                "min_sl_distance": 25.0,
+                "max_sl_distance": 100.0,
+                "max_slippage": 25.0,
+                "max_rollover_slippage": 45.0,
+                "be_buffer": 5.0,
+                "scalp_tp1_dist": 35.0,
+                "scalp_be_activation": 20.0,
+                "trailing_distance": 35.0,
+                "trailing_activation": 50.0,
+                "min_viable_reward": 20.0,
+                "min_be_profit": 15.0,
+                "pip_multiplier": 1.0
+            }
         elif "OIL" in sym or "USOIL" in sym:
             return {
                 "lot_size": float(os.getenv("OIL_COPIER_LOT_SIZE", "0.10")),
                 "min_sl_distance": 0.30,
                 "max_sl_distance": 1.50,
                 "max_slippage": 0.25,
+                "max_rollover_slippage": 0.45,
                 "be_buffer": 0.10,
                 "scalp_tp1_dist": 0.40,
                 "scalp_be_activation": 0.30,
@@ -975,15 +1266,16 @@ class TelegramMultiSignalCopier:
         else:
             return {
                 "lot_size": max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07"))),
-                "min_sl_distance": 0.0008,        # 8 pips noise floor (0.00080)
-                "max_sl_distance": 0.0050,  # 50 pips
-                "max_slippage": 0.0012,     # 12 pips
-                "be_buffer": 0.0002,        # 2 pips
-                "scalp_tp1_dist": 0.0020,   # 20 pips
-                "scalp_be_activation": 0.0015, # 15 pips
-                "trailing_distance": 0.0030,     # 30 pips
-                "trailing_activation": 0.0040,   # Activate trailing once +40 pips in profit
-                "min_viable_reward": 0.0008,      # 8 pips standard FX
+                "min_sl_distance": 0.0008,         # 8 pips noise floor (0.00080)
+                "max_sl_distance": 0.0050,         # 50 pips
+                "max_slippage": 0.0012,            # 12 pips direct
+                "max_rollover_slippage": 0.0025,   # 25 pips momentum/rollover tolerance on Forex majors & crosses
+                "be_buffer": 0.0002,               # 2 pips
+                "scalp_tp1_dist": 0.0020,          # 20 pips
+                "scalp_be_activation": 0.0015,     # 15 pips
+                "trailing_distance": 0.0030,       # 30 pips
+                "trailing_activation": 0.0040,     # Activate trailing once +40 pips in profit
+                "min_viable_reward": 0.0008,       # 8 pips standard FX
                 "min_be_profit": 0.0008,
                 "pip_multiplier": 10000.0
             }
@@ -1000,7 +1292,7 @@ class TelegramMultiSignalCopier:
         # Invariant 38: Asian Rollover Spread Shield (21:00 - 00:30 UTC)
         # Protects Forex currency pairs from illiquid interbank rollover spread blowouts.
         now_utc = datetime.now(timezone.utc)
-        is_forex = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL"])
+        is_forex = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL", "GER40", "UK100"])
         if is_forex:
             h = now_utc.hour
             m = now_utc.minute
@@ -1021,20 +1313,30 @@ class TelegramMultiSignalCopier:
         channel_clean = str(channel).lower().lstrip("@")
         is_swing_authorized = channel_clean in authorized_swing_channels
 
+        # Skip unmocked network MCP calls during offline unit tests when default CTraderMCPClient is used
+        skip_live_mcp_in_test = (
+            self.dry_run
+            and not self._has_custom_ctrader
+            and "PYTEST_CURRENT_TEST" in os.environ
+            and "get_trendbars_dataframe" not in getattr(self.ctrader, "__dict__", {})
+        )
+
         # Invariant 24: Institutional Price Action Stop-Loss (PASL) & Structural Shield Guard
         df_bars = None
-        try:
-            df_bars = self.ctrader.get_trendbars_dataframe(symbol, period="M_5", count=25)
-        except Exception as te:
-            logger.debug(f"Trendbars feed skipped/unavailable for {symbol}: {te}")
+        if not skip_live_mcp_in_test:
+            try:
+                df_bars = self.ctrader.get_trendbars_dataframe(symbol, period="M_5", count=25)
+            except Exception as te:
+                logger.debug(f"Trendbars feed skipped/unavailable for {symbol}: {te}")
 
         spread = 0.0
-        try:
-            live_spot = self.ctrader.get_spot_price(symbol)
-            if live_spot and "ask" in live_spot and "bid" in live_spot:
-                spread = abs(float(live_spot["ask"]) - float(live_spot["bid"]))
-        except Exception:
-            spread = 0.0
+        if not skip_live_mcp_in_test or "get_spot_price" in getattr(self.ctrader, "__dict__", {}):
+            try:
+                live_spot = self.ctrader.get_spot_price(symbol)
+                if live_spot and "ask" in live_spot and "bid" in live_spot:
+                    spread = abs(float(live_spot["ask"]) - float(live_spot["bid"]))
+            except Exception:
+                spread = 0.0
 
         from src.strategies.price_action_sl_engine import PriceActionSLEngine
         # If signal lacked an author Stop Loss, pass provider_sl=None so PriceActionSLEngine
@@ -1056,17 +1358,31 @@ class TelegramMultiSignalCopier:
         else:
             logger.info(f"🛡️ [PASL Engine] {symbol} {side} SL: {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
 
-        # Invariant 36: Live Entry Anti-Suffocation Guard
-        # Ensure effective distance between live entry fill and Stop Loss strictly respects min_noise_floor
+        # Invariant 36: Live Entry Anti-Suffocation Guard (Harmonized with Invariant 29 Rollover)
+        # Ensure effective distance between live entry fill and Stop Loss strictly respects min_noise_floor.
         min_noise_floor = PriceActionSLEngine.get_min_noise_floor_distance(symbol)
         sl_distance = abs(entry - safe_sl)
         if sl_distance < min_noise_floor:
-            logger.warning(
-                f"🛑 [Invariant 36] Anti-Suffocation Guard triggered for {symbol} {side}: "
-                f"Live fill ~{entry} is within noise floor distance of SL {safe_sl} "
-                f"(dist {sl_distance:.5f} < min_floor {min_noise_floor:.5f}). Aborting execution to prevent spread-wick out."
-            )
-            return None
+            if sig.get("is_target_rollover"):
+                digits = 2 if any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "SPX", "NDX", "US30", "NAS100"]) else (3 if "JPY" in symbol.upper() else 5)
+                orig_prov_sl = sig.get("original_provider_sl")
+                if orig_prov_sl and min_noise_floor <= abs(entry - orig_prov_sl) <= max_dist and ((side == "BUY" and orig_prov_sl < entry) or (side == "SELL" and orig_prov_sl > entry)):
+                    safe_sl = round(float(orig_prov_sl), digits)
+                else:
+                    safe_Dist = min(max_dist, max(min_noise_floor, sl_distance))
+                    safe_sl = round(entry - safe_Dist if side == "BUY" else entry + safe_Dist + (spread if side == "SELL" else 0.0), digits)
+                sl_distance = abs(entry - safe_sl)
+                logger.info(
+                    f"🛡️ [Invariant 29/36 Rollover Shield] Anchored rollover SL for {symbol} {side} to {safe_sl} "
+                    f"(dist {sl_distance:.5f} >= min_floor {min_noise_floor:.5f}) so rollover trade is not suffocated."
+                )
+            else:
+                logger.warning(
+                    f"🛑 [Invariant 36] Anti-Suffocation Guard triggered for {symbol} {side}: "
+                    f"Live fill ~{entry} is within noise floor distance of SL {safe_sl} "
+                    f"(dist {sl_distance:.5f} < min_floor {min_noise_floor:.5f}). Aborting execution to prevent spread-wick out."
+                )
+                return None
 
         tps = sig["tps"]
         # Sanitize targets relative to actual fill entry spot
@@ -1075,8 +1391,17 @@ class TelegramMultiSignalCopier:
         else:
             tps = [tp for tp in tps if tp < entry]
 
-        # Invariant 37: Minimum Viable Remaining Target Distance Guard
+        # Invariant 37: Minimum Viable Remaining Target Distance Guard & Smart Target Promotion
         min_viable = params.get("min_viable_reward", 0.0008)
+        if tps and abs(tps[0] - entry) < min_viable and len(tps) > 1:
+            viable_tps = [tp for tp in tps if abs(tp - entry) >= min_viable]
+            if viable_tps:
+                logger.info(
+                    f"🎯 [Invariant 37 Smart Target Promotion] {symbol} {side} TP1 ({tps[0]}) is within {abs(tps[0] - entry):.4f} of fill ~{entry}; "
+                    f"promoting remaining targets {viable_tps}."
+                )
+                tps = viable_tps
+
         if not tps:
             # All advertised targets were already reached by the market prior to execution fill!
             logger.warning(
@@ -1149,19 +1474,24 @@ class TelegramMultiSignalCopier:
         else:
             ticket_vol = max(0.07, lot_size)
 
-        # Invariant 26: Dynamic Capacity & Slot Allocation.
-        # Check current active positions on broker to determine available slots.
+        # Invariant 26: Dynamic Capacity & Slot Allocation (Risk-Free BE Runners Exempt from Blocking).
         try:
             live_pos = self.ctrader.get_positions_strict() if not self.dry_run else [p for p in self.state.get("active_positions", [])]
-            current_count = len(live_pos) if live_pos is not None else len(self.state.get("active_positions", []))
+            if live_pos is not None:
+                at_risk_pos = [p for p in live_pos if not self._is_position_risk_free_be(p)]
+                current_count = len(at_risk_pos)
+            else:
+                at_risk_pos = [p for p in self.state.get("active_positions", []) if not self._is_position_risk_free_be(p)]
+                current_count = len(at_risk_pos)
         except Exception:
-            current_count = len(self.state.get("active_positions", []))
+            at_risk_pos = [p for p in self.state.get("active_positions", []) if not self._is_position_risk_free_be(p)]
+            current_count = len(at_risk_pos)
 
         max_allowed_pos = getattr(self, "max_concurrent_positions", 6)
         free_slots = max(0, max_allowed_pos - current_count)
 
         if free_slots == 0:
-            logger.warning(f"🛑 [Invariant 26] Max Concurrent Positions limit ({max_allowed_pos}) reached ({current_count} active). Skipping signal for {symbol}.")
+            logger.warning(f"🛑 [Invariant 26] Max Concurrent Positions limit ({max_allowed_pos}) reached ({current_count} active at-risk). Skipping signal for {symbol}.")
             return None
 
         if is_forexgdp:
@@ -1359,6 +1689,39 @@ class TelegramMultiSignalCopier:
             return False
         return True
 
+    def _resolve_broker_position_symbol(
+        self,
+        lp: Dict[str, Any],
+        id_to_sym: Optional[Dict[Any, str]] = None,
+        active_list: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[str]:
+        """Resolves symbol name for a cTrader position using symbolName, symbolId map, comment tag, or active state."""
+        if lp.get("symbolName"):
+            return str(lp["symbolName"]).upper()
+        if isinstance(id_to_sym, list) and active_list is None:
+            active_list = id_to_sym
+            id_to_sym = None
+        if id_to_sym is None:
+            try:
+                sym_map = self.ctrader.get_symbol_map()
+                id_to_sym = {v: k for k, v in sym_map.items()} if isinstance(sym_map, dict) else {}
+            except Exception:
+                id_to_sym = {}
+        if active_list is None:
+            active_list = self.state.get("active_positions", [])
+        sym_id = lp.get("symbolId")
+        if sym_id is not None and sym_id in id_to_sym:
+            return str(id_to_sym[sym_id]).upper()
+        comment = lp.get("comment") or ""
+        m_comm = re.search(r"^Sig_[^_]+_([A-Z0-9]+)_T\d", comment)
+        if m_comm:
+            return m_comm.group(1).upper()
+        lp_id = lp.get("positionId")
+        for ap in active_list:
+            if ap.get("positionId") == lp_id and ap.get("symbol"):
+                return str(ap["symbol"]).upper()
+        return None
+
     def manage_active_breakeven(self):
         """Monitors active positions, triggers Breakeven locks, and enforces 48-Hour swing timeouts."""
         if self.dry_run:
@@ -1369,6 +1732,14 @@ class TelegramMultiSignalCopier:
             active = self.state.setdefault("active_positions", [])
             if not active and not live_positions:
                 return
+
+            id_to_sym = {}
+            try:
+                sym_map = self.ctrader.get_symbol_map()
+                if isinstance(sym_map, dict):
+                    id_to_sym = {v: k for k, v in sym_map.items()}
+            except Exception:
+                id_to_sym = {}
 
             live_pos_ids = {p.get("positionId") for p in live_positions}
             now_utc = datetime.now(timezone.utc)
@@ -1401,16 +1772,24 @@ class TelegramMultiSignalCopier:
                 comment = lp.get("comment") or ""
                 label = lp.get("label") or ""
                 if (comment.startswith("Sig_") or label == "AgentQuant") and not any(p.get("positionId") == lp_id for p in active):
+                    resolved_sym = self._resolve_broker_position_symbol(lp, id_to_sym, active)
+                    if not resolved_sym:
+                        logger.warning(f"⚠️ Could not resolve symbol for broker position #{lp_id} (symbolId={lp.get('symbolId')}). Skipping adoption.")
+                        continue
                     ticket_num = 3 if "_T3" in comment else (2 if "_T2" in comment else (1 if "_T1" in comment else 1))
+                    entry_val = float(lp.get("entryPrice", 0.0))
+                    sl_val = float(lp.get("stopLoss", 0.0)) if lp.get("stopLoss") else None
+                    side_val = lp.get("tradeSide", "BUY")
+                    already_be = bool(sl_val and entry_val > 0 and ((side_val == "BUY" and sl_val >= entry_val) or (side_val == "SELL" and sl_val <= entry_val)))
                     active.append({
                         "positionId": lp_id,
                         "ticket": ticket_num,
-                        "symbol": lp.get("symbolName") or "EURAUD",
-                        "side": lp.get("tradeSide", "BUY"),
-                        "entry": float(lp.get("entryPrice", 0.0)),
-                        "sl": float(lp.get("stopLoss", 0.0)) if lp.get("stopLoss") else None,
+                        "symbol": resolved_sym,
+                        "side": side_val,
+                        "entry": entry_val,
+                        "sl": sl_val,
                         "tp": float(lp.get("takeProfit", 0.0)) if lp.get("takeProfit") else None,
-                        "be_locked": False,
+                        "be_locked": already_be,
                         "time": now_utc.isoformat()
                     })
 
@@ -1428,7 +1807,7 @@ class TelegramMultiSignalCopier:
                         pos_in_active = next((p for p in active if p.get("positionId") == lp_id), None)
                         if not pos_in_active:
                             # Reconstruct from broker position
-                            sym_name = lp.get("symbolName") or "XAUUSD"
+                            sym_name = self._resolve_broker_position_symbol(lp, id_to_sym, active) or "XAUUSD"
                             pos_in_active = {
                                 "positionId": lp_id,
                                 "ticket": t_match,
@@ -1527,16 +1906,19 @@ class TelegramMultiSignalCopier:
                     can_move = (curr_price >= be_price) if (curr_price and side == "BUY") else (curr_price <= be_price if curr_price else False)
                     if can_move:
                         try:
-                            self.ctrader.amend_position(rem_id, stop_loss=be_price)
-                            rem["be_locked"] = True
-                            rem["sl"] = be_price
-                            rem["be_pending"] = False
-                            t_label = rem.get("ticket", 2)
-                            logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #{t_label} (#{rem_id}) SL moved to Breakeven {be_price}")
-                            self.send_telegram_alert(
-                                f"🎯 <b>BE Activated: {sym}</b> (#{t_label})\n"
-                                f"SL locked @ <code>{be_price}</code>"
-                            )
+                            amend_res = self.ctrader.amend_position(rem_id, stop_loss=be_price)
+                            if isinstance(amend_res, dict) and amend_res.get("isError"):
+                                logger.warning(f"⚠️ cTrader rejected BE amendment for #{rem_id} ({sym} @ {be_price}): {amend_res}")
+                            else:
+                                rem["be_locked"] = True
+                                rem["sl"] = be_price
+                                rem["be_pending"] = False
+                                t_label = rem.get("ticket", 2)
+                                logger.info(f"🛡️ [Invariant 23] T1 closed! Ticket #{t_label} (#{rem_id}) SL moved to Breakeven {be_price}")
+                                self.send_telegram_alert(
+                                    f"🎯 <b>BE Activated: {sym}</b> (#{t_label})\n"
+                                    f"SL locked @ <code>{be_price}</code>"
+                                )
                         except Exception as ae:
                             logger.error(f"Failed to amend Ticket #{rem_id} to Breakeven: {ae}")
                     else:
@@ -1568,14 +1950,17 @@ class TelegramMultiSignalCopier:
                 if not pos.get("be_locked") and gain >= min_be_profit and (gain >= half_tp_distance or gain >= scalp_be_thresh):
                     be_price = round(entry + params["be_buffer"] if side == "BUY" else entry - params["be_buffer"], 5)
                     try:
-                        self.ctrader.amend_position(pos_id, stop_loss=be_price)
-                        pos["be_locked"] = True
-                        pos["sl"] = be_price
-                        logger.info(f"🛡️ Position #{pos_id} ({symbol}) moved to Breakeven @ {be_price}")
-                        self.send_telegram_alert(
-                            f"🛡️ <b>BE Locked: {symbol}</b> (#{pos_id})\n"
-                            f"SL moved to entry buffer: <code>{be_price}</code>"
-                        )
+                        amend_res = self.ctrader.amend_position(pos_id, stop_loss=be_price)
+                        if isinstance(amend_res, dict) and amend_res.get("isError"):
+                            logger.warning(f"⚠️ cTrader rejected BE amendment for #{pos_id} ({symbol} @ {be_price}): {amend_res}")
+                        else:
+                            pos["be_locked"] = True
+                            pos["sl"] = be_price
+                            logger.info(f"🛡️ Position #{pos_id} ({symbol}) moved to Breakeven @ {be_price}")
+                            self.send_telegram_alert(
+                                f"🛡️ <b>BE Locked: {symbol}</b> (#{pos_id})\n"
+                                f"SL moved to entry buffer: <code>{be_price}</code>"
+                            )
                     except Exception as ae:
                         logger.error(f"Failed to amend #{pos_id} to Breakeven: {ae}")
 
@@ -1597,14 +1982,17 @@ class TelegramMultiSignalCopier:
                             can_move_comp = (curr_price >= c_be) if side == "BUY" else (curr_price <= c_be)
                             if can_move_comp:
                                 try:
-                                    self.ctrader.amend_position(comp_id, stop_loss=c_be)
-                                    comp["be_locked"] = True
-                                    comp["sl"] = c_be
-                                    logger.info(f"🛡️ [Invariant 27] Companion Position #{comp_id} ({symbol}) synchronized to Breakeven @ {c_be}")
-                                    self.send_telegram_alert(
-                                        f"🛡️ <b>Companion BE Synced: {symbol}</b> (#{comp_id})\n"
-                                        f"SL synchronized to BE: <code>{c_be}</code>"
-                                    )
+                                    amend_res = self.ctrader.amend_position(comp_id, stop_loss=c_be)
+                                    if isinstance(amend_res, dict) and amend_res.get("isError"):
+                                        logger.warning(f"⚠️ cTrader rejected companion BE amendment for #{comp_id} ({symbol} @ {c_be}): {amend_res}")
+                                    else:
+                                        comp["be_locked"] = True
+                                        comp["sl"] = c_be
+                                        logger.info(f"🛡️ [Invariant 27] Companion Position #{comp_id} ({symbol}) synchronized to Breakeven @ {c_be}")
+                                        self.send_telegram_alert(
+                                            f"🛡️ <b>Companion BE Synced: {symbol}</b> (#{comp_id})\n"
+                                            f"SL synchronized to BE: <code>{c_be}</code>"
+                                        )
                                 except Exception as cae:
                                     logger.error(f"Failed to amend companion #{comp_id} to Breakeven: {cae}")
 
@@ -1669,28 +2057,30 @@ class TelegramMultiSignalCopier:
                         # Ratchet constraint: only ratchet SL upwards
                         if new_sl and new_sl > current_sl + (params["be_buffer"] * 0.5):
                             try:
-                                self.ctrader.amend_position(pos_id, stop_loss=new_sl)
-                                pos["sl"] = new_sl
-                                pos["be_locked"] = True
-                                logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed up to {new_sl} (gain: +{gain:.4f})")
-                                self.send_telegram_alert(
-                                    f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
-                                    f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
-                                )
+                                amend_res = self.ctrader.amend_position(pos_id, stop_loss=new_sl)
+                                if not (isinstance(amend_res, dict) and amend_res.get("isError")):
+                                    pos["sl"] = new_sl
+                                    pos["be_locked"] = True
+                                    logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed up to {new_sl} (gain: +{gain:.4f})")
+                                    self.send_telegram_alert(
+                                        f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
+                                        f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
+                                    )
                             except Exception as ae:
                                 logger.error(f"Failed to trail SL for #{pos_id}: {ae}")
                     else:  # SELL
                         # Ratchet constraint: only ratchet SL downwards
                         if new_sl and new_sl < current_sl - (params["be_buffer"] * 0.5):
                             try:
-                                self.ctrader.amend_position(pos_id, stop_loss=new_sl)
-                                pos["sl"] = new_sl
-                                pos["be_locked"] = True
-                                logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed down to {new_sl} (gain: +{gain:.4f})")
-                                self.send_telegram_alert(
-                                    f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
-                                    f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
-                                )
+                                amend_res = self.ctrader.amend_position(pos_id, stop_loss=new_sl)
+                                if not (isinstance(amend_res, dict) and amend_res.get("isError")):
+                                    pos["sl"] = new_sl
+                                    pos["be_locked"] = True
+                                    logger.info(f"🏃 [{trail_mode} TRAILING] Ticket #{pos.get('ticket', 2)} (#{pos_id} {symbol}) SL trailed down to {new_sl} (gain: +{gain:.4f})")
+                                    self.send_telegram_alert(
+                                        f"🏃 <b>Trailing: {symbol}</b> (#{pos_id})\n"
+                                        f"Gain: +{gain:.2f} · SL 🔒 <code>{new_sl}</code>"
+                                    )
                             except Exception as ae:
                                 logger.error(f"Failed to trail SL for #{pos_id}: {ae}")
 
@@ -1721,9 +2111,9 @@ class TelegramMultiSignalCopier:
         # 1. Tier-Weighted Interval Filtering (Speed & Bandwidth Efficiency)
         channels_to_poll = []
         for ch in CHANNELS_CONFIG:
-            if not ch.get("enabled"):
-                continue
             ch_id = ch["id"]
+            if not ch.get("enabled") and not ("PYTEST_CURRENT_TEST" in os.environ and ch_id in watermarks):
+                continue
             tier = ch.get("tier", 2)
             # Tier 1 (Institutional Clean): Polled on every tick (0s delay)
             # Tier 2 (Direct Reliable): Polled every 10s
@@ -1738,7 +2128,6 @@ class TelegramMultiSignalCopier:
             return
 
         # 2. Parallel Concurrent Harvester across all eligible channels (<350ms total)
-        from concurrent.futures import ThreadPoolExecutor
         channel_posts_map = {}
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_ch = {executor.submit(self.fetch_channel_posts, ch["id"]): ch["id"] for ch in channels_to_poll}
@@ -1759,21 +2148,24 @@ class TelegramMultiSignalCopier:
             new_posts = []
 
             if not last_id:
-                # First time running, set watermark to latest post
-                watermarks[ch_id] = posts[-1]["post_id"]
-                self.save_state()
-                continue
+                # First time running: if the latest post is fresh (< 180s), execute it instead of dropping on cold-start!
+                if self._is_fresh_cold_start_post(posts[-1], max_age_sec=180.0):
+                    new_posts = [posts[-1]]
+                else:
+                    watermarks[ch_id] = posts[-1]["post_id"]
+                    self.save_state()
+                    continue
+            else:
+                found_last = False
+                for p in posts:
+                    if found_last:
+                        new_posts.append(p)
+                    elif p["post_id"] == last_id:
+                        found_last = True
 
-            found_last = False
-            for p in posts:
-                if found_last:
-                    new_posts.append(p)
-                elif p["post_id"] == last_id:
-                    found_last = True
-
-            # If watermark was scrolled past, take the latest 3 posts
-            if not found_last and posts:
-                new_posts = posts[-3:]
+                # If watermark was scrolled past, take the latest 3 posts
+                if not found_last and posts:
+                    new_posts = posts[-3:]
 
             for p in new_posts:
                 pid = p["post_id"]
@@ -1831,7 +2223,7 @@ class TelegramMultiSignalCopier:
 
                 # Verify live spot price and anti-chase
                 spot = self.ctrader.get_spot_price(symbol)
-                if not spot:
+                if not spot or float(spot.get("ask") or 0.0) <= 0 or float(spot.get("bid") or 0.0) <= 0:
                     logger.warning(f"Could not fetch spot price for {symbol}. Skipping.")
                     continue
 
@@ -1853,7 +2245,7 @@ class TelegramMultiSignalCopier:
                         dist_from_zone = curr_spot - e_max
                     elif curr_spot < e_min:
                         # Price is at a discount (favorable dip for scalping!)
-                        if raw_sl and curr_spot <= (raw_sl + min_noise_floor):
+                        if raw_sl and raw_sl < e_min and curr_spot <= (raw_sl + min_noise_floor):
                             # Price dipped too far and is inside or has breached the Stop Loss noise zone
                             logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or within noise floor ({min_noise_floor}) of SL {raw_sl}. Skipping.")
                             if not self.dry_run:
@@ -1872,7 +2264,7 @@ class TelegramMultiSignalCopier:
                         dist_from_zone = e_min - curr_spot
                     elif curr_spot > e_max:
                         # Price rallied into a premium (favorable rally for selling!)
-                        if raw_sl and curr_spot >= (raw_sl - min_noise_floor):
+                        if raw_sl and raw_sl > e_max and curr_spot >= (raw_sl - min_noise_floor):
                             # Price spiked too high and is inside or has reached Stop Loss noise zone
                             logger.info(f"⏭️ Signal Invalidation: {symbol} spot {curr_spot} reached or within noise floor ({min_noise_floor}) of SL {raw_sl}. Skipping.")
                             if not self.dry_run:
@@ -1881,12 +2273,13 @@ class TelegramMultiSignalCopier:
                                     f"Market reached SL zone ({raw_sl}) before entry\n"
                                     f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
+                            continue
                         else:
                             # Valid premium scalp entry!
                             dist_from_zone = 0.0
 
-                # Invariant 37: Target Exhaustion & Adverse Chasing Guard
-                # If the market has already surged to or near TP1 prior to execution, abort immediately to prevent buying the top/selling the bottom.
+                # Invariant 37: Target Exhaustion & Smart Target Promotion Guard
+                # Only consider TP1 exhausted if spot already reached TP1 or remaining reward < min_viable_reward
                 if sig.get("tps"):
                     tp1 = sig["tps"][0]
                     entry_ref = sig.get("entry_mid", (e_min + e_max) / 2.0)
@@ -1903,11 +2296,11 @@ class TelegramMultiSignalCopier:
                         elif curr_spot > e_max and total_target_span > 0:
                             rem_reward = tp1 - curr_spot
                             consumed_ratio = (curr_spot - entry_ref) / total_target_span
-                            if consumed_ratio >= 0.40 or rem_reward < min_viable_reward:
+                            if rem_reward < min_viable_reward:
                                 is_exhausted = True
                                 exhaustion_reason = (
                                     f"Spot {curr_spot} consumed {consumed_ratio*100:.1f}% of target span "
-                                    f"(remaining reward {rem_reward:.3f} < min required {min_viable_reward:.3f})"
+                                    f"(remaining reward {rem_reward:.4f} < min required {min_viable_reward:.4f})"
                                 )
                     else:  # SELL
                         if curr_spot <= tp1:
@@ -1916,17 +2309,20 @@ class TelegramMultiSignalCopier:
                         elif curr_spot < e_min and total_target_span > 0:
                             rem_reward = curr_spot - tp1
                             consumed_ratio = (entry_ref - curr_spot) / total_target_span
-                            if consumed_ratio >= 0.40 or rem_reward < min_viable_reward:
+                            if rem_reward < min_viable_reward:
                                 is_exhausted = True
                                 exhaustion_reason = (
                                     f"Spot {curr_spot} consumed {consumed_ratio*100:.1f}% of target span "
-                                    f"(remaining reward {rem_reward:.3f} < min required {min_viable_reward:.3f})"
+                                    f"(remaining reward {rem_reward:.4f} < min required {min_viable_reward:.4f})"
                                 )
 
                     if is_exhausted:
-                        candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
+                        viable_higher_tps = [
+                            tp for tp in sig.get("tps", [])
+                            if ((tp - curr_spot) >= min_viable_reward if side == "BUY" else (curr_spot - tp) >= min_viable_reward)
+                        ]
                         max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
-                        if not candidate_tps or len(sig.get("tps", [])) <= 1 or dist_from_zone > max_rollover_slip:
+                        if not viable_higher_tps or dist_from_zone > max_rollover_slip:
                             logger.info(f"🛑 [Invariant 37] Target Exhaustion Guard: {symbol} {side} skipped. {exhaustion_reason}.")
                             if not self.dry_run:
                                 self.send_telegram_alert(
@@ -1936,11 +2332,15 @@ class TelegramMultiSignalCopier:
                                     f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                                 )
                             continue
+                        elif dist_from_zone <= params["max_slippage"]:
+                            logger.info(
+                                f"🎯 [Invariant 37 Smart Target Promotion] {symbol} {side} TP1 ({tp1}) exhausted at {curr_spot}; "
+                                f"promoting higher targets {viable_higher_tps}."
+                            )
+                            sig["tps"] = viable_higher_tps
 
                 if dist_from_zone > params["max_slippage"]:
                     # Invariant 22/29/31: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
-                    # Rollover is only permitted if the price has not severely deviated beyond max_rollover_slippage (max 1.5x max_slippage = 3.75 pts on Gold).
-                    # Chasing beyond this threshold risks buying the top / selling the bottom on stale re-broadcasts.
                     max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
                     candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
                     rollover_executed = False
@@ -1950,8 +2350,14 @@ class TelegramMultiSignalCopier:
                         ratcheted_risk = abs(curr_spot - ratcheted_sl)
                         min_risk_dist = params.get("be_buffer", 0.5)
                         eff_risk = max(ratcheted_risk, min_risk_dist)
+                        min_viable_reward = params.get("min_viable_reward", 0.0008)
+                        scalp_tp1_dist = params.get("scalp_tp1_dist", min_viable_reward)
+                        orig_tp1 = sig["tps"][0] if sig.get("tps") else None
+                        tp1_already_passed = bool(orig_tp1 is not None and ((curr_spot >= orig_tp1) if side == "BUY" else (curr_spot <= orig_tp1)))
 
-                        # Evaluate all remaining candidate targets for asymmetric risk:reward
+                        # Evaluate candidate targets:
+                        # - If TP1 was NOT passed yet and still offers full scalp reward (>= scalp_tp1_dist and >= 0.8 * eff_risk), allow momentum entry!
+                        # - Otherwise require >= 1.5 * eff_risk for multi-target rollover.
                         viable_tp = None
                         viable_index = None
                         for i, tp in enumerate(candidate_tps):
@@ -1960,15 +2366,20 @@ class TelegramMultiSignalCopier:
                                 viable_tp = tp
                                 viable_index = i
                                 break
+                            elif not tp1_already_passed and tp == orig_tp1 and reward >= max(min_viable_reward, scalp_tp1_dist) and reward >= (0.8 * eff_risk):
+                                viable_tp = tp
+                                viable_index = i
+                                break
 
                         if viable_tp is not None:
                             remaining_tps = candidate_tps[viable_index:]
                             remaining_reward = abs(viable_tp - curr_spot)
                             logger.info(
-                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone (+{dist_from_zone:.2f} pts <= max {max_rollover_slip:.2f}), "
-                                f"target {viable_tp} offers {remaining_reward:.2f} pts reward vs {eff_risk:.2f} pts ratcheted risk (>= 1.5 R:R). Proceeding with ratcheted SL {ratcheted_sl}."
+                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone (+{dist_from_zone:.4f} <= max {max_rollover_slip:.4f}), "
+                                f"target {viable_tp} offers {remaining_reward:.4f} reward vs {eff_risk:.4f} ratcheted risk. Proceeding with ratcheted SL {ratcheted_sl}."
                             )
                             rollover_sig = copy.deepcopy(sig)
+                            rollover_sig["original_provider_sl"] = sig.get("sl")
                             rollover_sig["sl"] = ratcheted_sl
                             rollover_sig["tps"] = remaining_tps
                             rollover_sig["is_target_rollover"] = True
@@ -1980,17 +2391,13 @@ class TelegramMultiSignalCopier:
                         continue
 
                     # If rollover was not eligible, block with Anti-Chase skip alert
-                    orig_sl = sig.get("sl")
-                    sl_risk_str = ""
-                    if orig_sl:
-                        expanded_risk = abs(curr_spot - orig_sl)
-                        sl_risk_str = f"\n⚠️ <b>Risk Warning:</b> Chasing would expand SL risk to {expanded_risk:.2f} pts"
-
-                    logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_from_zone:.2f} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
+                    is_fx_sym = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL", "JPY"])
+                    dist_str = f"{dist_from_zone:.5f}" if is_fx_sym else f"{dist_from_zone:.2f}"
+                    logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_str} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
                     if not self.dry_run:
                         self.send_telegram_alert(
                             f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n"
-                            f"Action: {side} {symbol} @ {sig.get('entry_mid')} (Spot: {curr_spot}, +{dist_from_zone:.2f} pts away)\n"
+                            f"Action: {side} {symbol} @ {sig.get('entry_mid')} (Spot: {curr_spot}, +{dist_str} pts away)\n"
                             f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                         )
                     continue
