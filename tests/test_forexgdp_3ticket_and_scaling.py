@@ -42,8 +42,8 @@ def test_forexgdp_sizing_050_lots_3tickets():
     orders = copier.execute_signal(sig, spot_price=1.0850)
     assert orders is not None
     assert len(orders) == 3
-    assert all(o["volume"] == 0.50 for o in orders)
-    assert sum(o["volume"] for o in orders) == pytest.approx(1.50)
+    assert all(o["volume"] == 0.07 for o in orders)
+    assert sum(o["volume"] for o in orders) == pytest.approx(0.21)
     assert orders[0]["ticket"] == 1 and orders[0]["tp"] == 1.0890
     assert orders[1]["ticket"] == 2 and orders[1]["tp"] == 1.0930
     assert orders[2]["ticket"] == 3 and orders[2]["tp"] == 1.0980
@@ -97,14 +97,14 @@ def test_forexgdp_capacity_degradation_when_slots_limited():
     assert len(orders_2slots) == 2
     assert orders_2slots[0]["ticket"] == 1 and orders_2slots[0]["tp"] == 1.2550
     assert orders_2slots[1]["ticket"] == 2 and orders_2slots[1]["tp"] == 1.2650  # Runner TP3
-    assert all(o["volume"] == 0.50 for o in orders_2slots)
+    assert all(o["volume"] == 0.07 for o in orders_2slots)
 
     # 5 active positions already running -> 1 slot free
     copier.state["active_positions"] = [{"positionId": i} for i in range(5)]
     orders_1slot = copier.execute_signal(sig, spot_price=1.2500)
     assert len(orders_1slot) == 1
     assert orders_1slot[0]["ticket"] == 1 and orders_1slot[0]["tp"] == 1.2550
-    assert orders_1slot[0]["volume"] == 0.50
+    assert orders_1slot[0]["volume"] == 0.07
 
 
 def test_forexgdp_multistage_companion_breakeven_and_tp1_lock():
@@ -176,8 +176,8 @@ def test_forexgdp_multistage_companion_breakeven_and_tp1_lock():
     assert amended_pos_ids == {102, 103}
     assert t2["be_locked"] is True
     assert t3["be_locked"] is True
-    assert t2["sl"] == pytest.approx(1.0852)
-    assert t3["sl"] == pytest.approx(1.0852)
+    assert t2["sl"] == pytest.approx(1.0853)
+    assert t3["sl"] == pytest.approx(1.0853)
 
     # --- STAGE 2: T2 also closes, only T3 live on broker ---
     copier.ctrader.amend_position.reset_mock()

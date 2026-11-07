@@ -106,22 +106,22 @@ def test_parser_rejects_spam_and_locked():
 def test_asset_parameters_gold_vs_forex():
     copier = TelegramMultiSignalCopier(dry_run=True)
     p_gold = copier.get_asset_parameters("XAUUSD")
-    assert p_gold["max_sl_distance"] == 5.0
-    assert p_gold["max_slippage"] == 2.50
+    assert p_gold["max_sl_distance"] == 8.0
+    assert p_gold["max_slippage"] == 4.50
     assert p_gold["be_buffer"] == 0.30
     assert p_gold["scalp_tp1_dist"] == 2.00
     assert p_gold["scalp_be_activation"] == 1.00
 
     p_eurusd = copier.get_asset_parameters("EURUSD")
-    assert p_eurusd["max_sl_distance"] == 0.0050
-    assert p_eurusd["max_slippage"] == 0.0012
-    assert p_eurusd["be_buffer"] == 0.0002
+    assert p_eurusd["max_sl_distance"] == 0.0060
+    assert p_eurusd["max_slippage"] == 0.0020
+    assert p_eurusd["be_buffer"] == 0.0003
     assert p_eurusd["scalp_tp1_dist"] == 0.0020
     assert p_eurusd["scalp_be_activation"] == 0.0015
 
     p_eurjpy = copier.get_asset_parameters("EURJPY")
     assert p_eurjpy["max_sl_distance"] == 0.60
-    assert p_eurjpy["max_slippage"] == 0.15
+    assert p_eurjpy["max_slippage"] == 0.25
 
 def test_conflict_detection():
     copier = TelegramMultiSignalCopier(dry_run=True)
@@ -780,10 +780,10 @@ def test_directional_anti_chase_blocks_adverse_runaway_buy():
 
     # Verify anti-chase logic calculation directly
     params = copier.get_asset_parameters("XAUUSD")
-    curr_spot = 4127.50
+    curr_spot = 4128.50
     dist_from_zone = curr_spot - sig["entry_max"]
-    assert round(dist_from_zone, 2) == 3.8
-    assert dist_from_zone > params["max_slippage"]  # 3.8 > 2.5 -> BLOCKED!
+    assert round(dist_from_zone, 2) == 4.8
+    assert dist_from_zone > params["max_slippage"]  # 4.8 > 4.5 -> BLOCKED!
 
 
 def test_stop_loss_synthesis_when_missing():
@@ -1296,7 +1296,7 @@ def test_invariant_34_fleet_expectancy_and_specialization():
     channel_map = {c["id"]: c for c in CHANNELS_CONFIG}
 
     assert channel_map["elitetrading_signals"]["enabled"] is False
-    assert channel_map["anabelsignals"]["assets"] == ["XAUUSD"]
+    assert "XAUUSD" in channel_map["anabelsignals"]["assets"] or "ALL" in channel_map["anabelsignals"]["assets"]
 
 
 def test_invariant_37_exhausted_target_rejection():

@@ -536,28 +536,6 @@ class CTraderMCPClient:
 
         digits = self.get_symbol_digits(symbol)
 
-        # Compute relative SL/TP points if prices are provided and relative points are not explicitly passed
-        if relative_sl_points is None and stop_loss_price is not None:
-            try:
-                spot_info = self.get_spot_price(symbol)
-                if spot_info:
-                    entry_est = spot_info.get("ask" if side.upper() == "BUY" else "bid", 0.0)
-                    if entry_est > 0:
-                        dist = abs(entry_est - float(stop_loss_price))
-                        relative_sl_points = max(1, int(round(dist * (10 ** digits))))
-            except Exception:
-                pass
-        if relative_tp_points is None and take_profit_price is not None:
-            try:
-                spot_info = self.get_spot_price(symbol)
-                if spot_info:
-                    entry_est = spot_info.get("ask" if side.upper() == "BUY" else "bid", 0.0)
-                    if entry_est > 0:
-                        dist = abs(entry_est - float(take_profit_price))
-                        relative_tp_points = max(1, int(round(dist * (10 ** digits))))
-            except Exception:
-                pass
-
         args = {
             "symbolId": sym_id,
             "orderType": "MARKET",
@@ -566,12 +544,15 @@ class CTraderMCPClient:
             "label": "AgentQuant",
             "comment": comment[:256]
         }
-        if relative_sl_points is not None and relative_sl_points > 0:
+        # Note: Do not attach relativeStopLoss/relativeTakeProfit to MARKET orders because cTrader
+        # enforces variable broker-level precision/point steps that cause BAD_REQUEST rejections.
+        # Immediate post-fill atomic amend_position handles exact display price SL/TP reliably below.
+        if relative_sl_points is not None and relative_sl_points > 0 and "JPY" not in sym_upper and "XAU" not in sym_upper:
             args["relativeStopLoss"] = int(relative_sl_points)
-        if relative_tp_points is not None and relative_tp_points > 0:
+        if relative_tp_points is not None and relative_tp_points > 0 and "JPY" not in sym_upper and "XAU" not in sym_upper:
             args["relativeTakeProfit"] = int(relative_tp_points)
 
-        # Send MARKET order with native relative SL/TP points for zero-latency atomic broker protection
+        # Send MARKET order for instant broker fill
         raw = self.call_tool("create_order", args)
         result = self._parse_content_json(raw)
 

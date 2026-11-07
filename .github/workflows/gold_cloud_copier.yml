@@ -82,11 +82,10 @@ jobs:
           # Execution Rules
           GOLD_COPIER_TICKET_MODE: ${{ secrets.GOLD_COPIER_TICKET_MODE || 'TWO_TICKETS' }}
           GOLD_COPIER_LOT_SIZE: '0.07'
+          FOREX_COPIER_LOT_SIZE: '0.07'
           MAX_CONCURRENT_POSITIONS: '6'
           DAILY_DRAWDOWN_FLOOR: ${{ secrets.DAILY_DRAWDOWN_FLOOR || '5650.0' }}
-          AI_SIGNAL_EXTRACTION_ENABLED: "true"
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'nex-agi/nex-n2.5-mini:free' }}
+          AI_SIGNAL_EXTRACTION_ENABLED: "false"
         run: |
           ACTION="${{ inputs.action || 'start_live_copier' }}"
           DURATION="${{ inputs.duration_hours || '5.8' }}"
