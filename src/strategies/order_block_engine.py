@@ -230,17 +230,17 @@ class OrderBlockEngine:
         digits = 2 if any(k in sym_upper for k in ["XAU", "GOLD", "BTC", "ETH", "SPX", "NDX", "US30", "US2000"]) else 5
 
         atr = cls.calculate_atr(df, period=14)
-        atr_buffer = atr * 0.25
+        atr_buffer = atr * 0.40
 
-        # Dynamic physical buffer beyond the wick
+        # Dynamic physical buffer beyond the wick to prevent liquidity sweep wicks from stopping out trades
         if "XAU" in sym_upper or "GOLD" in sym_upper:
-            min_buf = max(0.40, atr_buffer)
+            min_buf = max(1.20, atr_buffer)
         elif "JPY" in sym_upper:
-            min_buf = max(0.05, atr_buffer)
+            min_buf = max(0.08, atr_buffer)
         elif any(k in sym_upper for k in ["BTC", "ETH"]):
-            min_buf = max(15.0, atr_buffer)
+            min_buf = max(20.0, atr_buffer)
         else:
-            min_buf = max(0.0003, atr_buffer)
+            min_buf = max(0.0008, atr_buffer)
 
         detected_obs = cls.detect_order_blocks(df, side_upper, lookback_bars=lookback_bars)
         if not detected_obs:

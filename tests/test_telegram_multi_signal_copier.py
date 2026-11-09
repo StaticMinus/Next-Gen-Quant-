@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from src.integrations.telegram_multi_signal_copier import (
     MultiChannelSignalParser,
@@ -237,7 +238,7 @@ def test_dynamic_trailing_stop_ratchet():
         "tp": 2680.00,  # Deepest swing target
         "channel": "ssfgold",
         "be_locked": True,
-        "time": "2026-10-19T10:00:00"
+        "time": datetime.now(timezone.utc).isoformat()
     }]
 
     mock_ctrader.get_positions.return_value = [{"positionId": pos_id}]

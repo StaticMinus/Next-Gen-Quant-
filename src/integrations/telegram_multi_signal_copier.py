@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1295,7 +1295,7 @@ class TelegramMultiSignalCopier:
                 "min_sl_distance": 1.50,           # 1.50 pts Gold noise floor (15 pips)
                 "max_sl_distance": 8.0,            # 8.0 pts Gold tolerance
                 "max_slippage": 4.50,              # 4.50 pts direct breakout
-                "max_rollover_slippage": 5.50,     # Up to 5.50 pts momentum/rollover tolerance on Gold breakouts
+                "max_rollover_slippage": 5.00,     # Up to 5.0 pts momentum/rollover tolerance on Gold breakouts
                 "be_buffer": 0.30,
                 "scalp_tp1_dist": 2.00,            # 20 pips micro-banker for scalps
                 "scalp_be_activation": 1.00,       # Lock BE at +10 pips gain (Invariant 27)
@@ -1307,7 +1307,7 @@ class TelegramMultiSignalCopier:
             }
         elif "JPY" in sym:
             return {
-                "lot_size": max(0.07, min(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")))),
+                "lot_size": min(0.07, max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")))),
                 "min_sl_distance": 0.15,           # 15 pips noise floor (0.150)
                 "max_sl_distance": 0.60,
                 "max_slippage": 0.25,
@@ -1387,7 +1387,7 @@ class TelegramMultiSignalCopier:
             }
         else:
             return {
-                "lot_size": max(0.07, min(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")))),
+                "lot_size": min(0.07, max(0.07, float(os.getenv("FOREX_COPIER_LOT_SIZE", "0.07")))),
                 "min_sl_distance": 0.0015,         # 15 pips structural noise floor (0.00150)
                 "max_sl_distance": 0.0060,         # 60 pips max SL
                 "max_slippage": 0.0020,            # 20 pips direct
@@ -1856,6 +1856,36 @@ class TelegramMultiSignalCopier:
                 return str(ap["symbol"]).upper()
         return None
 
+    @staticmethod
+    def calculate_active_market_hours(start_dt: datetime, end_dt: datetime) -> float:
+        """
+        Calculates active market hours between start_dt and end_dt, excluding
+        weekend market closure periods (Friday 22:00 UTC to Sunday 22:00 UTC = 48h).
+        """
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+        if end_dt <= start_dt:
+            return 0.0
+
+        total_seconds = (end_dt - start_dt).total_seconds()
+        cur = start_dt - timedelta(days=7)
+        days_to_friday = (4 - cur.weekday()) % 7
+        friday_22 = (cur + timedelta(days=days_to_friday)).replace(hour=22, minute=0, second=0, microsecond=0)
+
+        weekend_seconds = 0.0
+        while friday_22 < end_dt:
+            sunday_22 = friday_22 + timedelta(hours=48)
+            overlap_start = max(start_dt, friday_22)
+            overlap_end = min(end_dt, sunday_22)
+            if overlap_end > overlap_start:
+                weekend_seconds += (overlap_end - overlap_start).total_seconds()
+            friday_22 += timedelta(days=7)
+
+        active_seconds = max(0.0, total_seconds - weekend_seconds)
+        return active_seconds / 3600.0
+
     def manage_active_breakeven(self):
         """Monitors active positions, triggers Breakeven locks, and enforces 48-Hour swing timeouts."""
         if self.dry_run:
@@ -1887,13 +1917,13 @@ class TelegramMultiSignalCopier:
                 if pos_time_str:
                     try:
                         pos_dt = datetime.fromisoformat(pos_time_str)
-                        age_hours = (now_utc - pos_dt).total_seconds() / 3600.0
+                        age_hours = self.calculate_active_market_hours(pos_dt, now_utc)
                         if age_hours >= 48.0:
-                            logger.info(f"⏳ [SWING TIMEOUT] Position #{pos_id} ({pos.get('symbol')}) open for {age_hours:.1f}h (>= 48h). Closing at market.")
+                            logger.info(f"⏳ [SWING TIMEOUT] Position #{pos_id} ({pos.get('symbol')}) open for {age_hours:.1f} market hours (>= 48h). Closing at market.")
                             self.ctrader.close_position(pos_id)
                             self.send_telegram_alert(
                                 f"⏳ <b>48-Hour Swing Timeout Exit</b>\n"
-                                f"Position #{pos_id} ({pos.get('symbol')}) closed after {age_hours:.1f}h to liberate margin and avoid swap decay."
+                                f"Position #{pos_id} ({pos.get('symbol')}) closed after {age_hours:.1f} market hours to liberate margin and avoid swap decay."
                             )
                             active.remove(pos)
                             continue
@@ -2414,14 +2444,13 @@ class TelegramMultiSignalCopier:
 
                 # Invariant 37: Target Exhaustion & Smart Target Promotion Guard
                 # Only consider TP1 exhausted if spot already reached TP1 or remaining reward < min_viable_reward
+                is_exhausted = False
+                exhaustion_reason = ""
                 if sig.get("tps"):
                     tp1 = sig["tps"][0]
                     entry_ref = sig.get("entry_mid", (e_min + e_max) / 2.0)
                     total_target_span = abs(tp1 - entry_ref)
                     min_viable_reward = params.get("min_viable_reward", 0.0008)
-
-                    is_exhausted = False
-                    exhaustion_reason = ""
 
                     if side == "BUY":
                         if curr_spot >= tp1:
@@ -2450,10 +2479,32 @@ class TelegramMultiSignalCopier:
                                     f"(remaining reward {rem_reward:.4f} < min required {min_viable_reward:.4f})"
                                 )
 
-                max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
+                    if is_exhausted:
+                        viable_higher_tps = [
+                            tp for tp in sig.get("tps", [])
+                            if ((tp - curr_spot) >= min_viable_reward if side == "BUY" else (curr_spot - tp) >= min_viable_reward)
+                        ]
+                        max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
+                        if viable_higher_tps and dist_from_zone <= max_rollover_slip:
+                            logger.info(
+                                f"🎯 [Invariant 37 Smart Target Promotion] {symbol} {side} TP1 ({tp1}) exhausted at {curr_spot}; "
+                                f"promoting higher targets {viable_higher_tps}."
+                            )
+                            sig["tps"] = viable_higher_tps
+                        else:
+                            logger.info(f"🛑 [Invariant 37] Target Exhaustion Guard: {symbol} {side} skipped. {exhaustion_reason}.")
+                            if not self.dry_run:
+                                self.send_telegram_alert(
+                                    f"🛑 <b>SIGNAL ABORTED: Target Exhausted</b>\n"
+                                    f"Action: {side} {symbol} (Target {tp1})\n"
+                                    f"Reason: {exhaustion_reason}\n"
+                                    f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
+                                )
+                            continue
 
-                # Invariant 22/29/31/37: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
-                if dist_from_zone > params["max_slippage"] or is_exhausted:
+                if is_exhausted or dist_from_zone > params["max_slippage"]:
+                    # Invariant 22/29/31: Smart Multi-Target Rollover & Momentum Anti-Chase Gate
+                    max_rollover_slip = params.get("max_rollover_slippage", params["max_slippage"] * 1.5)
                     candidate_tps = [tp for tp in sig.get("tps", []) if (tp > curr_spot if side == "BUY" else tp < curr_spot)]
                     rollover_executed = False
 
@@ -2465,11 +2516,10 @@ class TelegramMultiSignalCopier:
                         min_viable_reward = params.get("min_viable_reward", 0.0008)
                         scalp_tp1_dist = params.get("scalp_tp1_dist", min_viable_reward)
                         orig_tp1 = sig["tps"][0] if sig.get("tps") else None
-                        tp1_already_passed = is_exhausted or bool(orig_tp1 is not None and ((curr_spot >= orig_tp1) if side == "BUY" else (curr_spot <= orig_tp1)))
+                        tp1_already_passed = bool(orig_tp1 is not None and ((curr_spot >= orig_tp1) if side == "BUY" else (curr_spot <= orig_tp1)))
 
                         # Evaluate candidate targets:
-                        # - If TP1 was NOT passed yet and still offers full scalp reward (>= scalp_tp1_dist and >= 0.8 * eff_risk), allow momentum entry!
-                        # - Otherwise require >= 1.5 * eff_risk for multi-target rollover.
+                        # - Strictly require >= 1.5 * eff_risk for multi-target rollover to prevent entry on low R:R momentum chases.
                         viable_tp = None
                         viable_index = None
                         for i, tp in enumerate(candidate_tps):
@@ -2478,16 +2528,12 @@ class TelegramMultiSignalCopier:
                                 viable_tp = tp
                                 viable_index = i
                                 break
-                            elif not tp1_already_passed and tp == orig_tp1 and reward >= max(min_viable_reward, scalp_tp1_dist) and reward >= (0.8 * eff_risk):
-                                viable_tp = tp
-                                viable_index = i
-                                break
 
                         if viable_tp is not None:
                             remaining_tps = candidate_tps[viable_index:]
                             remaining_reward = abs(viable_tp - curr_spot)
                             logger.info(
-                                f"🎯 Invariant 29/37 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone (+{dist_from_zone:.4f} <= max {max_rollover_slip:.4f}), "
+                                f"🎯 Invariant 29 Smart Multi-Target Rollover: {symbol} spot {curr_spot} passed entry zone (+{dist_from_zone:.4f} <= max {max_rollover_slip:.4f}), "
                                 f"target {viable_tp} offers {remaining_reward:.4f} reward vs {eff_risk:.4f} ratcheted risk. Proceeding with ratcheted SL {ratcheted_sl}."
                             )
                             rollover_sig = copy.deepcopy(sig)
@@ -2502,28 +2548,17 @@ class TelegramMultiSignalCopier:
                     if rollover_executed:
                         continue
 
-                    # If rollover was not eligible, block with alert
-                    if is_exhausted and not candidate_tps:
-                        logger.info(f"🛑 [Invariant 37] Target Exhaustion Guard: {symbol} {side} skipped. {exhaustion_reason}.")
-                        if not self.dry_run:
-                            self.send_telegram_alert(
-                                f"🛑 <b>SIGNAL ABORTED: Target Exhausted</b>\n"
-                                f"Action: {side} {symbol} (Target {sig.get('tps', [''])[0]})\n"
-                                f"Reason: {exhaustion_reason}\n"
-                                f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
-                            )
-                        continue
-                    else:
-                        is_fx_sym = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL", "JPY"])
-                        dist_str = f"{dist_from_zone:.5f}" if is_fx_sym else f"{dist_from_zone:.2f}"
-                        logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_str} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
-                        if not self.dry_run:
-                            self.send_telegram_alert(
-                                f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n"
-                                f"Action: {side} {symbol} @ {sig.get('entry_mid')} (Spot: {curr_spot}, +{dist_str} pts away)\n"
-                                f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
-                            )
-                        continue
+                    # If rollover was not eligible, block with Anti-Chase skip alert
+                    is_fx_sym = not any(k in symbol.upper() for k in ["XAU", "GOLD", "BTC", "ETH", "US30", "NAS100", "SPX", "OIL", "USOIL", "JPY"])
+                    dist_str = f"{dist_from_zone:.5f}" if is_fx_sym else f"{dist_from_zone:.2f}"
+                    logger.info(f"⏭️ Anti-Chase Filter: {symbol} spot {curr_spot} is {dist_str} adverse pts from entry zone (max {params['max_slippage']}). Skipping.")
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"⏭️ <b>SIGNAL SKIPPED: Anti-Chase Limit Exceeded</b>\n"
+                            f"Action: {side} {symbol} @ {sig.get('entry_mid')} (Spot: {curr_spot}, +{dist_str} pts away)\n"
+                            f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
+                        )
+                    continue
 
                 # Execute order
                 self.execute_signal(sig, curr_spot)

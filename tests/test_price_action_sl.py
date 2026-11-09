@@ -179,8 +179,8 @@ def test_copier_integration_with_pasl():
         "type": "DIRECT_EXECUTION"
     }
     orders_syn = copier.execute_signal(sig_none, spot_price=4120.0)
-    # Clamped to new 5.0 pt max risk ceiling (4120.0 - 5.0 = 4115.0)
-    assert orders_syn[0]["sl"] == 4115.0
+    # Clamped to 8.0 pt max risk ceiling (4120.0 - 8.0 = 4112.0)
+    assert orders_syn[0]["sl"] == 4112.0
 
 
 def test_calculate_swing_sl_sell_with_spread_cushion():

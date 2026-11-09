@@ -204,7 +204,7 @@ def test_forexgdp_swing_timeout_closes_after_48h():
     copier.ctrader = MagicMock()
     copier.send_telegram_alert = MagicMock()
 
-    old_time = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=120)).isoformat()
     pos = {
         "positionId": 201,
         "ticket": 2,

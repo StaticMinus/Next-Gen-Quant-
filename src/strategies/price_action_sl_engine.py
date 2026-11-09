@@ -220,10 +220,20 @@ class PriceActionSLEngine:
         else:
             candidate_sl = float(provider_sl)
             reason = "PROVIDER_EXACT"
+            dist_to_provider = abs(entry_price - candidate_sl)
 
-            # Invariant 38: For authorized swing channels with explicit provider SL,
-            # NEVER allow micro M5 down-tightening to suffocate macro structure.
-            # Preserve provider SL exactly (clamping only to prop firm max_allowed_distance).
+            # Invariant 39 (Provider SL Shield): If provider SL is already valid and within max allowed risk,
+            # preserve it exactly! Micro M5 wicks must NEVER down-tighten and suffocate an already valid provider SL.
+            if min_noise <= dist_to_provider <= max_allowed_distance:
+                logger.info(
+                    f"🛡️ [Provider SL Shield] Preserving exact provider SL {candidate_sl} "
+                    f"for {symbol} (distance {dist_to_provider:.2f} is within max {max_allowed_distance:.2f} and >= min {min_noise:.2f})."
+                )
+                final_sl = round(candidate_sl, digits)
+                return final_sl, reason
+
+            # If provider SL exceeds max_allowed_distance, check if an institutional Order Block
+            # can anchor the stop within the allowed boundary instead of a blind hard clamp.
             ob_tightened = False
             if is_swing_channel:
                 ob_tightened = True
