@@ -1296,9 +1296,9 @@ class TelegramMultiSignalCopier:
                 "max_sl_distance": 8.0,            # 8.0 pts Gold tolerance
                 "max_slippage": 4.50,              # 4.50 pts direct breakout
                 "max_rollover_slippage": 5.00,     # Up to 5.0 pts momentum/rollover tolerance on Gold breakouts
-                "be_buffer": 0.30,
+                "be_buffer": 0.50,                 # Invariant 40: 0.50 pts ($3.50 gross) ensures net-positive profit after $1.42 broker commission
                 "scalp_tp1_dist": 2.00,            # 20 pips micro-banker for scalps
-                "scalp_be_activation": 1.00,       # Lock BE at +10 pips gain (Invariant 27)
+                "scalp_be_activation": 1.00,       # Lock BE at +10 pips gain
                 "trailing_distance": 3.00,         # 30 pips / 3.0 pts Gold
                 "trailing_activation": 4.00,       # Activate trailing once +4.0 pts in profit
                 "min_viable_reward": 1.20,         # 1.20 pts Gold ($12/ticket, covers spread + commission + net profit)

@@ -214,3 +214,29 @@ def test_swing_timeout_triggers_after_48_active_market_hours():
     market_hours = TelegramMultiSignalCopier.calculate_active_market_hours(start_dt, end_dt)
     assert abs(market_hours - 51.0) < 0.01
     assert market_hours >= 48.0
+
+
+def test_gold_breakeven_buffer_covers_broker_commission():
+    """
+    Nov 11 Pseudo-Loss Root Cause:
+    When Gold BE was set with 0.20 buffer, gross profit was $1.40.
+    With cTrader round-turn commission of $1.42 ($0.71 open + $0.71 close),
+    trades closed at -$0.02 and appeared in RED as losses.
+    With Invariant 40, be_buffer MUST be at least 0.50 pts ($3.50 gross),
+    guaranteeing strictly positive net profit (+$2.08) upon BE exit.
+    """
+    copier = TelegramMultiSignalCopier(dry_run=True)
+    params = copier.get_asset_parameters("XAUUSD")
+    be_buf = params["be_buffer"]
+
+    assert be_buf >= 0.50, f"Expected be_buffer >= 0.50 on Gold, got {be_buf}"
+
+    # Verify math on 0.07L (7 oz):
+    lots = params["lot_size"]  # 0.07
+    gross_pnl = be_buf * lots * 100.0  # 0.50 * 7 = $3.50
+    commission = 1.42  # cTrader standard round-turn on 0.07L Gold
+    net_pnl = gross_pnl - commission
+
+    assert net_pnl > 0, f"Expected positive net PnL at BE, got {net_pnl:.2f}"
+    assert net_pnl >= 2.00, f"Expected at least $2.00 net profit cushion, got {net_pnl:.2f}"
+

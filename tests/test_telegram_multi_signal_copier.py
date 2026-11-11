@@ -109,7 +109,7 @@ def test_asset_parameters_gold_vs_forex():
     p_gold = copier.get_asset_parameters("XAUUSD")
     assert p_gold["max_sl_distance"] == 8.0
     assert p_gold["max_slippage"] == 4.50
-    assert p_gold["be_buffer"] == 0.30
+    assert p_gold["be_buffer"] == 0.50
     assert p_gold["scalp_tp1_dist"] == 2.00
     assert p_gold["scalp_be_activation"] == 1.00
 
@@ -598,9 +598,9 @@ def test_rapid_breakeven_trigger():
     # Breakeven was locked because gain (+1.85 pts) >= scalp_be_activation (1.50 pts)
     pos = copier.state["active_positions"][0]
     assert pos["be_locked"] is True
-    # SL amended to entry - be_buffer (4120.45 - 0.30 = 4120.15)
-    assert pos["sl"] == 4120.15
-    mock_ctrader.amend_position.assert_called_once_with(12345, stop_loss=4120.15)
+    # SL amended to entry - be_buffer (4120.45 - 0.50 = 4119.95)
+    assert pos["sl"] == 4119.95
+    mock_ctrader.amend_position.assert_called_once_with(12345, stop_loss=4119.95)
 
 
 def test_companion_breakeven_synchronization():
@@ -626,11 +626,11 @@ def test_companion_breakeven_synchronization():
     t1 = next(p for p in copier.state["active_positions"] if p["positionId"] == 101)
     t2 = next(p for p in copier.state["active_positions"] if p["positionId"] == 102)
 
-    # Both tickets must be locked at breakeven (entry + 0.30 buffer)
+    # Both tickets must be locked at breakeven (entry + 0.50 buffer)
     assert t2["be_locked"] is True
-    assert t2["sl"] == 4090.86
+    assert t2["sl"] == 4091.06
     assert t1["be_locked"] is True
-    assert t1["sl"] == 4091.65
+    assert t1["sl"] == 4091.85
 
 
 def test_intraday_guard_never_rejects_wide_tp_signals():
@@ -986,8 +986,8 @@ def test_invariant_23_broker_label_linked_breakeven(tmp_path):
 
     copier.manage_active_breakeven()
 
-    # Verify amend_position was called with Breakeven price (4120.0 + 0.30 buffer = 4120.3)
-    mock_ctrader.amend_position.assert_called_once_with(9992, stop_loss=4120.3)
+    # Verify amend_position was called with Breakeven price (4120.0 + 0.50 buffer = 4120.50)
+    mock_ctrader.amend_position.assert_called_once_with(9992, stop_loss=4120.50)
 
 
 def test_parser_xauusd_gold_trading_forex_regression():
