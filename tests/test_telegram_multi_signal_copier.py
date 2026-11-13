@@ -1369,11 +1369,14 @@ def test_anabel_signal_without_sl_executes_with_order_block_sl():
     import pandas as pd
     from unittest.mock import MagicMock
 
-    # Create M5 trendbars containing a confirmed Bullish Order Block at 3988.0
+    # Create M5 trendbars containing a confirmed Bullish Order Block at 3989.5 whose
+    # buffered invalidation (~3988.1) fits the 8.0 pt Gold risk budget from entry 3995.9.
+    # (2026-11-13 Invariant 44: structures that cannot fit within the budget now SKIP
+    # the trade instead of executing a clamped inside-structure stop.)
     df_bars = pd.DataFrame([
-        {"open": 3992.0, "high": 3993.0, "low": 3988.0, "close": 3988.5, "volume": 100},
-        {"open": 3988.5, "high": 4002.0, "low": 3988.0, "close": 4001.0, "volume": 500},
-        {"open": 4001.0, "high": 4005.0, "low": 3999.0, "close": 4004.0, "volume": 300},
+        {"open": 3992.0, "high": 3992.5, "low": 3989.5, "close": 3989.7, "volume": 100},
+        {"open": 3989.7, "high": 3994.5, "low": 3989.3, "close": 3993.8, "volume": 500},
+        {"open": 3993.8, "high": 3995.0, "low": 3993.0, "close": 3994.5, "volume": 300},
     ])
 
     mock_ctrader = MagicMock()

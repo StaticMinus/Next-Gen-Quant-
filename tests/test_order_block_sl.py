@@ -174,12 +174,25 @@ def test_price_action_engine_adopts_order_block_when_sl_missing():
         side="BUY",
         entry_price=4018.0,
         symbol="XAUUSD",
-        max_allowed_distance=5.0
+        max_allowed_distance=7.0  # True OB invalidation (~4012.3, 5.7 pts) must fit unclamped
     )
 
     assert "ORDER_BLOCK" in reason
     assert sl < 4013.50
     assert round(4018.0 - sl, 2) >= 3.50
+
+    # With a 5.0 cap the OB level cannot fit: the clamped stop would sit inside the
+    # OB buffer and above the swing wick => Invariant 44 skips the trade entirely.
+    sl_capped, reason_capped = PriceActionSLEngine.reconcile_structural_sl(
+        provider_sl=None,
+        df_bars=df,
+        side="BUY",
+        entry_price=4018.0,
+        symbol="XAUUSD",
+        max_allowed_distance=5.0
+    )
+    assert sl_capped is None
+    assert reason_capped == "STRUCTURE_UNPROTECTABLE"
 
 
 def test_price_action_engine_tightens_wide_provider_sl_to_order_block():
@@ -199,7 +212,7 @@ def test_price_action_engine_tightens_wide_provider_sl_to_order_block():
         side="BUY",
         entry_price=4018.0,
         symbol="XAUUSD",
-        max_allowed_distance=5.0
+        max_allowed_distance=7.0  # True OB invalidation (~4012.3, 5.7 pts) must fit unclamped
     )
 
     assert "ORDER_BLOCK_TIGHTENED" in reason

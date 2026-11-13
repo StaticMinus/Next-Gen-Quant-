@@ -48,6 +48,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PRIMARY_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "8428715579")
 STATE_FILE = ROOT_DIR / "cache" / "multi_signal_copier_state.json"
 
+# === Invariant 45: Loss-Guard Constants (realized-P/L circuit breakers) ===
+DAILY_LOSS_LIMIT_USD = float(os.getenv("DAILY_LOSS_LIMIT_USD", "150"))            # realized net loss in one UTC day that halts new entries
+WHIPSAW_OPPOSITE_BLOCK_MIN = float(os.getenv("WHIPSAW_OPPOSITE_BLOCK_MIN", "90")) # minutes opposite-direction entries are blocked after a full-SL loss
+WHIPSAW_PAUSE_HOURS = float(os.getenv("WHIPSAW_PAUSE_HOURS", "4"))                # hours a symbol is paused after 2 full-SL losses within a 6h session
+FULL_LOSS_USD = float(os.getenv("FULL_LOSS_USD", "25"))                           # per-position realized net loss counted as a full-SL loss
+
 CHANNELS_CONFIG = [
     # === PURE INTRADAY & SESSION SCALPING FLEET (Active, Consistent & Audited) ===
     {"id": "ssfgold", "name": "SureShotFX Gold", "enabled": True, "assets": ["XAUUSD", "ALL"], "tier": 1, "yield_pct": 25.0, "peak_session": "London Pre-Market"},
@@ -1076,7 +1082,9 @@ class TelegramMultiSignalCopier:
             self.state = {
                 "watermarks": {},
                 "executed_signal_keys": [],
-                "active_positions": []
+                "active_positions": [],
+                "full_loss_log": [],
+                "daily_halt_until": 0
             }
         elif dry_run:
             self.state_file = ROOT_DIR / "cache" / "multi_signal_copier_dry_run_state.json"
@@ -1119,22 +1127,27 @@ class TelegramMultiSignalCopier:
 
     @staticmethod
     def _is_fresh_cold_start_post(post: Dict[str, Any], max_age_sec: float = 180.0) -> bool:
-        """Returns True if a post has a timestamp within the last `max_age_sec` seconds."""
+        """Returns True if a post has a timestamp within the last `max_age_sec` seconds.
+
+        Anchored to time.time() (not the patchable module datetime) so cold-start
+        freshness stays wall-clock exact even when tests freeze the copier clock
+        away from the Invariant 38 rollover blackout window.
+        """
         pub_ts = post.get("published_ts")
         if isinstance(pub_ts, (int, float)) and pub_ts > 0:
-            age = datetime.now(timezone.utc).timestamp() - float(pub_ts)
+            age = time.time() - float(pub_ts)
             return -30.0 <= age <= max_age_sec
         ts_str = post.get("timestamp") or post.get("date")
         if not ts_str:
             return False
         if isinstance(ts_str, (int, float)):
-            age = datetime.now(timezone.utc).timestamp() - float(ts_str)
+            age = time.time() - float(ts_str)
             return -30.0 <= age <= max_age_sec
         try:
             dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - dt).total_seconds()
+            age = time.time() - dt.timestamp()
             return -30.0 <= age <= max_age_sec
         except Exception:
             return False
@@ -1165,7 +1178,9 @@ class TelegramMultiSignalCopier:
         return {
             "watermarks": {},
             "executed_signal_keys": [],
-            "active_positions": []
+            "active_positions": [],
+            "full_loss_log": [],
+            "daily_halt_until": 0
         }
 
     def save_state(self):
@@ -1175,6 +1190,128 @@ class TelegramMultiSignalCopier:
                 json.dump(self.state, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving state: {e}")
+
+    def refresh_loss_guards(self):
+        """
+        Invariant 45: refreshes realized-loss circuit breakers from broker closed deals.
+        - Daily Loss Halt: realized net P/L of the current UTC day <= -DAILY_LOSS_LIMIT_USD
+          blocks all new entries until the next UTC midnight (open-position management continues).
+        - Whipsaw Breaker log: records full stop-loss losses (net <= -FULL_LOSS_USD per position)
+          used by check_whipsaw_breaker to block stop-and-reverse whipsaw sequences.
+        Failures of the deals feed must never break the trading cycle.
+        """
+        try:
+            fetch = getattr(self.ctrader, "get_closed_deals", None)
+            if not callable(fetch):
+                return
+            deals = fetch(days=1)
+            if not deals:
+                return
+
+            now_ts = time.time()
+            midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            midnight_ts = midnight.timestamp()
+
+            day_net = 0.0
+            for d in deals:
+                exit_ts = float(d.get("exit_timestamp") or 0)
+                if exit_ts >= midnight_ts:
+                    day_net += float(d.get("net_pnl") or 0.0)
+
+            if day_net <= -abs(DAILY_LOSS_LIMIT_USD):
+                halt_until = float(self.state.get("daily_halt_until") or 0)
+                if halt_until <= now_ts:
+                    self.state["daily_halt_until"] = midnight_ts + 86400.0
+                    logger.warning(
+                        f"🛑 [Invariant 45 Daily Loss Halt] Realized net P/L today ${day_net:.2f} <= "
+                        f"-${abs(DAILY_LOSS_LIMIT_USD):.2f}. New entries halted until the next trading day."
+                    )
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"🛑 <b>Daily Loss Halt Triggered</b>\n"
+                            f"Realized P/L today: ${day_net:.2f}\n"
+                            f"New entries are halted until the next trading day. Open-position management continues."
+                        )
+                    self.save_state()
+
+            # Whipsaw breaker log: record full-SL losses (deduped by position_id), prune > 24h
+            log = self.state.setdefault("full_loss_log", [])
+            known_ids = {rec.get("position_id") for rec in log}
+            appended = False
+            for d in deals:
+                pnl = float(d.get("net_pnl") or 0.0)
+                if pnl <= -abs(FULL_LOSS_USD):
+                    pid = d.get("position_id")
+                    if pid in known_ids:
+                        continue
+                    log.append({
+                        "position_id": pid,
+                        "symbol": str(d.get("symbol_name") or "").upper(),
+                        "side": str(d.get("trade_side") or "").upper(),
+                        "net_pnl": round(pnl, 2),
+                        "ts": float(d.get("exit_timestamp") or now_ts),
+                    })
+                    appended = True
+                    logger.warning(
+                        f"💥 [Invariant 45] Full-SL loss recorded: {d.get('symbol_name')} {d.get('trade_side')} "
+                        f"net ${pnl:.2f} (whipsaw breaker armed)."
+                    )
+            cutoff = now_ts - 86400.0
+            pruned = [rec for rec in log if float(rec.get("ts") or 0) >= cutoff]
+            if len(pruned) != len(log):
+                self.state["full_loss_log"] = pruned
+                appended = True
+            if appended:
+                self.save_state()
+        except Exception as e:
+            logger.debug(f"Loss-guard refresh skipped: {e}")
+
+    def check_whipsaw_breaker(self, symbol: str, side: str) -> Optional[str]:
+        """
+        Invariant 45: Anti-Whipsaw Circuit Breaker.
+        Returns a skip reason string when new entries are blocked, else None:
+        - Daily loss halt active (all symbols).
+        - Opposite-direction entries blocked for WHIPSAW_OPPOSITE_BLOCK_MIN minutes after a
+          full-SL loss on the symbol (prevents the legal stop-and-reverse double hit of Nov 13).
+        - All entries on a symbol paused for WHIPSAW_PAUSE_HOURS after 2 full-SL losses
+          within a 6h session window.
+        """
+        now_ts = time.time()
+        if float(self.state.get("daily_halt_until") or 0) > now_ts:
+            remaining_min = (float(self.state["daily_halt_until"]) - now_ts) / 60.0
+            return f"Daily loss halt active ({remaining_min:.0f} min remaining)"
+
+        log = self.state.get("full_loss_log") or []
+        sym = str(symbol).upper()
+        side_u = str(side).upper()
+        recs = [r for r in log if str(r.get("symbol") or "").upper() == sym]
+
+        # 1. Symbol pause after 2 full-SL losses within the last 6 hours
+        session_window = now_ts - 6 * 3600.0
+        session_losses = sorted(
+            float(r.get("ts") or 0) for r in recs if float(r.get("ts") or 0) >= session_window
+        )
+        if len(session_losses) >= 2:
+            pause_until = session_losses[-1] + WHIPSAW_PAUSE_HOURS * 3600.0
+            if now_ts < pause_until:
+                remaining_min = (pause_until - now_ts) / 60.0
+                return (
+                    f"{len(session_losses)} full-SL losses on {sym} in the last 6h; "
+                    f"symbol paused {WHIPSAW_PAUSE_HOURS:.0f}h ({remaining_min:.0f} min remaining)"
+                )
+
+        # 2. Opposite-direction block after a full-SL loss
+        block_window = now_ts - WHIPSAW_OPPOSITE_BLOCK_MIN * 60.0
+        for r in recs:
+            r_ts = float(r.get("ts") or 0)
+            r_side = str(r.get("side") or "").upper()
+            if r_ts >= block_window and r_side and r_side != side_u:
+                return (
+                    f"opposite of full-SL {r_side} loss on {sym} {((now_ts - r_ts) / 60.0):.0f} min ago; "
+                    f"blocked for whipsaw protection ({WHIPSAW_OPPOSITE_BLOCK_MIN:.0f} min window)"
+                )
+
+        return None
 
     def _dispatch_telegram_alert_sync(self, url: str, payload: dict):
         try:
@@ -1475,6 +1612,21 @@ class TelegramMultiSignalCopier:
             spread_cushion=spread if side == "SELL" else 0.0,
             is_swing_channel=is_swing_authorized
         )
+        if safe_sl is None:
+            # Invariant 44: Structural SL Authority — no stop can be placed beyond recent
+            # market structure within the risk budget. Entering would guarantee a whipsaw stop-out.
+            logger.warning(
+                f"🛑 [Invariant 44 Structural SL Authority] {symbol} {side} skipped: {sl_reason} "
+                f"(provider SL {raw_sl}, max risk budget {max_dist}). No order placed."
+            )
+            if not self.dry_run:
+                self.send_telegram_alert(
+                    f"🛑 <b>Trade Skipped: Unprotectable Stop</b>\n"
+                    f"Action: {side} {symbol} @ ~{entry}\n"
+                    f"Reason: Stop-loss cannot be placed beyond recent market structure within the risk budget.\n"
+                    f"🔗 <a href=\"{sig.get('post_url', '')}\">View in Telegram</a> ({sig.get('channel', '')})"
+                )
+            return None
         if "ORDER_BLOCK" in sl_reason:
             logger.info(f"🏛️ [OB-PASL] Anchored SL to Institutional Order Block: {symbol} {side} @ {safe_sl} (Reason: {sl_reason} | Spread Cushion: {spread:.4f}) | Provider: {raw_sl}")
         else:
@@ -2269,6 +2421,9 @@ class TelegramMultiSignalCopier:
         except Exception as e:
             logger.warning(f"Could not verify equity: {e}")
 
+        # Invariant 45: refresh realized-loss circuit breakers (daily halt + whipsaw log)
+        self.refresh_loss_guards()
+
         watermarks = self.state.setdefault("watermarks", {})
         now_ts = time.time()
 
@@ -2381,6 +2536,18 @@ class TelegramMultiSignalCopier:
                         self.send_telegram_alert(
                             f"🛡️ <b>Conflict Shield: {symbol}</b>\n"
                             f"Skipped {side} (opposing active)\n"
+                            f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
+                        )
+                    continue
+
+                # Invariant 45: Anti-Whipsaw Circuit Breaker & Daily Loss Halt
+                breaker_reason = self.check_whipsaw_breaker(symbol, side)
+                if breaker_reason:
+                    logger.info(f"🛑 [Invariant 45 Whipsaw Breaker] {symbol} {side} skipped: {breaker_reason}.")
+                    if not self.dry_run:
+                        self.send_telegram_alert(
+                            f"🛑 <b>Whipsaw Guard: {symbol}</b>\n"
+                            f"Skipped {side}: {breaker_reason}\n"
                             f"🔗 <a href=\"{post_url}\">View in Telegram</a> ({ch_id})"
                         )
                     continue

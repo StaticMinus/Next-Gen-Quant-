@@ -78,25 +78,31 @@ def test_calculate_swing_sl_sell():
 
 def test_structural_shield_adoption_buy():
     """
-    INVARIANT: Provider tight SL is NEVER widened.
-    Overly wide provider SL is tightened to market structure.
+    Invariant 44 (2026-11-13 policy change): STRUCTURE WINS, ELSE SKIP.
+    1. Provider SL 4116.0 sits INSIDE the swing structure (swing low 4111.0, entry 4122.0):
+       it MUST be re-anchored beyond the swing wick when the structural distance fits
+       the risk budget (widening authorized — supersedes the old never-widen rule that
+       left the Nov 13 BUY exposed to a 3.76pt in-band stop).
+    2. Overly wide provider SL is still tightened to market structure.
     """
     lows = [4116.0, 4114.0, 4112.0, 4112.0, 4115.0, 4118.0, 4119.0, 4120.0, 4121.0]
     highs = [4120.0, 4118.0, 4116.0, 4117.0, 4119.0, 4122.0, 4123.0, 4124.0, 4125.0]
     df = create_sample_bars(lows, highs)
 
     # 1. Provider gave tight 4116.0 (closer to entry 4122.0 than swing low 4111.0)
-    # Must NOT widen to 4111.0!
+    # Must be widened beyond the swing structure!
     sl, reason = PriceActionSLEngine.reconcile_structural_sl(
         provider_sl=4116.0,
         df_bars=df,
         side="BUY",
         entry_price=4122.0,
         symbol="XAUUSD",
-        max_allowed_distance=12.0
+        max_allowed_distance=14.0
     )
-    assert reason == "PROVIDER_EXACT"
-    assert sl == 4116.0
+    assert reason.startswith("STRUCTURE_AUTHORITATIVE"), f"Expected structure authority, got {reason}"
+    assert sl < 4111.0, f"Expected SL beyond swing low 4111.0, got {sl}"
+    assert sl < 4116.0
+    assert (4122.0 - sl) <= 14.0
 
     # 2. Provider gave wide 4105.0 (further from entry than swing low ~4111.0)
     # Must tighten to swing structure!
@@ -106,22 +112,25 @@ def test_structural_shield_adoption_buy():
         side="BUY",
         entry_price=4122.0,
         symbol="XAUUSD",
-        max_allowed_distance=12.0
+        max_allowed_distance=14.0
     )
     assert reason_tight == "STRUCTURAL_SHIELD_TIGHTENED"
     assert sl_tight < 4112.0
     assert sl_tight > 4105.0
 
 
-def test_max_risk_clamp():
+def test_unprotectable_when_structure_exceeds_risk_cap():
     """
-    If swing low is 20 points away, it must be clamped to max_allowed_distance ($10.00).
+    Invariant 44 (2026-11-13 policy change): STRUCTURE WINS, ELSE SKIP.
+    Entry 4130.0 with the swing low at 4100.0 (30 pts away) and a 10.0 pt risk cap:
+    no stop can sit beyond structure within the cap, so the trade is UNPROTECTABLE.
+    (The old behavior clamped the stop to 4120.0 — 10 pts of air below entry — which
+    is exactly the inside-structure exposure this policy eliminates.)
     """
     lows = [4100.0, 4101.0, 4102.0, 4103.0]
     highs = [4105.0, 4106.0, 4107.0, 4108.0]
     df = create_sample_bars(lows, highs)
 
-    # Entry is 4130.0, swing low is 4100.0 (dist = 30 pts)
     sl, reason = PriceActionSLEngine.reconcile_structural_sl(
         provider_sl=None,
         df_bars=df,
@@ -131,19 +140,22 @@ def test_max_risk_clamp():
         max_allowed_distance=10.0
     )
 
-    assert "CLAMPED_MAX_RISK" in reason
-    assert sl == 4120.0  # Exactly 4130.0 - 10.0
+    assert sl is None
+    assert reason == "STRUCTURE_UNPROTECTABLE"
 
 
 def test_copier_integration_with_pasl():
     """
-    Verifies TelegramMultiSignalCopier uses PriceActionSLEngine during execute_signal:
-    - Tight provider SL is preserved.
-    - Missing SL is synthesized by PASL.
+    Verifies TelegramMultiSignalCopier uses PriceActionSLEngine during execute_signal
+    under Invariant 44 (Structure Wins, Else Skip):
+    - Provider SL beyond structure is preserved exactly.
+    - Missing SL is synthesized by PASL behind the swing low.
+    - A provider SL inside structure with no fitting structural stop => no order placed.
     """
     mock_ctrader = MagicMock()
-    lows = [4115.0, 4113.0, 4111.0, 4114.0, 4116.0, 4118.0]
-    highs = [4120.0, 4118.0, 4116.0, 4118.0, 4120.0, 4122.0]
+    # Calm regime: swing low 4116.5, ATR ~1.2 => PASL ~4116.2 (3.8 pts from entry 4120.0)
+    lows = [4117.5, 4116.5, 4117.0, 4117.2, 4117.8]
+    highs = [4118.5, 4117.8, 4118.2, 4118.4, 4119.0]
     df = create_sample_bars(lows, highs)
     mock_ctrader.get_trendbars_dataframe.return_value = df
 
@@ -155,18 +167,18 @@ def test_copier_integration_with_pasl():
         "entry_min": 4120.0,
         "entry_max": 4120.0,
         "entry_mid": 4120.0,
-        "sl": 4116.0,  # Provider tight SL (4 pts risk)
+        "sl": 4116.0,  # Provider SL beyond swing structure (4.0 pts risk)
         "tps": [4125.0],
         "type": "DIRECT_EXECUTION"
     }
 
     orders = copier.execute_signal(sig_tight, spot_price=4120.0)
-    assert len(orders) == 2
+    assert orders is not None and len(orders) == 2
     # Verify tight SL was preserved exactly
     assert orders[0]["sl"] == 4116.0
     assert orders[1]["sl"] == 4116.0
 
-    # Missing SL synthesized by PASL behind swing low 4111.0
+    # Missing SL synthesized by PASL behind swing low 4116.5
     sig_none = {
         "channel": "ssfgold",
         "symbol": "XAUUSD",
@@ -179,8 +191,29 @@ def test_copier_integration_with_pasl():
         "type": "DIRECT_EXECUTION"
     }
     orders_syn = copier.execute_signal(sig_none, spot_price=4120.0)
-    # Clamped to 8.0 pt max risk ceiling (4120.0 - 8.0 = 4112.0)
-    assert orders_syn[0]["sl"] == 4112.0
+    assert orders_syn is not None and len(orders_syn) == 2
+    assert orders_syn[0]["sl"] == pytest.approx(4116.2, abs=0.15)
+
+    # Whipsaw regime: swing low 4112.0 => structural stop ~4111.7 (8.3 pts) exceeds the
+    # 8.0 pt Gold budget. Provider SL 4116.5 sits INSIDE structure => trade unprotectable.
+    lows_wide = [4113.0, 4112.0, 4112.5, 4113.5, 4114.0]
+    highs_wide = [4114.0, 4113.2, 4114.2, 4115.0, 4115.5]
+    df_wide = create_sample_bars(lows_wide, highs_wide)
+    mock_ctrader.get_trendbars_dataframe.return_value = df_wide
+
+    sig_inside = {
+        "channel": "fxscalpingpro",
+        "symbol": "XAUUSD",
+        "side": "BUY",
+        "entry_min": 4120.0,
+        "entry_max": 4120.0,
+        "entry_mid": 4120.0,
+        "sl": 4116.5,
+        "tps": [4125.0],
+        "type": "DIRECT_EXECUTION"
+    }
+    orders_unprotectable = copier.execute_signal(sig_inside, spot_price=4120.0)
+    assert orders_unprotectable is None, "Inside-structure SL with unfitting structure must skip the trade"
 
 
 def test_calculate_swing_sl_sell_with_spread_cushion():
@@ -320,12 +353,13 @@ def test_get_min_noise_floor_distance():
     assert PriceActionSLEngine.get_min_noise_floor_distance("BTCUSD") == 50.0
 
 
-def test_structural_shield_rejects_sub_noise_tightening():
+def test_structure_authority_reanchors_sub_noise_provider_sl():
     """
-    Forex incident test: Provider gave 1.11920 (7 pips from entry 1.11990).
-    A micro-consolidation wick gave PASL of 1.11959 (3.1 pips from entry).
-    Because 3.1 pips is inside the noise floor (< 25 pips), PASL tightening
-    must be DISCARDED and provider SL 1.11920 preserved.
+    Forex incident test, updated for Invariant 44 (2026-11-13): Provider gave 1.11920
+    (7 pips from entry 1.11990) — a micro-consolidation stop sitting INSIDE the 25-pip
+    noise floor. The old policy preserved it (suffocation risk); the new policy
+    re-anchors the stop to the noise-floor structural level (entry - 25 pips = 1.11740),
+    which exactly fits the [min_noise, max_allowed] budget.
     """
     lows = [1.11980, 1.11975, 1.11965, 1.11970, 1.11980, 1.11985]
     highs = [1.12010, 1.12005, 1.11995, 1.12000, 1.12015, 1.12020]
@@ -339,8 +373,9 @@ def test_structural_shield_rejects_sub_noise_tightening():
         symbol="EURUSD",
         max_allowed_distance=0.0050
     )
-    assert reason == "PROVIDER_EXACT"
-    assert sl == 1.11920
+    assert reason == "STRUCTURE_AUTHORITATIVE_SWING"
+    assert sl == pytest.approx(1.11740, abs=1e-6)
+    assert round(1.11990 - sl, 5) >= 0.00250  # At/Outside 25-pip noise floor
 
 
 def test_structural_shield_allows_valid_macro_tightening():

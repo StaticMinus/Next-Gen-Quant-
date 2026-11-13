@@ -172,3 +172,18 @@
 
 
 
+
+
+## 26. Structural SL Authority — "Structure Wins, Else Skip" (Invariant 44)
+- **Forensic Origin (Nov 13, 2026, -$124.55):** The Invariant 39 Provider SL Shield preserved two provider stops sitting INSIDE the morning's M5 whipsaw band (SELL 3896.45 with SL 3903.9 above the range; BUY 3902.86 with SL 3899.1 dead-center of the 3894-3899 band at 3.76 pts, squeaking past the 3.50 pt floor on arithmetic alone). Both were stopped; the SELL's own TP1 hit afterwards.
+- **Structural Authority:** The final stop-loss MUST sit beyond the deepest valid structural level (institutional Order Block wick and/or fractal M5 swing wick, each with its volatility buffer). A provider SL inside that structure is RE-ANCHORED to the structural level (widening authorized by user directive of 2026-11-13, consciously superseding the Invariant 11 never-widen rule for this case only) when the structural distance fits `[min_noise_floor, max_allowed_distance]`.
+- **Unprotectable Trades Are Skipped:** If no stop — provider or structural — can satisfy the risk budget while remaining beyond structure, `reconcile_structural_sl` returns `(None, "STRUCTURE_UNPROTECTABLE")` and `execute_signal` MUST abort before any broker order is placed (with an Invariant 12 transparency alert).
+- **Universal Final Gate:** Applied after the prop-firm clamp so clamped/fallback stops can never leak through inside structure.
+- **Invariant 39 Intent Preserved:** Provider stops already beyond structure and within budget are still preserved exactly (no micro-tightening). Swing channels (Invariant 38) remain fully bypassed — M5 structure does not govern macro swing trades.
+
+## 27. Realized-Loss Circuit Breakers — Daily Loss Halt & Anti-Whipsaw Guard (Invariant 45)
+- **Forensic Origin (Nov 13, 2026):** 28 minutes after the 10:06 BUY was stopped out, a different channel was allowed to SELL 7.4 pts lower because the conflict arbiter only blocks LIVE opposing positions — a legal stop-and-reverse double hit.
+- **Daily Loss Halt:** Realized net P/L of the current UTC day (from `get_closed_deals`) reaching `-$DAILY_LOSS_LIMIT_USD` (default $150) blocks ALL new entries until the next UTC midnight. Open-position management (`manage_active_breakeven`) continues uninterrupted.
+- **Anti-Whipsaw Opposite Block:** After a full-SL loss (position net <= `-$FULL_LOSS_USD`, default $25) on a symbol, opposite-direction entries on that symbol are blocked for `WHIPSAW_OPPOSITE_BLOCK_MIN` minutes (default 90).
+- **Symbol Session Pause:** Two full-SL losses on the same symbol within 6 hours pause ALL entries on that symbol for `WHIPSAW_PAUSE_HOURS` (default 4).
+- **State Persistence:** The full-loss log and halt window ride the persisted copier state JSON and survive GitHub Actions cache handovers. Deals-feed failures must never break the trading cycle (fail-open with debug log).

@@ -430,3 +430,16 @@ Forensic evaluation of multi-channel Telegram feeds (specifically `anabelsignals
 
 
 
+
+
+## 18. Phase 18 — Nov 13 Whipsaw Forensics: Structural SL Authority & Loss Circuit Breakers (Invariants 44 & 45)
+
+Forensic reconstruction of the week of 2026-11-09..13 (net -$54, worst session -$124.55 on Friday morning) proved the losses were **system exit-placement errors, not signal failures**: the 06:56 SELL's own TP1 hit minutes after its shield-preserved stop was run over, and every broker-rejection class from October was already at zero. Two structural lessons were codified:
+
+1. **Structural SL Authority — "Structure Wins, Else Skip" (Invariant 44):**
+   A stop-loss placed INSIDE recent market structure (the M5 swing wick / Order Block wick, with buffers) is a scheduled loss: the 3.76 pt BUY stop survived the shield because `3.76 >= 3.50` — pure arithmetic, zero structural awareness. Shields that vet stops on distance bounds alone will always leak in whipsaw regimes. The reconcile step must answer one question: *is the final stop beyond the deepest structural wick?* — and if the honest structural stop cannot fit the risk budget, the trade must not happen. Widening a provider stop to structure is the lesser evil versus preserving a stop that the market's own noise range guarantees to hit; the old never-widen rule (Invariant 11) now governs only structure-informed stops.
+
+2. **Realized-Loss Circuit Breakers (Invariant 45):**
+   Directional-conflict arbitration that only inspects *live* positions converts a whipsaw into a legal stop-and-reverse double hit (BUY stopped at 3899.1, SELL accepted 7.4 pts lower 28 minutes later). Realized-P/L telemetry already fetched from the broker is the cheapest whipsaw detector: a full-SL loss must arm a same-symbol opposite-direction block (90 min) and a two-loss symbol pause (4 h), and a -$150 realized day must halt entries until the next trading day — while open-position management never stops.
+
+Both mechanisms are exercised by `tests/test_nov13_loss_audit_regressions.py` against the reconstructed Nov 13 fixtures; the deals-feed dependency is deliberately fail-open so a broken MCP session can never freeze position management.

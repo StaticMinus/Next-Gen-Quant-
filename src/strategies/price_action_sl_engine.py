@@ -155,18 +155,31 @@ class PriceActionSLEngine:
         max_allowed_distance: float,
         spread_cushion: float = 0.0,
         is_swing_channel: bool = False
-    ) -> Tuple[float, str]:
+    ) -> Tuple[Optional[float], str]:
         """
         Reconciles provider-written SL with real-time Price Action market structure.
-        Implements the Structural Shield Guard:
-          - If provider SL sits inside the liquidity sweep pocket (too tight),
-            it extends SL behind the swing wick (so trade isn't prematurely wicked out).
-          - If provider omitted SL or paywalled it ("VIP"), it adopts PASL.
-          - Never exceeds max_allowed_distance (strict Prop Firm Risk Clamp).
-          - For SELL trades, incorporates spread_cushion to protect against Ask-price spread widening.
+
+        Invariant 44 — Structural SL Authority ("Structure Wins, Else Skip"):
+          The final stop-loss MUST sit beyond the deepest valid structural level
+          (institutional Order Block wick and/or fractal M5 swing wick, each with
+          its volatility buffer). Concretely:
+            - A provider SL sitting INSIDE that structure is re-anchored to the
+              structural level (widening is authorized here by user directive of
+              2026-11-13, superseding the Invariant 11 never-widen rule) when it
+              fits the [min_noise_floor, max_allowed_distance] risk budget.
+            - If no stop — provider or structural — can satisfy the budget while
+              remaining beyond structure, the trade is UNPROTECTABLE and this
+              method returns (None, "STRUCTURE_UNPROTECTABLE"); the caller must
+              skip the trade instead of entering with an inside-structure stop.
+          - Provider SL already beyond structure and within the budget is
+            preserved exactly (Invariant 39 shield, now structure-vetted).
+          - Swing channels (Invariant 38) keep their macro provider stops; M5
+            structure does not govern higher-timeframe trades.
+          - For SELL trades, incorporates spread_cushion to protect against
+            Ask-price spread widening.
 
         Returns:
-            Tuple[float, str]: (final_safe_sl, reasoning_label)
+            Tuple[Optional[float], str]: (final_safe_sl_or_None, reasoning_label)
         """
         side_upper = side.upper()
         sym_upper = symbol.upper()
@@ -205,7 +218,23 @@ class PriceActionSLEngine:
             except Exception:
                 pasl = None
 
-        # 3. Determine initial candidate SL
+        # 3. Invariant 44: resolve the DEEPEST valid structural level.
+        # The final stop must survive a sweep of BOTH the Order Block wick and the
+        # fractal swing wick, so the deepest (most protective) level governs.
+        deep_structure_sl: Optional[float] = None
+        deep_structure_tag = ""
+        structural_levels = []
+        if ob_sl is not None and ((side_upper == "BUY" and ob_sl < entry_price) or (side_upper == "SELL" and ob_sl > entry_price)):
+            structural_levels.append((ob_sl, "ORDER_BLOCK"))
+        if pasl is not None and ((side_upper == "BUY" and pasl < entry_price) or (side_upper == "SELL" and pasl > entry_price)):
+            structural_levels.append((pasl, "SWING"))
+        if structural_levels:
+            if side_upper == "BUY":
+                deep_structure_sl, deep_structure_tag = min(structural_levels, key=lambda lv: lv[0])
+            else:
+                deep_structure_sl, deep_structure_tag = max(structural_levels, key=lambda lv: lv[0])
+
+        # 4. Determine initial candidate SL
         if provider_sl is None or provider_sl <= 0:
             if ob_sl is not None:
                 candidate_sl = ob_sl
@@ -222,76 +251,121 @@ class PriceActionSLEngine:
             reason = "PROVIDER_EXACT"
             dist_to_provider = abs(entry_price - candidate_sl)
 
-            # Invariant 39 (Provider SL Shield): If provider SL is already valid and within max allowed risk,
-            # preserve it exactly! Micro M5 wicks must NEVER down-tighten and suffocate an already valid provider SL.
-            if min_noise <= dist_to_provider <= max_allowed_distance:
-                logger.info(
-                    f"🛡️ [Provider SL Shield] Preserving exact provider SL {candidate_sl} "
-                    f"for {symbol} (distance {dist_to_provider:.2f} is within max {max_allowed_distance:.2f} and >= min {min_noise:.2f})."
-                )
-                final_sl = round(candidate_sl, digits)
-                return final_sl, reason
-
-            # If provider SL exceeds max_allowed_distance, check if an institutional Order Block
-            # can anchor the stop within the allowed boundary instead of a blind hard clamp.
-            ob_tightened = False
             if is_swing_channel:
-                ob_tightened = True
-                logger.info(
-                    f"🏛️ [Invariant 38 Swing Shield] Preserving macro provider SL {candidate_sl} "
-                    f"for swing channel on {symbol}. Micro M5 tightening bypassed."
-                )
-            elif ob_sl is not None:
-                # 4. Check for Order Block Structural Tightening
-                # If provider set an overly wide SL, but an institutional Order Block invalidation
-                # is confirmed outside the noise floor, tighten to the Order Block!
-                # INVARIANT 11: NEVER WIDEN PROVIDER SL.
-                if side_upper == "BUY":
-                    if candidate_sl < ob_sl < entry_price:
-                        candidate_sl = ob_sl
-                        reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
-                        ob_tightened = True
-                else:
-                    if entry_price < ob_sl < candidate_sl:
-                        candidate_sl = ob_sl
-                        reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
-                        ob_tightened = True
-
-            # If no Order Block tightening was applied, apply Fractal Structural Shield Guard
-            if not ob_tightened and pasl is not None:
-                pasl_dist = abs(entry_price - pasl)
-                natural_swing_valid = False
-                if df_bars is not None and not df_bars.empty:
-                    lookback_bars = 8
-                    scan_df = df_bars.iloc[-(lookback_bars + 1):-1] if len(df_bars) > (lookback_bars + 1) else df_bars.iloc[:-1]
-                    if not scan_df.empty:
-                        atr = cls.calculate_atr(df_bars, period=14)
-                        dynamic_buf = max(0.50 if "XAU" in sym_upper or "GOLD" in sym_upper else 0.0005, atr * 0.25)
-                        if side_upper == "BUY":
-                            raw_pasl = float(scan_df["low"].min()) - dynamic_buf
-                            if (entry_price - raw_pasl) >= min_noise:
-                                natural_swing_valid = True
-                        else:
-                            raw_pasl = float(scan_df["high"].max()) + dynamic_buf + max(0.0, spread_cushion)
-                            if (raw_pasl - entry_price) >= min_noise:
-                                natural_swing_valid = True
-
-                if pasl_dist >= min_noise and natural_swing_valid:
-                    if side_upper == "BUY":
-                        if candidate_sl < pasl < entry_price:
-                            candidate_sl = pasl
-                            reason = "STRUCTURAL_SHIELD_TIGHTENED"
-                    else:
-                        if entry_price < pasl < candidate_sl:
-                            candidate_sl = pasl
-                            reason = "STRUCTURAL_SHIELD_TIGHTENED"
-                else:
-                    logger.debug(
-                        f"🛡️ [PASL Noise Floor Guard] Discarded PASL tightening {pasl}: "
-                        f"distance {pasl_dist:.5f} is below noise floor {min_noise:.5f} or swing is inside noise. Preserving provider SL {candidate_sl}."
+                # Invariant 38 Swing Shield: swing channels run macro (higher-timeframe)
+                # provider stops; M5 structure must not govern or suffocate them.
+                if min_noise <= dist_to_provider <= max_allowed_distance:
+                    logger.info(
+                        f"🏛️ [Invariant 38 Swing Shield] Preserving macro provider SL {candidate_sl} "
+                        f"for swing channel on {symbol}. M5 structural authority bypassed."
                     )
+                    return round(candidate_sl, digits), reason
+                # fall through to structural tightening / clamp below
+            else:
+                # ===== Invariant 44: Structural SL Authority ("Structure Wins, Else Skip") =====
+                if deep_structure_sl is not None:
+                    provider_inside_structure = (
+                        candidate_sl > deep_structure_sl if side_upper == "BUY" else candidate_sl < deep_structure_sl
+                    )
+                    if provider_inside_structure:
+                        # Provider stop sits INSIDE the recent market structure — the exact
+                        # Nov 13 whipsaw failure mode. Structure is the authority: re-anchor.
+                        dist_to_structure = abs(entry_price - deep_structure_sl)
+                        # Epsilon guards absorb float drift when the structural level sits
+                        # exactly at a boundary (e.g. pasl = entry - min_noise).
+                        if (dist_to_structure + 1e-9) >= min_noise and dist_to_structure <= (max_allowed_distance + 1e-9):
+                            candidate_sl = deep_structure_sl
+                            reason = f"STRUCTURE_AUTHORITATIVE_{deep_structure_tag}"
+                            logger.info(
+                                f"🏛️ [Invariant 44 Structural Authority] Provider SL {float(provider_sl)} for {symbol} {side_upper} "
+                                f"sat INSIDE recent market structure; re-anchored to {deep_structure_tag} level {candidate_sl} "
+                                f"(distance {dist_to_structure:.5f})."
+                            )
+                        else:
+                            logger.warning(
+                                f"🛑 [Invariant 44 Structural Authority] {symbol} {side_upper} UNPROTECTABLE: provider SL {float(provider_sl)} "
+                                f"sits inside structure ({deep_structure_tag} {deep_structure_sl}) and re-anchoring needs "
+                                f"{dist_to_structure:.5f} vs risk budget {max_allowed_distance:.2f}. Trade must be skipped."
+                            )
+                            return None, "STRUCTURE_UNPROTECTABLE"
+                    elif min_noise <= dist_to_provider <= max_allowed_distance:
+                        # Provider SL already beyond the deepest structural wick:
+                        # Invariant 39 shield, now structure-vetted.
+                        logger.info(
+                            f"🛡️ [Provider SL Shield] Preserving exact provider SL {candidate_sl} "
+                            f"for {symbol} (distance {dist_to_provider:.2f} is within max {max_allowed_distance:.2f}, "
+                            f"min {min_noise:.2f}, and beyond structural level {deep_structure_sl:.5f})."
+                        )
+                        return round(candidate_sl, digits), reason
+                else:
+                    # No structural data available (no bars): legacy Invariant 39 shield behavior.
+                    if min_noise <= dist_to_provider <= max_allowed_distance:
+                        logger.info(
+                            f"🛡️ [Provider SL Shield] Preserving exact provider SL {candidate_sl} "
+                            f"for {symbol} (distance {dist_to_provider:.2f} is within max {max_allowed_distance:.2f} and >= min {min_noise:.2f})."
+                        )
+                        return round(candidate_sl, digits), reason
 
-        # 4. Strict Prop-Firm Risk Clamp
+            # Structural tightening for overly wide provider SLs (candidate untouched so far)
+            if reason == "PROVIDER_EXACT":
+                ob_tightened = False
+                if is_swing_channel:
+                    ob_tightened = True
+                    logger.info(
+                        f"🏛️ [Invariant 38 Swing Shield] Preserving macro provider SL {candidate_sl} "
+                        f"for swing channel on {symbol}. Micro M5 tightening bypassed."
+                    )
+                elif ob_sl is not None:
+                    # If provider set an overly wide SL, but an institutional Order Block invalidation
+                    # is confirmed outside the noise floor, tighten to the Order Block!
+                    # (INVARIANT 11 never-widen only applies to structure-informed stops;
+                    # widening toward structure is governed by Invariant 44 above.)
+                    if side_upper == "BUY":
+                        if candidate_sl < ob_sl < entry_price:
+                            candidate_sl = ob_sl
+                            reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
+                            ob_tightened = True
+                    else:
+                        if entry_price < ob_sl < candidate_sl:
+                            candidate_sl = ob_sl
+                            reason = f"ORDER_BLOCK_TIGHTENED_{ob_reason}"
+                            ob_tightened = True
+
+                # If no Order Block tightening was applied, apply Fractal Structural Shield Guard
+                if not ob_tightened and pasl is not None:
+                    pasl_dist = abs(entry_price - pasl)
+                    natural_swing_valid = False
+                    if df_bars is not None and not df_bars.empty:
+                        lookback_bars = 8
+                        scan_df = df_bars.iloc[-(lookback_bars + 1):-1] if len(df_bars) > (lookback_bars + 1) else df_bars.iloc[:-1]
+                        if not scan_df.empty:
+                            atr = cls.calculate_atr(df_bars, period=14)
+                            dynamic_buf = max(0.50 if "XAU" in sym_upper or "GOLD" in sym_upper else 0.0005, atr * 0.25)
+                            if side_upper == "BUY":
+                                raw_pasl = float(scan_df["low"].min()) - dynamic_buf
+                                if (entry_price - raw_pasl) >= min_noise:
+                                    natural_swing_valid = True
+                            else:
+                                raw_pasl = float(scan_df["high"].max()) + dynamic_buf + max(0.0, spread_cushion)
+                                if (raw_pasl - entry_price) >= min_noise:
+                                    natural_swing_valid = True
+
+                    if pasl_dist >= min_noise and natural_swing_valid:
+                        if side_upper == "BUY":
+                            if candidate_sl < pasl < entry_price:
+                                candidate_sl = pasl
+                                reason = "STRUCTURAL_SHIELD_TIGHTENED"
+                        else:
+                            if entry_price < pasl < candidate_sl:
+                                candidate_sl = pasl
+                                reason = "STRUCTURAL_SHIELD_TIGHTENED"
+                    else:
+                        logger.debug(
+                            f"🛡️ [PASL Noise Floor Guard] Discarded PASL tightening {pasl}: "
+                            f"distance {pasl_dist:.5f} is below noise floor {min_noise:.5f} or swing is inside noise. Preserving provider SL {candidate_sl}."
+                        )
+
+        # 5. Strict Prop-Firm Risk Clamp
         if side_upper == "BUY":
             hard_floor = round(entry_price - max_allowed_distance, digits)
             if candidate_sl < hard_floor:
@@ -312,6 +386,20 @@ class PriceActionSLEngine:
             # Safety check: SL must be strictly above entry
             if final_sl <= entry_price:
                 final_sl = round(entry_price + (max_allowed_distance * 0.5), digits)
+
+        # 6. Invariant 44 Final Structural Gate (universal: covers clamp & fallback paths).
+        # No stop may leave this engine sitting inside recent market structure.
+        if not is_swing_channel and deep_structure_sl is not None:
+            final_inside_structure = (
+                final_sl > deep_structure_sl if side_upper == "BUY" else final_sl < deep_structure_sl
+            )
+            if final_inside_structure:
+                logger.warning(
+                    f"🛑 [Invariant 44 Structural Authority] {symbol} {side_upper} UNPROTECTABLE: final SL {final_sl} "
+                    f"would sit inside recent structure ({deep_structure_tag} {deep_structure_sl}) after risk clamping. "
+                    f"Trade must be skipped."
+                )
+                return None, "STRUCTURE_UNPROTECTABLE"
 
         return round(final_sl, digits), reason
 
