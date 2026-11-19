@@ -487,7 +487,7 @@ def test_legacy_adopted_record_gets_its_entry_backfilled_then_locks_breakeven(co
 
     copier.ctrader.get_spot_price = lambda _s: {"bid": 63400.0, "ask": 63410.0}
     assert copier.lock_in_breakeven() == 1
-    assert copier.state["copies"]["legacy"]["stop"] == 62010.0
+    assert copier.state["copies"]["legacy"]["stop"] == 62022.5  # 62010 fill + 12.5 spread
 
 
 def test_adopted_position_is_closed_when_its_slot_is_exited(copier):
@@ -539,17 +539,21 @@ def test_same_master_exiting_a_different_btc_slot_leaves_the_copy_open(copier):
     assert copier.state["copies"]["slot-a"]["closed"] is False
 
 
-def test_winner_moves_its_stop_to_entry_at_one_r(copier):
-    # A copy that earned back its risk must stop being able to lose.
+def test_winner_moves_its_stop_past_entry_by_the_spread(copier):
+    # A copy that earned back its risk must stop being able to lose - and a stop AT the
+    # fill still loses the spread, so it has to sit one spread beyond it.
     copier.handle_open(make_signal())
     copy = copier.state["copies"]["shot-1"]
     risk = copy["entry"] - copy["stop"]
+    spread = 1.0
     copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
-                                                "ask": copy["entry"] + risk + 1.0}
+                                                "ask": copy["entry"] + risk + spread}
 
     assert copier.lock_in_breakeven() == 1
-    assert copier.state["copies"]["shot-1"]["stop"] == round(copy["entry"], 3)
-    assert copier.ctrader._stops[4242] == round(copy["entry"], 3)
+    locked_stop = copier.state["copies"]["shot-1"]["stop"]
+    assert locked_stop > copy["entry"]
+    assert locked_stop - copy["entry"] >= spread
+    assert copier.ctrader._stops[4242] == locked_stop
     assert copier.state["copies"]["shot-1"]["breakevenAt"]
 
 
@@ -618,7 +622,8 @@ def test_breakeven_uses_the_broker_fill_not_the_planned_quote(copier):
     ]
 
     assert copier.lock_in_breakeven() == 1
-    assert copier.state["copies"]["shot-1"]["stop"] == 62100.0
+    # 62100 fill + 1.0 spread padded by the 1.25 factor
+    assert copier.state["copies"]["shot-1"]["stop"] == 62101.25
 
 
 def test_breakeven_never_widens_a_stop_already_tighter_than_entry(copier):
@@ -636,15 +641,55 @@ def test_breakeven_never_widens_a_stop_already_tighter_than_entry(copier):
     assert copier.ctrader._stops[4242] == copy["entry"] + 50.0
 
 
-def test_record_already_at_breakeven_is_marked_and_left_alone(copier):
+def test_record_already_past_breakeven_is_marked_and_left_alone(copier):
+    # A stop beyond entry already clears the spread; recomputing it is wasted work.
     copier.handle_open(make_signal())
     copy = copier.state["copies"]["shot-1"]
-    copy["stop"] = copy["entry"]
+    copy["stop"] = copy["entry"] + 100.0
+    copier.ctrader._stops[4242] = copy["stop"]
     copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + 500.0,
                                                 "ask": copy["entry"] + 510.0}
 
     assert copier.lock_in_breakeven() == 0
+    assert copier.state["copies"]["shot-1"]["stop"] == copy["entry"] + 100.0
     assert copier.state["copies"]["shot-1"]["breakevenAt"]
+
+
+def test_lock_taken_at_the_raw_fill_is_upgraded_to_cover_the_spread(copier):
+    # The version that locked at entry left the position exposed to the full spread on
+    # an exit; a live record in that state must heal itself rather than stay stuck.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    copy["stop"] = copy["entry"]
+    copy["breakevenAt"] = "2026-11-19T00:00:00+00:00"
+    copier.ctrader._stops[4242] = copy["entry"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + 500.0,
+                                                "ask": copy["entry"] + 510.0}
+
+    assert copier.lock_in_breakeven() == 1
+    assert copier.state["copies"]["shot-1"]["stop"] == round(copy["entry"] + 10 * 1.25, 3)
+
+
+def test_breakeven_skips_an_unusable_quote(copier):
+    # A crossed or empty quote would understate the cost of getting out.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": 0.0, "ask": 0.0}
+
+    assert copier.lock_in_breakeven() == 0
+    assert "breakevenAt" not in copier.state["copies"]["shot-1"]
+    assert copier.state["copies"]["shot-1"]["stop"] == copy["stop"]
+
+
+def test_stop_on_the_wrong_side_of_entry_is_never_submitted(copier, monkeypatch):
+    # An inverted protective stop fires immediately, so it must never reach the broker.
+    alerts = []
+    monkeypatch.setattr(mod, "notify", lambda text: alerts.append(text))
+    monkeypatch.setattr(mod, "synthetic_stop_distance", lambda price, atr: -100.0)
+
+    assert copier.handle_open(make_signal()) is None
+    assert copier.ctrader.orders == []
+    assert alerts and "REJECTED" in alerts[0]
 
 
 def test_notification_failure_never_blocks_a_copy(copier, monkeypatch):

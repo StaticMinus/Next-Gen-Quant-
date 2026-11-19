@@ -112,6 +112,10 @@ MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "240"))
 # entry price converts an open winner into a trade with no downside. Set high (or
 # negative) to disable, at the cost of giving winners back on a reversal.
 BREAKEVEN_AT_R = float(os.getenv("INVO_BREAKEVEN_AT_R", "1.0"))
+# The stop must clear the cost of getting out, so it is placed one spread past the fill
+# and this factor pads the spread we happened to measure. Commission is zero on the
+# configured account; a commission-bearing account needs this raised.
+BREAKEVEN_SPREAD_FACTOR = float(os.getenv("INVO_BE_SPREAD_FACTOR", "1.25"))
 # The cloud runner chains a fresh process every ~10 minutes. An unconditional startup
 # message would hit the operator's phone ~144 times a day, which trains them to ignore
 # the alerts that actually matter, so "online" only fires after a real outage.
@@ -740,6 +744,18 @@ class InvoCtaderCopier:
 
         stop_price = round(price - stop_distance if side == "BUY" else price + stop_distance,
                            self.ctrader.get_symbol_digits(symbol))
+        # Rule: a stop on the wrong side of entry is accepted by many brokers and then
+        # fires instantly. Only a sizing bug can produce one, so fail loudly rather
+        # than send it - an inverted protective stop is an instant realised loss.
+        coherent = stop_price < price if side == "BUY" else stop_price > price
+        if not coherent:
+            logger.error(f"ABORT {symbol} {side}: stop {stop_price} is on the wrong side "
+                         f"of entry {price} - refusing to submit")
+            notify(f"<b>SIGNAL REJECTED {symbol} {side}</b>\n"
+                   f"Computed stop {stop_price} would sit on the wrong side of entry "
+                   f"{price}, so no order was sent. This is a sizing/price fault, not a "
+                   f"market condition - please check the copier.")
+            return None
         risk_usd = units * stop_distance
         plan = {
             "symbol": symbol, "side": side, "units": units, "entry": price,
@@ -922,19 +938,24 @@ class InvoCtaderCopier:
         return closed
 
     def lock_in_breakeven(self) -> int:
-        """Once a copy is up a full risk unit, move its stop to the entry price.
+        """Once a copy is up a full risk unit, move its stop past the entry price.
 
         The masters hold for days, so a copy can be a full R in profit and still be
         one reversal away from the loss the sizing was built to cap. Locking the stop
-        at entry turns that into a trade that cannot lose - it can still be stopped
-        flat, and it gives up the tail a master might ride, which is the price of a
-        guarantee. The stop only ever moves forward: never loose, never twice.
+        turns that into a trade that cannot lose - it can still be stopped out just
+        above entry, and it gives up the tail a master might ride, which is the price
+        of a guarantee. The stop only ever moves forward: never loose, never twice.
+
+        Break-even is entry *plus the spread*, not entry: a BUY entered at the ask is
+        stopped out at the bid, so a stop exactly at the fill still loses the full
+        spread (measured at $21.55 on BTCUSD, about $1.51 on a 0.07 copy). Commission
+        on this account is zero, so the spread is the whole round-trip cost.
         """
         locked = 0
         marked = False
         due = []
         for shot, copy in list(self.state["copies"].items()):
-            if copy.get("closed") or copy.get("breakevenAt"):
+            if copy.get("closed"):
                 continue
             if not copy.get("positionId"):
                 continue
@@ -953,21 +974,48 @@ class InvoCtaderCopier:
                 continue
             if not spot:
                 continue
+            bid, ask = spot.get("bid"), spot.get("ask")
+            if not bid or not ask or float(ask) <= float(bid):
+                # Broker telemetry can arrive null or crossed during quiet ticks; a
+                # spread read from it would understate the true round-trip cost.
+                logger.warning(f"Breakeven skipped {symbol}: unusable quote {spot}")
+                continue
+            spread = float(ask) - float(bid)
             entry, stop = float(copy["entry"]), float(copy["stop"])
             risk = abs(entry - stop)
-            if risk <= 0:
-                # The stop already sits at or beyond the fill (a tighter stop, or a lock
-                # from an earlier cycle) - marking it keeps this a no-op from now on.
-                copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
-                marked = True
-                continue
             # Measured on the price we could actually exit at, so a wide spread cannot
             # make a position look a full R ahead when it is not.
-            price = float(spot["bid"] if side == "BUY" else spot["ask"])
+            price = float(bid if side == "BUY" else ask)
             move = price - entry if side == "BUY" else entry - price
-            if move < risk * BREAKEVEN_AT_R:
+            # An already-locked record has already proven it was a full R up - and once
+            # its stop has moved to the fill, risk reads zero and the original R is
+            # gone. Gating it on R again would strand exactly the records that need
+            # upgrading, so the gate applies only until the first lock.
+            if not copy.get("breakevenAt"):
+                if risk <= 0:
+                    copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                    marked = True
+                    continue
+                if move < risk * BREAKEVEN_AT_R:
+                    continue
+            buffer = spread * BREAKEVEN_SPREAD_FACTOR
+            protective = entry + buffer if side == "BUY" else entry - buffer
+            target = round(protective, self.ctrader.get_symbol_digits(symbol))
+            # Already at or through the requirement? Then there is nothing to do - and
+            # no reason to spend a broker round-trip finding that out. A record locked
+            # by an earlier version at the raw fill falls short of the target and is
+            # upgraded here, which is what makes this self-healing.
+            current = float(stop)
+            at_or_beyond = current >= target if side == "BUY" else current <= target
+            if at_or_beyond:
+                if not copy.get("breakevenStop"):
+                    copy["breakevenStop"] = current
+                    copy["breakevenAt"] = copy.get("breakevenAt") or datetime.now(
+                        timezone.utc).isoformat()
+                    marked = True
                 continue
-            due.append((shot, copy, move / risk))
+            r_multiple = move / risk if risk > 0 else None
+            due.append((shot, copy, r_multiple, spread))
         if not due:
             if marked:
                 self._save_state()
@@ -985,22 +1033,30 @@ class InvoCtaderCopier:
         except Exception as exc:
             logger.warning(f"Breakeven using planned entry, broker fills unavailable: {str(exc)[:120]}")
 
-        for shot, copy, r_multiple in due:
+        for shot, copy, r_multiple, spread in due:
             symbol = copy["symbol"]
             entry = fills.get(int(copy["positionId"]), float(copy["entry"]))
-            new_stop = round(entry, self.ctrader.get_symbol_digits(symbol))
+            buffer = spread * BREAKEVEN_SPREAD_FACTOR
+            protective = entry + buffer if copy["side"] == "BUY" else entry - buffer
+            new_stop = round(protective, self.ctrader.get_symbol_digits(symbol))
             current = float(copy["stop"])
             # Never widen: a stop already tighter than entry (trailed, or tightened by
             # hand) is protection this code did not earn the right to undo.
             tighter = new_stop > current if copy["side"] == "BUY" else new_stop < current
             if not tighter:
                 copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                copy["breakevenStop"] = current
                 marked = True
                 continue
+            # A record locked at the raw fill by an earlier version has no R left to
+            # measure (its stop sits on the fill), so the progress text must cope with
+            # an unknown multiple instead of formatting None.
+            r_text = f"up {r_multiple:.2f}R" if r_multiple is not None else "already locked"
             if self.dry_run:
-                logger.info(f"DRY BREAKEVEN {symbol} #{copy['positionId']} up {r_multiple:.2f}R "
+                logger.info(f"DRY BREAKEVEN {symbol} #{copy['positionId']} {r_text} "
                             f"- stop would move to {new_stop}")
                 copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                copy["breakevenStop"] = new_stop
                 locked += 1
                 continue
             if not self.ctrader.amend_position_sl(int(copy["positionId"]), new_stop, symbol):
@@ -1009,13 +1065,15 @@ class InvoCtaderCopier:
                 continue
             previous = copy["stop"]
             copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+            copy["breakevenStop"] = new_stop
             copy["stop"] = new_stop
             locked += 1
-            logger.info(f"BREAKEVEN {symbol} #{copy['positionId']} up {r_multiple:.2f}R - "
+            logger.info(f"BREAKEVEN {symbol} #{copy['positionId']} {r_text} - "
                         f"stop moved {previous} -> {new_stop}")
             notify(f"<b>STOP TO BREAKEVEN {symbol}</b>\n"
-                   f"@{copy.get('trader')} trade is up {r_multiple:.1f}R, stop moved to entry "
-                   f"{new_stop}. This copy can no longer lose.")
+                   f"@{copy.get('trader')} trade is {r_text}. Stop moved to "
+                   f"{new_stop}, one spread past the {entry} fill, so an exit there is net "
+                   f"positive rather than break-even-minus-costs.")
         if locked or marked:
             self._save_state()
         return locked
