@@ -100,6 +100,10 @@ FEED_PAGES = max(1, int(os.getenv("INVO_FEED_PAGES", "3")))
 # fields cannot tell us whether a position is still live, so age is the guard against
 # filling a master's trade long after they took it (or after they had already left).
 MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "20"))
+# The cloud runner chains a fresh process every ~10 minutes. An unconditional startup
+# message would hit the operator's phone ~144 times a day, which trains them to ignore
+# the alerts that actually matter, so "online" only fires after a real outage.
+HEARTBEAT_QUIET_MIN = float(os.getenv("INVO_HEARTBEAT_QUIET_MIN", "60"))
 STOP_BOUNDS = (0.0025, 0.02)  # synthetic stop distance clamped to 0.25% .. 2% of price
 MIN_LOTS = 0.01              # 0.01 BTC / 0.01 ETH granularity
 MAX_SEEN_POSTS = 500
@@ -986,18 +990,16 @@ class InvoCtaderCopier:
                     f"feeds={self.feeds} symbols={self.symbols} "
                     f"allowlist={len(self.allowed) or 'any'}"
                     f" risk={self.risk_pct}% poll={POLL_SECONDS}s")
-        notify(f"<b>Invo copier online</b>\n"
-               f"account {account_label()} ({'dry run' if self.dry_run else 'LIVE'})\n"
-               f"equity ${self._account()['equity']:,.2f}\n"
-               f"feeds {', '.join(self.feeds)} | masters {len(self.allowed) or 'any on feed'}\n"
-               f"risk {self.risk_pct}%/copy | max {self.max_positions} open")
-        self.adopt_broker_positions()
+        acct = self._account()
         # Logged at every cycle start: the token decides the account, so this line is the
         # only proof in the cloud log that orders land on the intended demo account.
-        acct = self._account()
         logger.info(f"Broker account #{account_label()} balance ${acct['balance']:,.2f} "
                     f"equity ${acct['equity']:,.2f} free margin ${acct['free_margin']:,.2f}")
+        self.adopt_broker_positions()
+        # Reconcile before reporting so the daily digest includes P&L the broker settled
+        # while the previous cycle was shutting down.
         self.reconcile_closed_trades()
+        self._heartbeat(acct)
         deadline = time.time() + max_minutes * 60 if max_minutes else None
         polls = 0
         while True:
@@ -1017,6 +1019,60 @@ class InvoCtaderCopier:
                             f"handing over to the next scheduled cycle")
                 return
             time.sleep(POLL_SECONDS)
+
+    def _heartbeat(self, acct: Dict[str, float]) -> None:
+        """Announce a restart after a gap, and send one plain-language report a day."""
+        now = datetime.now(timezone.utc)
+        previous = self.state.get("last_heartbeat")
+        announce = True
+        if previous:
+            try:
+                seen = datetime.fromisoformat(str(previous).replace("Z", "+00:00"))
+                announce = (now - seen).total_seconds() > HEARTBEAT_QUIET_MIN * 60
+            except ValueError:
+                announce = True
+        self.state["last_heartbeat"] = now.isoformat()
+        if announce:
+            notify(f"<b>Invo copier online</b>\n"
+                   f"account {account_label()} ({'dry run' if self.dry_run else 'LIVE'})\n"
+                   f"equity ${acct['equity']:,.2f} | balance ${acct['balance']:,.2f}\n"
+                   f"masters {len(self.allowed) or 'any on feed'} | "
+                   f"risk {self.risk_pct}%/copy | max {self.max_positions} open")
+        today = now.strftime("%Y-%m-%d")
+        if self.state.get("last_digest_date") != today:
+            self.state["last_digest_date"] = today
+            notify(self._digest(today, acct))
+
+    def _digest(self, today: str, acct: Dict[str, float]) -> str:
+        """One message a day: what was copied, what it made, and whether we are halted.
+
+        A quiet copier and a dead copier look identical from the phone, so this also
+        doubles as proof of life on days with no signals.
+        """
+        copies = list(self.state["copies"].values())
+        opened = [c for c in copies if str(c.get("openedAt") or "").startswith(today)]
+        closed = [c for c in copies if str(c.get("closedAt") or "").startswith(today)]
+        realized = sum(float(c.get("realizedPnl") or 0.0)
+                       for c in closed if c.get("reconciled"))
+        wins = sum(1 for c in closed if float(c.get("realizedPnl") or 0.0) > 0)
+        still_open = [c for c in copies if not c.get("closed")]
+        lines = [
+            f"<b>Daily copy report {today}</b>",
+            f"account {account_label()} | equity ${acct['equity']:,.2f}",
+            f"copied {len(opened)} | closed {len(closed)} "
+            f"({wins} win / {len(closed) - wins} loss) | realized ${realized:,.2f}",
+            f"still open {len(still_open)}/{self.max_positions} | "
+            f"daily losses {guardian.state.get('daily_losses_count', 0)}/"
+            f"{guardian.state.get('max_daily_losses', 2)}",
+        ]
+        for copy in still_open[:5]:
+            lines.append(f"  {copy.get('symbol')} {copy.get('side')} "
+                         f"@{copy.get('trader')} SL {copy.get('stop')}")
+        if guardian.state.get("trading_halted"):
+            lines.append(f"HALTED: {guardian.state.get('halt_reason')}")
+        if not opened:
+            lines.append("No new master entries in range - still watching.")
+        return "\n".join(lines)
 
     def reconcile_closed_trades(self) -> int:
         """Attribute broker-realized P&L to copies and feed RiskGuardian's 2-strike breaker."""

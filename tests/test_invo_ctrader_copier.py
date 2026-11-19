@@ -811,3 +811,46 @@ def test_post_without_a_recognisable_diff_is_ignored(copier):
 
     assert copier.handle_post(post) is None
     assert copier.ctrader.orders == []
+
+
+# -- telegram heartbeat ------------------------------------------------------ #
+# The cloud chains a new process every ~10 minutes, so alerting on every startup
+# would send ~144 messages a day and make real alerts indistinguishable from noise.
+
+ACCT = {"balance": 6000.0, "equity": 6000.0, "free_margin": 5000.0}
+
+
+def test_repeated_cycles_do_not_re_announce(copier, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mod, "notify", lambda msg: sent.append(msg))
+
+    copier._heartbeat(ACCT)
+    copier._heartbeat(ACCT)
+
+    assert len([m for m in sent if "online" in m]) == 1
+
+
+def test_restart_after_an_outage_announces_again(copier, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mod, "notify", lambda msg: sent.append(msg))
+    now = datetime.now(timezone.utc)
+    copier.state["last_heartbeat"] = (
+        now - timedelta(minutes=mod.HEARTBEAT_QUIET_MIN + 5)).isoformat()
+    copier.state["last_digest_date"] = now.strftime("%Y-%m-%d")
+
+    copier._heartbeat(ACCT)
+
+    assert len([m for m in sent if "online" in m]) == 1
+
+
+def test_daily_digest_is_sent_once_and_names_open_copies(copier, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mod, "notify", lambda msg: sent.append(msg))
+    copier.handle_open(make_signal(shot="shot-digest"))
+
+    copier._heartbeat(ACCT)
+    copier._heartbeat(ACCT)
+
+    digests = [m for m in sent if "Daily copy report" in m]
+    assert len(digests) == 1
+    assert "BTCUSD" in digests[0]
