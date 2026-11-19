@@ -371,6 +371,18 @@ def _parse_ts(raw: Any) -> Optional[datetime]:
     return when
 
 
+def _slot_from_comment(comment: Any) -> str:
+    """Recover the Invo slot we stamped on the order, e.g. 'InvoCopy:BTC:ePLW7JpGFK'.
+
+    Adoption needs this: a position rediscovered from the broker otherwise loses the
+    only key that ties it to the master's exit post.
+    """
+    text = str(comment or "")
+    if not text.startswith("InvoCopy:"):
+        return ""
+    return text.rsplit(":", 1)[-1].strip()
+
+
 def symbol_map() -> Dict[str, str]:
     mapping = dict(DEFAULT_SYMBOL_MAP)
     raw = os.getenv("INVO_SYMBOL_MAP", "").strip()
@@ -539,6 +551,24 @@ class InvoCtaderCopier:
 
         names = self._symbol_names()
         managed = {str(symbol).upper() for symbol in self.symbols.values()}
+        # A position we opened carries its slot in the broker comment. Recover it, or an
+        # adopted trade could only be matched to a master's exit by symbol - and a
+        # stranger's exit would then flatten it.
+        for key, copy in list(self.state["copies"].items()):
+            if not copy.get("adopted") or copy.get("closed"):
+                continue
+            pos = live.get(int(copy.get("positionId") or 0))
+            if not pos:
+                continue
+            slot = _slot_from_comment(pos.get("comment"))
+            if slot and slot != key:
+                self.state["copies"].pop(key)
+                copy["slot"] = slot
+                self.state["copies"][slot] = copy
+                changed += 1
+                logger.info(f"ADOPT re-keyed position #{copy['positionId']} to slot "
+                            f"{slot} so its exit matches exactly")
+
         tracked = {int(c["positionId"]) for c in self.state["copies"].values()
                    if c.get("positionId") and not c.get("closed")}
         for position_id, pos in live.items():
@@ -548,7 +578,8 @@ class InvoCtaderCopier:
                          or names.get(str(pos.get("symbolId")), "")).upper()
             if symbol not in managed:
                 continue
-            self.state["copies"][f"adopted-{position_id}"] = {
+            slot = _slot_from_comment(pos.get("comment"))
+            self.state["copies"][slot or f"adopted-{position_id}"] = {
                 "symbol": symbol,
                 "side": pos.get("tradeSide") or "BUY",
                 "units": pos.get("volume"),
@@ -557,6 +588,7 @@ class InvoCtaderCopier:
                 "closed": False,
                 "trader": "adopted",
                 "adopted": True,
+                "slot": slot,
                 "openedAt": datetime.now(timezone.utc).isoformat(),
             }
             changed += 1
@@ -779,15 +811,25 @@ class InvoCtaderCopier:
     def handle_close(self, signal: Dict[str, Any]) -> None:
         shot = signal["mimicMeta"].get("baseShortId", "")
         copy = self.state["copies"].get(shot)
-        if not copy:
-            # Close posts do not always echo baseShortId. Only one copy per symbol
-            # can be open at a time, so the symbol is a safe fallback key.
+        if not copy and not shot:
+            # Some close posts carry no baseShortId at all, so fall back to the symbol -
+            # but only inside the same master. Matching any open copy of that symbol
+            # lets a stranger's BTC exit flatten our copy of a different master's
+            # trade, which costs money for someone else's decision.
+            #
+            # A post that names a DIFFERENT slot is not that case: it is another trade
+            # of the same master (masters run several BTC slots), so it must never be
+            # applied to this position.
             symbol = self.symbols.get(str(signal["trade"].get("coin", "")).upper())
             for key, candidate in self.state["copies"].items():
-                if not candidate.get("closed") and candidate.get("symbol") == symbol:
-                    copy, shot = candidate, key
-                    logger.info(f"Close post had no baseShortId - matched open {symbol} copy")
-                    break
+                if candidate.get("closed") or candidate.get("symbol") != symbol:
+                    continue
+                if not self._same_master(candidate, signal):
+                    continue
+                copy, shot = candidate, key
+                logger.info(f"Close post had no baseShortId - matched open {symbol} "
+                            f"copy of the same master")
+                break
         if not copy or copy.get("closed"):
             logger.info(f"CLOSE signal for {shot or 'unknown'} ignored: not a copied trade")
             return
@@ -1044,6 +1086,30 @@ class InvoCtaderCopier:
         update = post.get("update") or {}
         owner = update.get("owner") or post.get("owner") or {}
         return str(owner.get("username") or owner.get("id") or "unknown")
+
+    @staticmethod
+    def _same_master(copy: Dict[str, Any], signal: Dict[str, Any]) -> bool:
+        """Does this exit post come from the master whose trade we copied?
+
+        Used only when a close post omits its slot. Anything uncertain returns False:
+        leaving a copy to its stop costs one bounded stop, while flattening it on a
+        stranger's exit throws away a trade that master still holds.
+        """
+        owner = signal.get("owner") or {}
+        owner_name = str(owner.get("username") or "").strip().lower()
+        owner_id = str(owner.get("id") or "").strip()
+        portfolio = str((signal.get("mimicMeta") or {}).get("portfolioId") or "").strip()
+        trader = str(copy.get("trader") or "").strip().lower()
+        # The handle is the identity a human can check, so it decides whenever both
+        # sides have one; the portfolio id (the master's, from update.portfolio.id)
+        # only stands in when the post arrived without an owner.
+        if owner_name and trader:
+            return owner_name == trader
+        if portfolio and copy.get("portfolioId"):
+            return portfolio == str(copy["portfolioId"]).strip()
+        if owner_id and trader:
+            return owner_id.lower() == trader
+        return False
 
     def _allowed_post(self, post: Dict[str, Any]) -> bool:
         """Decide whether this signal earns a real position.

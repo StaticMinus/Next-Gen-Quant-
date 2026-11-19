@@ -67,6 +67,7 @@ class FakeCTrader:
                 "volume": int(round(order.get("volume_lots", 0) * 100)),
                 "entryPrice": 62010.0,
                 "stopLoss": self._stops.get(position_id) or 0.0,
+                "comment": order.get("comment", ""),
             }
             for offset, order in enumerate(self.orders)
             for position_id in [4242 + offset]
@@ -91,11 +92,12 @@ class FakeCTrader:
         return {"status": "closed", "positionId": position_id}
 
 
-def make_signal(coin="BTC", side="long", shot="shot-1", post_id="post-1"):
+def make_signal(coin="BTC", side="long", shot="shot-1", post_id="post-1",
+                trader="mastertrader"):
     return {
         "postId": post_id,
         "action": "open",
-        "owner": {"id": "u1", "username": "mastertrader"},
+        "owner": {"id": f"u-{trader}", "username": trader},
         "trade": {"coin": coin, "side": side, "leverage": 10, "entryPrice": 62000.0,
                   "closingPrice": None, "entrySize": 1.0},
         "mimicMeta": {"portfolioId": "p1", "baseShortId": shot},
@@ -455,14 +457,53 @@ def test_adopt_takes_over_untracked_broker_position(copier):
     assert len(copier.ctrader.orders) == 1
 
 
-def test_adopted_position_is_closed_when_master_exits(copier):
+def test_adopted_position_is_closed_when_its_slot_is_exited(copier):
+    # The broker echoes the slot we stamped on the order, so an adopted copy is still
+    # tied to exactly one master's trade instead of to the symbol.
+    copier.ctrader.orders.append({"symbol": "ETHUSD", "side": "BUY",
+                                  "volume_lots": 0.05, "stop_loss_price": 61000.0,
+                                  "comment": "InvoCopy:ETH:shot-eth"})
+    copier.adopt_broker_positions()
+
+    assert "shot-eth" in copier.state["copies"]
+    copier.handle_close(make_signal(coin="ETH", shot="shot-eth"))
+
+    assert copier.ctrader.closed == [4242]
+
+
+def test_untraceable_adopted_position_is_left_to_its_stop(copier):
+    # No comment means no owner and no slot. Flattening on an unrelated exit would
+    # hand a stranger's decision our position, so the stop stays in charge instead.
     copier.ctrader.orders.append({"symbol": "ETHUSD", "side": "BUY",
                                   "volume_lots": 0.05, "stop_loss_price": 61000.0})
     copier.adopt_broker_positions()
 
     copier.handle_close(make_signal(coin="ETH", shot="unknown-shot"))
 
-    assert copier.ctrader.closed == [4242]
+    assert copier.ctrader.closed == []
+    assert copier.state["copies"]["adopted-4242"]["closed"] is False
+
+
+def test_allowlisted_master_exit_does_not_flatten_another_masters_copy(copier):
+    # Both masters are vetted and both trade BTC - only the owner's exit may close us.
+    copier.handle_open(make_signal(coin="BTC", shot="shot-apx", trader="apx"))
+    assert len(copier.ctrader.orders) == 1
+
+    copier.handle_close(make_signal(coin="BTC", shot=None, trader="peterr"))
+
+    assert copier.ctrader.closed == []
+    assert copier.state["copies"]["shot-apx"]["closed"] is False
+
+
+def test_same_master_exiting_a_different_btc_slot_leaves_the_copy_open(copier):
+    # A master can run several BTC slots at once, so a named slot we do not hold is
+    # another trade - only a close post that omits the slot may fall back to symbol.
+    copier.handle_open(make_signal(coin="BTC", shot="slot-a", trader="apx"))
+
+    copier.handle_close(make_signal(coin="BTC", shot="slot-b", trader="apx"))
+
+    assert copier.ctrader.closed == []
+    assert copier.state["copies"]["slot-a"]["closed"] is False
 
 
 def test_notification_failure_never_blocks_a_copy(copier, monkeypatch):
