@@ -1,0 +1,82 @@
+name: Invo Copier Watchdog
+
+# The copier keeps itself alive by dispatching its successor at the end of every
+# cycle. That chain is the whole reason coverage is continuous, and it has exactly
+# one failure mode that matters: if a cycle dies before it queues the next one (or
+# GitHub drops the dispatch), nothing restarts it until the 6-hourly cron - six
+# hours of blindness on a feed where the tradeable entries are already rare.
+#
+# So this checks, half-hourly, whether any copier run exists at all. Two guards keep
+# it from amplifying the chain: it only dispatches when nothing is queued or running,
+# and only once the last cycle has been quiet for a grace period longer than the
+# copier's own chaining step.
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: invo-watchdog
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  ensure-running:
+    name: Ensure a copier cycle is alive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check for an active cycle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          GRACE_MINUTES: '6'
+        run: |
+          set -u
+          runs=$(gh run list --repo "$REPO" --workflow invo_copier.yml --limit 10 \
+                   --json databaseId,status,createdAt,conclusion 2>/dev/null || echo '[]')
+          echo "recent copier runs: $runs"
+
+          active=$(echo "$runs" | jq '[.[] | select(.status == "queued" or .status == "in_progress"
+                                                   or .status == "waiting" or .status == "pending"
+                                                   or .status == "requested")] | length')
+          if [ "${active:-0}" -gt 0 ]; then
+            echo "A copier cycle is already active ($active) - leaving it alone."
+            exit 0
+          fi
+
+          newest=$(echo "$runs" | jq -r '.[0].createdAt // empty')
+          if [ -n "$newest" ]; then
+            # The chain queues its successor within seconds of finishing, so a recent
+            # completion usually means a dispatch is in flight. Wait it out rather than
+            # seeding a second chain that would also keep dispatching.
+            age_min=$(( ( $(date -u +%s) - $(date -u -d "$newest" +%s) ) / 60 ))
+            echo "newest cycle started ${age_min} min ago"
+            if [ "$age_min" -lt "$GRACE_MINUTES" ]; then
+              echo "Within the grace window - not dispatching."
+              exit 0
+            fi
+          fi
+
+          echo "No copier cycle is alive - restarting the chain."
+          gh workflow run invo_copier.yml --repo "$REPO" -f mode=live -f minutes=9
+          touch /tmp/watchdog_restarted
+
+      - name: Report watchdog restart
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Only speaks when it actually had to intervene; a quiet watchdog is invisible.
+          if [ -f /tmp/watchdog_restarted ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" -d parse_mode="HTML" \
+              --data-urlencode "text=<b>Invo copier chain restarted</b> - no cycle was running, so the watchdog queued one. Copying is back on." \
+              > /dev/null || true
+          fi
