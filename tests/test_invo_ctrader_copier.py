@@ -621,6 +621,32 @@ def test_breakeven_uses_the_broker_fill_not_the_planned_quote(copier):
     assert copier.state["copies"]["shot-1"]["stop"] == 62100.0
 
 
+def test_breakeven_never_widens_a_stop_already_tighter_than_entry(copier):
+    # A trailed or hand-tightened stop is better than break-even; this code must not
+    # push it back out to entry just because the trade is in profit.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    copy["stop"] = copy["entry"] + 50.0
+    copier.ctrader._stops[4242] = copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + 500.0,
+                                                "ask": copy["entry"] + 510.0}
+
+    assert copier.lock_in_breakeven() == 0
+    assert copier.state["copies"]["shot-1"]["stop"] == copy["entry"] + 50.0
+    assert copier.ctrader._stops[4242] == copy["entry"] + 50.0
+
+
+def test_record_already_at_breakeven_is_marked_and_left_alone(copier):
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    copy["stop"] = copy["entry"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + 500.0,
+                                                "ask": copy["entry"] + 510.0}
+
+    assert copier.lock_in_breakeven() == 0
+    assert copier.state["copies"]["shot-1"]["breakevenAt"]
+
+
 def test_notification_failure_never_blocks_a_copy(copier, monkeypatch):
     def boom(*_args, **_kwargs):
         raise RuntimeError("telegram down")

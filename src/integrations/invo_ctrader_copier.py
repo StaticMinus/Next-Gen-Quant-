@@ -931,6 +931,7 @@ class InvoCtaderCopier:
         guarantee. The stop only ever moves forward: never loose, never twice.
         """
         locked = 0
+        marked = False
         due = []
         for shot, copy in list(self.state["copies"].items()):
             if copy.get("closed") or copy.get("breakevenAt"):
@@ -955,6 +956,10 @@ class InvoCtaderCopier:
             entry, stop = float(copy["entry"]), float(copy["stop"])
             risk = abs(entry - stop)
             if risk <= 0:
+                # The stop already sits at or beyond the fill (a tighter stop, or a lock
+                # from an earlier cycle) - marking it keeps this a no-op from now on.
+                copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                marked = True
                 continue
             # Measured on the price we could actually exit at, so a wide spread cannot
             # make a position look a full R ahead when it is not.
@@ -964,6 +969,8 @@ class InvoCtaderCopier:
                 continue
             due.append((shot, copy, move / risk))
         if not due:
+            if marked:
+                self._save_state()
             return 0
 
         # The plan price is a quote; the broker's entryPrice is the fill. Break-even on
@@ -982,6 +989,14 @@ class InvoCtaderCopier:
             symbol = copy["symbol"]
             entry = fills.get(int(copy["positionId"]), float(copy["entry"]))
             new_stop = round(entry, self.ctrader.get_symbol_digits(symbol))
+            current = float(copy["stop"])
+            # Never widen: a stop already tighter than entry (trailed, or tightened by
+            # hand) is protection this code did not earn the right to undo.
+            tighter = new_stop > current if copy["side"] == "BUY" else new_stop < current
+            if not tighter:
+                copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                marked = True
+                continue
             if self.dry_run:
                 logger.info(f"DRY BREAKEVEN {symbol} #{copy['positionId']} up {r_multiple:.2f}R "
                             f"- stop would move to {new_stop}")
@@ -1001,7 +1016,7 @@ class InvoCtaderCopier:
             notify(f"<b>STOP TO BREAKEVEN {symbol}</b>\n"
                    f"@{copy.get('trader')} trade is up {r_multiple:.1f}R, stop moved to entry "
                    f"{new_stop}. This copy can no longer lose.")
-        if locked:
+        if locked or marked:
             self._save_state()
         return locked
 
