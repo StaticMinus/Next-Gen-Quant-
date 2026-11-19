@@ -81,6 +81,9 @@ class FakeCTrader:
         self.stop = stop_loss
         return {"positionId": position_id, "stopLoss": stop_loss}
 
+    def amend_position_sl(self, position_id, stop_loss, symbol=None):
+        return self.amend_position(position_id, stop_loss=stop_loss, symbol=symbol)
+
     def get_closed_deals(self, days=7):
         return self.deals
 
@@ -504,6 +507,88 @@ def test_same_master_exiting_a_different_btc_slot_leaves_the_copy_open(copier):
 
     assert copier.ctrader.closed == []
     assert copier.state["copies"]["slot-a"]["closed"] is False
+
+
+def test_winner_moves_its_stop_to_entry_at_one_r(copier):
+    # A copy that earned back its risk must stop being able to lose.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
+                                                "ask": copy["entry"] + risk + 1.0}
+
+    assert copier.lock_in_breakeven() == 1
+    assert copier.state["copies"]["shot-1"]["stop"] == round(copy["entry"], 3)
+    assert copier.ctrader._stops[4242] == round(copy["entry"], 3)
+    assert copier.state["copies"]["shot-1"]["breakevenAt"]
+
+
+def test_breakeven_waits_for_a_full_risk_unit(copier):
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    original_stop = copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk * 0.9,
+                                                "ask": copy["entry"] + risk}
+
+    assert copier.lock_in_breakeven() == 0
+    assert copier.state["copies"]["shot-1"]["stop"] == original_stop
+    assert "breakevenAt" not in copier.state["copies"]["shot-1"]
+
+
+def test_failed_breakeven_amendment_is_retried_rather_than_recorded(copier):
+    # Recording a lock the broker refused would leave the trade unprotected forever.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
+                                                "ask": copy["entry"] + risk + 1.0}
+    copier.ctrader.sl_amend_fails = True
+
+    assert copier.lock_in_breakeven() == 0
+    assert "breakevenAt" not in copier.state["copies"]["shot-1"]
+
+    copier.ctrader.sl_amend_fails = False
+    assert copier.lock_in_breakeven() == 1
+
+
+def test_breakeven_is_applied_once_not_repeatedly(copier):
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
+                                                "ask": copy["entry"] + risk + 1.0}
+
+    assert copier.lock_in_breakeven() == 1
+    assert copier.lock_in_breakeven() == 0
+
+
+def test_closed_copy_is_left_alone_by_breakeven(copier):
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
+                                                "ask": copy["entry"] + risk + 1.0}
+    copier.handle_close(make_signal())
+
+    assert copier.lock_in_breakeven() == 0
+    assert copier.ctrader._stops[4242] == copy["stop"]
+
+
+def test_breakeven_uses_the_broker_fill_not_the_planned_quote(copier):
+    # Breaking even on the quote leaves the difference to the real fill unhedged.
+    copier.handle_open(make_signal())
+    copy = copier.state["copies"]["shot-1"]
+    risk = copy["entry"] - copy["stop"]
+    copier.ctrader.get_spot_price = lambda _s: {"bid": copy["entry"] + risk,
+                                                "ask": copy["entry"] + risk + 1.0}
+    real = copier.ctrader.get_positions_strict
+    copier.ctrader.get_positions_strict = lambda: [
+        {**pos, "entryPrice": 62100.0} for pos in real()
+    ]
+
+    assert copier.lock_in_breakeven() == 1
+    assert copier.state["copies"]["shot-1"]["stop"] == 62100.0
 
 
 def test_notification_failure_never_blocks_a_copy(copier, monkeypatch):

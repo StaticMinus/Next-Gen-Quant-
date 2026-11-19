@@ -107,6 +107,11 @@ FEED_PAGES = max(1, int(os.getenv("INVO_FEED_PAGES", "3")))
 # entry is still early, so the window has to be generous; the real staleness guard is
 # `_slot_closed_after`, which refuses an entry the master has already exited.
 MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "240"))
+# Profit, in multiples of the risk the trade was sized to, at which the stop moves to
+# entry. At 1.0R the copy has earned back exactly what it can lose, so banking the
+# entry price converts an open winner into a trade with no downside. Set high (or
+# negative) to disable, at the cost of giving winners back on a reversal.
+BREAKEVEN_AT_R = float(os.getenv("INVO_BREAKEVEN_AT_R", "1.0"))
 # The cloud runner chains a fresh process every ~10 minutes. An unconditional startup
 # message would hit the operator's phone ~144 times a day, which trains them to ignore
 # the alerts that actually matter, so "online" only fires after a real outage.
@@ -897,6 +902,83 @@ class InvoCtaderCopier:
                 closed += 1
         return closed
 
+    def lock_in_breakeven(self) -> int:
+        """Once a copy is up a full risk unit, move its stop to the entry price.
+
+        The masters hold for days, so a copy can be a full R in profit and still be
+        one reversal away from the loss the sizing was built to cap. Locking the stop
+        at entry turns that into a trade that cannot lose - it can still be stopped
+        flat, and it gives up the tail a master might ride, which is the price of a
+        guarantee. The stop only ever moves forward: never loose, never twice.
+        """
+        locked = 0
+        due = []
+        for shot, copy in list(self.state["copies"].items()):
+            if copy.get("closed") or copy.get("breakevenAt"):
+                continue
+            if not copy.get("positionId") or not copy.get("entry") or not copy.get("stop"):
+                continue
+            symbol, side = copy["symbol"], copy["side"]
+            try:
+                spot = self.ctrader.get_spot_price(symbol)
+            except Exception as exc:
+                logger.warning(f"Breakeven check skipped for {symbol}: {str(exc)[:120]}")
+                continue
+            if not spot:
+                continue
+            entry, stop = float(copy["entry"]), float(copy["stop"])
+            risk = abs(entry - stop)
+            if risk <= 0:
+                continue
+            # Measured on the price we could actually exit at, so a wide spread cannot
+            # make a position look a full R ahead when it is not.
+            price = float(spot["bid"] if side == "BUY" else spot["ask"])
+            move = price - entry if side == "BUY" else entry - price
+            if move < risk * BREAKEVEN_AT_R:
+                continue
+            due.append((shot, copy, move / risk))
+        if not due:
+            return 0
+
+        # The plan price is a quote; the broker's entryPrice is the fill. Break-even on
+        # the quote would leave a few dollars of the actual fill unhedged, so ask the
+        # broker once - and only on the cycle a lock is actually due.
+        fills: Dict[int, float] = {}
+        try:
+            for pos in (self.ctrader.get_positions_strict() or []):
+                fill = pos.get("entryPrice")
+                if pos.get("positionId") is not None and fill:
+                    fills[int(pos["positionId"])] = float(fill)
+        except Exception as exc:
+            logger.warning(f"Breakeven using planned entry, broker fills unavailable: {str(exc)[:120]}")
+
+        for shot, copy, r_multiple in due:
+            symbol = copy["symbol"]
+            entry = fills.get(int(copy["positionId"]), float(copy["entry"]))
+            new_stop = round(entry, self.ctrader.get_symbol_digits(symbol))
+            if self.dry_run:
+                logger.info(f"DRY BREAKEVEN {symbol} #{copy['positionId']} up {r_multiple:.2f}R "
+                            f"- stop would move to {new_stop}")
+                copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+                locked += 1
+                continue
+            if not self.ctrader.amend_position_sl(int(copy["positionId"]), new_stop, symbol):
+                logger.warning(f"BREAKEVEN FAILED {symbol} #{copy['positionId']} - "
+                               f"stop still at {copy['stop']}")
+                continue
+            previous = copy["stop"]
+            copy["breakevenAt"] = datetime.now(timezone.utc).isoformat()
+            copy["stop"] = new_stop
+            locked += 1
+            logger.info(f"BREAKEVEN {symbol} #{copy['positionId']} up {r_multiple:.2f}R - "
+                        f"stop moved {previous} -> {new_stop}")
+            notify(f"<b>STOP TO BREAKEVEN {symbol}</b>\n"
+                   f"@{copy.get('trader')} trade is up {r_multiple:.1f}R, stop moved to entry "
+                   f"{new_stop}. This copy can no longer lose.")
+        if locked:
+            self._save_state()
+        return locked
+
     # -- polling ----------------------------------------------------------- #
 
     @staticmethod
@@ -1044,6 +1126,9 @@ class InvoCtaderCopier:
     def poll_once(self) -> int:
         self._release_stale_daily_halt()
         self.retry_pending_closes()
+        # Before reading the feed: a winner that has earned its risk back should stop
+        # being able to lose, whatever the masters post in the next ten minutes.
+        self.lock_in_breakeven()
         # Both feeds are merged before anything is acted on: an entry watched on
         # "following" can be exited on "trending", and the slot check that decides
         # whether a master has walked away can only see an exit it was given.
