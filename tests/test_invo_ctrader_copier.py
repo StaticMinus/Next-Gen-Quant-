@@ -1,5 +1,7 @@
 """Tests for the Invo -> cTrader copier (sizing, gating, exit mirroring)."""
 
+from datetime import datetime, timedelta, timezone
+
 import pandas as pd
 import pytest
 
@@ -217,19 +219,21 @@ def test_handle_post_requires_verified_trade(copier):
 def test_handle_post_open_then_close(copier):
     open_post = {
         "id": "p10",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "update": {"ticker": "BTC", "isOpen": True, "verifiedTrade": True,
                    "baseShortId": "shot-10", "directionLong": True, "leverage": 5,
                    "entryPrice": 62000.0, "closingPrice": None,
                    "portfolio": {"id": "p1"}, "owner": {"id": "u1", "username": "x"},
-                   "changes": {"isAdded": True}},
+                   "changes": {"isOpen": True, "reasonClosed": None}},
     }
     close_post = {
         "id": "p11",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "update": {"ticker": "BTC", "isOpen": False, "verifiedTrade": True,
                    "baseShortId": "shot-10", "directionLong": True, "leverage": 5,
                    "entryPrice": 62000.0, "closingPrice": 63100.0,
                    "portfolio": {"id": "p1"}, "owner": {"id": "u1", "username": "x"},
-                   "changes": {"isAdded": True}},
+                   "changes": {"isAdded": False}},
     }
 
     assert copier.handle_post(open_post) == "open"
@@ -242,11 +246,12 @@ def test_first_poll_still_processes_exit_for_held_position(copier, monkeypatch):
 
     close_post = {
         "id": "p-restart",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "update": {"ticker": "BTC", "isOpen": False, "verifiedTrade": True,
                    "baseShortId": "shot-1", "directionLong": True,
                    "closingPrice": 63100.0, "portfolio": {"id": "p1"},
                    "owner": {"id": "u1", "username": "mastertrader"},
-                   "changes": {"isAdded": True}},
+                   "changes": {"isAdded": False}},
     }
     monkeypatch.setattr(mod.InvoClient, "get_feed", lambda self, *a, **k: [close_post])
 
@@ -564,15 +569,38 @@ def test_multiple_feeds_are_merged_and_deduped(copier, monkeypatch):
     assert len(copier.ctrader.orders) == 1     # the shared post id is handled once
 
 
-def make_open_post(post_id="p-allow", owner_id="u-allow", shot="shot-allow"):
+def make_open_post(post_id="p-allow", owner_id="u-allow", shot="shot-allow",
+                   is_open_snapshot=True, minutes_old=0):
+    """A post shaped like the live feed's real entry events.
+
+    The `changes` diff carries the event (what the master did). `isOpen` is only the
+    position's current snapshot, which reads False once the trade has since closed.
+    """
     return {
         "id": post_id,
-        "update": {"ticker": "BTC", "isOpen": True, "verifiedTrade": True,
+        "createdAt": (datetime.now(timezone.utc) - timedelta(minutes=minutes_old))
+                     .isoformat().replace("+00:00", "Z"),
+        "update": {"ticker": "BTC", "isOpen": is_open_snapshot, "verifiedTrade": True,
                    "baseShortId": shot, "directionLong": True,
                    "entryPrice": 62000.0, "closingPrice": None,
                    "portfolio": {"id": "p1"},
                    "owner": {"id": owner_id, "username": "master"},
-                   "changes": {"isAdded": True}},
+                   "changes": {"isOpen": True, "reasonClosed": None}},
+    }
+
+
+def make_close_post(post_id="p-close", owner_id="u-allow", shot="shot-allow",
+                    closing_price=63100.0):
+    """A real exit: Invo marks it as removed, and often omits the closing price."""
+    return {
+        "id": post_id,
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "update": {"ticker": "BTC", "isOpen": False, "verifiedTrade": True,
+                   "baseShortId": shot, "directionLong": True,
+                   "entryPrice": 62000.0, "closingPrice": closing_price,
+                   "portfolio": {"id": "p1"},
+                   "owner": {"id": owner_id, "username": "master"},
+                   "changes": {"isAdded": False}},
     }
 
 
@@ -648,8 +676,7 @@ def test_allowlist_still_mirrors_exit_for_held_copy(copier, monkeypatch):
     copier.handle_open(make_signal(shot="shot-held"))
     assert len(copier.ctrader.orders) == 1
     copier.allowed = {"u-somebody-else"}      # the master was dropped from the allowlist
-    exit_post = make_open_post(post_id="p-exit", owner_id="u-dropped", shot="shot-held")
-    exit_post["update"].update({"isOpen": False, "closingPrice": 63100.0})
+    exit_post = make_close_post(post_id="p-exit", owner_id="u-dropped", shot="shot-held")
     monkeypatch.setattr(mod.InvoClient, "get_feed", lambda self, *a, **k: [exit_post])
     copier._first_poll = False
 
@@ -717,3 +744,70 @@ def test_same_day_daily_halt_stays_engaged(copier, monkeypatch):
     copier.poll_once()
 
     assert guardian.state["trading_halted"] is True
+
+
+# -- post classification ---------------------------------------------------- #
+# Invo's `update.isOpen` / `closingPrice` are the position's live snapshot, not the
+# event the post reported. Reading them as the event inverted every entry into an
+# exit, so the copier silently took no trades at all.
+
+
+def test_historical_entry_is_read_as_an_entry_not_an_exit(copier):
+    # Live shape: a post that opened a trade, whose position has since closed.
+    post = make_open_post(post_id="p-hist", shot="shot-hist", is_open_snapshot=False)
+
+    assert copier.handle_post(post) == "open"
+    assert len(copier.ctrader.orders) == 1
+    assert copier.ctrader.closed == []
+
+
+def test_exit_is_detected_even_without_a_closing_price(copier):
+    copier.handle_open(make_signal(shot="shot-np"))
+    post = make_close_post(post_id="p-np", shot="shot-np", closing_price=None)
+
+    assert copier.handle_post(post) == "close"
+    assert copier.ctrader.closed == [4242]
+
+
+def test_real_close_marked_only_as_removed_is_an_exit(copier):
+    # akira's exits carry nothing but {"isAdded": False}.
+    copier.handle_open(make_signal(shot="shot-rm"))
+    post = make_close_post(post_id="p-rm", shot="shot-rm")
+    post["update"]["changes"] = {"isAdded": False}
+    post["update"].pop("closingPrice")
+
+    assert copier.handle_post(post) == "close"
+    assert copier.ctrader.closed == [4242]
+
+
+def test_averaging_in_is_not_copied_as_a_new_entry(copier):
+    post = make_open_post(post_id="p-add", shot="shot-add")
+    post["update"]["changes"] = {"simIncrease": True, "entryPrice": 61000.0}
+
+    assert copier.handle_post(post) == "increase"
+    assert copier.ctrader.orders == []
+
+
+def test_entry_older_than_the_signal_window_is_skipped(copier):
+    post = make_open_post(post_id="p-late", shot="shot-late",
+                          minutes_old=mod.MAX_SIGNAL_AGE_MIN + 5)
+
+    assert copier.handle_post(post) == "stale"
+    assert copier.ctrader.orders == []
+
+
+def test_fresh_entry_is_copied_even_when_the_snapshot_says_closed(copier):
+    # Seen live: isOpen reads False and closedAt predates the post on fresh entries.
+    post = make_open_post(post_id="p-fresh", shot="shot-fresh", is_open_snapshot=False)
+    post["update"]["closedAt"] = "2020-01-01T00:00:00.000Z"
+
+    assert copier.handle_post(post) == "open"
+    assert len(copier.ctrader.orders) == 1
+
+
+def test_post_without_a_recognisable_diff_is_ignored(copier):
+    post = make_open_post(post_id="p-null", shot="shot-null", is_open_snapshot=None)
+    post["update"]["changes"] = {}
+
+    assert copier.handle_post(post) is None
+    assert copier.ctrader.orders == []

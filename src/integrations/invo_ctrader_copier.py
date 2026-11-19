@@ -96,6 +96,10 @@ MAX_POSITIONS = int(os.getenv("INVO_MAX_POSITIONS", "2"))  # engine budget, not 
 # trickle; a burst (or a gap between cloud cycles) would otherwise push a master's
 # entry past the window and that trade would never be copied.
 FEED_PAGES = max(1, int(os.getenv("INVO_FEED_PAGES", "3")))
+# Entries older than this are history, not signals. Invo's own `isOpen`/`closedAt`
+# fields cannot tell us whether a position is still live, so age is the guard against
+# filling a master's trade long after they took it (or after they had already left).
+MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "20"))
 STOP_BOUNDS = (0.0025, 0.02)  # synthetic stop distance clamped to 0.25% .. 2% of price
 MIN_LOTS = 0.01              # 0.01 BTC / 0.01 ETH granularity
 MAX_SEEN_POSTS = 500
@@ -786,6 +790,48 @@ class InvoCtaderCopier:
 
     # -- polling ----------------------------------------------------------- #
 
+    @staticmethod
+    def _classify(update: Dict[str, Any]) -> Optional[str]:
+        """What did this post actually do: open, increase, or close?
+
+        Invo's `changes` object is the post's own diff - the master's action. By
+        contrast `isOpen`, `closingPrice` and `closedAt` are the position's live
+        snapshot. Reading the snapshot as an event inverts history: a post that
+        opened a trade still reads `isOpen=False` once that trade later closed, so
+        every entry looked like an exit and no trade was ever copied. Equally, a
+        close whose `closingPrice` is missing was dropped as an "increase", leaving
+        our copy to ride to its stop after the master had walked away.
+        """
+        changes = update.get("changes") or {}
+        if "isAdded" in changes:
+            return "open" if changes.get("isAdded") else "close"
+        if changes.get("isOpen") is True:
+            return "open"
+        if changes.get("isOpen") is False:
+            return "close"
+        if changes.get("simIncrease"):
+            return "increase"
+        if update.get("closedAt") or update.get("reasonClosed"):
+            return "close"
+        if update.get("isOpen") is True:
+            return "open"
+        # No diff and a shut position: a stale snapshot, not an event worth acting on.
+        return None
+
+    @staticmethod
+    def _post_age_minutes(post: Dict[str, Any]) -> Optional[float]:
+        """Minutes since the master published this post."""
+        raw = post.get("createdAt")
+        if not raw:
+            return None
+        try:
+            when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - when).total_seconds() / 60.0
+
     def handle_post(self, post: Dict[str, Any]) -> Optional[str]:
         update = post.get("update")
         if not isinstance(update, dict) or not update.get("ticker"):
@@ -793,12 +839,22 @@ class InvoCtaderCopier:
         if not update.get("verifiedTrade"):
             return None
 
-        is_open = update.get("isOpen") is True
-        is_close = update.get("isOpen") is False and update.get("closingPrice") is not None
-        action = "close" if is_close else ("open" if (update.get("changes") or {}).get("isAdded") is not False and is_open else "increase")
+        action = self._classify(update)
+        if action is None:
+            return None
         if action == "increase":
             logger.info(f"Increase signal on {update.get('ticker')} ignored (no pyramiding)")
             return action
+        if action == "open":
+            # `update.isOpen` and `closedAt` are unreliable: they read False and even a
+            # timestamp *earlier* than the post on entries that are minutes old. Age is
+            # the one signal we can trust, and a copy trader must anyway act only on
+            # fresh entries - filling a 20-minute-old call just pays a worse price.
+            age_min = self._post_age_minutes(post)
+            if age_min is not None and age_min > MAX_SIGNAL_AGE_MIN:
+                logger.info(f"Stale open on {update.get('ticker')} ignored - posted "
+                            f"{age_min:.0f} min ago (limit {MAX_SIGNAL_AGE_MIN:.0f})")
+                return "stale"
 
         signal = {
             "postId": post.get("id"),
