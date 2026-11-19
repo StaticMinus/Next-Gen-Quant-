@@ -1,5 +1,6 @@
 """Tests for the Invo -> cTrader copier (sizing, gating, exit mirroring)."""
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -258,6 +259,30 @@ def test_first_poll_still_processes_exit_for_held_position(copier, monkeypatch):
     copier.poll_once()  # restart: first poll must not swallow the exit
 
     assert copier.ctrader.closed == [4242]
+
+
+def test_restored_cycle_is_not_a_cold_start(tmp_path):
+    # No history at all -> index the feed rather than replay it.
+    cold = mod.InvoCtaderCopier(dry_run=True, state_file=tmp_path / "fresh.json",
+                               ctrader=FakeCTrader(), allowed_traders=set())
+    assert cold._first_poll is True
+
+
+def test_restored_cycle_copies_an_entry_posted_between_cycles(tmp_path, monkeypatch):
+    # The chained runner restarts every ~10 minutes. Entries a master posts during that
+    # gap used to be indexed as if they were ancient history, so they were never copied.
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"copies": {}, "seen_posts": ["seen-old"],
+                                 "pending_closes": []}))
+    restored = mod.InvoCtaderCopier(dry_run=True, state_file=state,
+                                    ctrader=FakeCTrader(), allowed_traders=set())
+    monkeypatch.setattr(mod.InvoClient, "get_feed",
+                        lambda self, *a, **k: [make_open_post(post_id="p-gap", shot="shot-gap")])
+
+    restored.poll_once()
+
+    assert restored._first_poll is False
+    assert len(restored._dry_planned) == 1
 
 
 def test_first_poll_ignores_historical_entries(copier, monkeypatch):

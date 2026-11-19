@@ -427,7 +427,11 @@ class InvoCtaderCopier:
         # Dry-run plans are tracked in memory only: writing them to the shared state
         # file would make a later --live run believe slots are already taken.
         self._dry_planned: set = set()
-        self._first_poll = True
+        # A cold start (no history at all) must index the feed rather than replay it.
+        # A *restored* state file is not cold: the chained cloud runner restarts every
+        # ~10 minutes, and treating each restart as cold silently swallowed every entry
+        # a master posted during the gap between cycles.
+        self._first_poll = not self.seen_posts
 
     # -- state ------------------------------------------------------------- #
 
