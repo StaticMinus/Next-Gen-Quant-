@@ -104,6 +104,13 @@ MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "20"))
 # message would hit the operator's phone ~144 times a day, which trains them to ignore
 # the alerts that actually matter, so "online" only fires after a real outage.
 HEARTBEAT_QUIET_MIN = float(os.getenv("INVO_HEARTBEAT_QUIET_MIN", "60"))
+# A hand-picked allowlist goes stale: over a 3-day live window the vetted masters' newest
+# copyable entry was 4 days old while unlisted masters were posting BTC hourly. Every
+# post carries its own portfolio record (winRate / closedPositionsCount / plSnapshot),
+# so each signal is vetted on its own evidence instead of on a remembered list.
+MIN_WIN_RATE = float(os.getenv("INVO_MIN_WIN_RATE", "75"))
+MIN_CLOSED_TRADES = int(os.getenv("INVO_MIN_CLOSED_TRADES", "50"))
+QUALITY_VET = os.getenv("INVO_TRADER_QUALITY", "1").lower() not in ("0", "false", "no")
 STOP_BOUNDS = (0.0025, 0.02)  # synthetic stop distance clamped to 0.25% .. 2% of price
 MIN_LOTS = 0.01              # 0.01 BTC / 0.01 ETH granularity
 MAX_SEEN_POSTS = 500
@@ -933,18 +940,62 @@ class InvoCtaderCopier:
         return handled
 
     def _allowed_post(self, post: Dict[str, Any]) -> bool:
-        """Allowlist gate. An exit for a position we already hold always passes."""
-        if not self.allowed:
-            return True
+        """Decide whether this signal earns a real position.
+
+        Two independent doors, because neither alone is enough: the operator's explicit
+        allowlist (trusted even without a rating) and the quality gate read from the
+        post's own portfolio record. An exit for a position we already hold always
+        passes, so un-vetting a master can never strand their open copy.
+        """
         update = post.get("update") or {}
         # Trending posts carry the owner at post level rather than under the update,
         # so reading only update.owner silently dropped allowlisted masters.
         owner = update.get("owner") or post.get("owner") or {}
-        if owner.get("id") in self.allowed:
-            return True
         # Dropping a trader from the allowlist must not strand their open copy.
         tracked = self.state["copies"].get(update.get("baseShortId") or "", {})
-        return bool(tracked and not tracked.get("closed"))
+        if tracked and not tracked.get("closed"):
+            return True
+        if owner.get("id") in self.allowed:
+            return True
+        return QUALITY_VET and self._portfolio_qualified(update, owner.get("username"))
+
+    @staticmethod
+    def _portfolio_qualified(update: Dict[str, Any], username: Any = None) -> bool:
+        """Judge the signal by the track record Invo attaches to the post itself.
+
+        Returns False when the record is missing, thin, unprofitable, or below the
+        configured win-rate floor - so an unknown poster never gets our money just for
+        being loud on the trending feed.
+        """
+        port = update.get("portfolio") or {}
+        try:
+            closed = int(port.get("closedPositionsCount") or 0)
+        except (TypeError, ValueError):
+            return False
+        if closed < MIN_CLOSED_TRADES:
+            logger.debug(f"@{username}: only {closed} closed trades, need {MIN_CLOSED_TRADES}")
+            return False
+        rate = port.get("winRate")
+        if rate is None:
+            won = int(port.get("wonPositionsCount") or 0)
+            rate = 100.0 * won / closed
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            return False
+        if rate < MIN_WIN_RATE:
+            logger.debug(f"@{username}: win rate {rate:.1f}% below floor {MIN_WIN_RATE:.0f}%")
+            return False
+        pl = port.get("plSnapshot")
+        if pl is not None:
+            try:
+                if float(pl) <= 0:
+                    logger.debug(f"@{username}: portfolio P&L {pl} is not positive")
+                    return False
+            except (TypeError, ValueError):
+                return False
+        logger.info(f"VETTED @{username}: {rate:.1f}% win over {closed} closed trades")
+        return True
 
     def _feed_pages(self, feed_name: str) -> List[dict]:
         """Page a feed backwards until a page holds nothing we have not seen.

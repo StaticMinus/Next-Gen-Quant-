@@ -277,7 +277,8 @@ def test_restored_cycle_copies_an_entry_posted_between_cycles(tmp_path, monkeypa
     restored = mod.InvoCtaderCopier(dry_run=True, state_file=state,
                                     ctrader=FakeCTrader(), allowed_traders=set())
     monkeypatch.setattr(mod.InvoClient, "get_feed",
-                        lambda self, *a, **k: [make_open_post(post_id="p-gap", shot="shot-gap")])
+                        lambda self, *a, **k: [qualified_post(post_id="p-gap",
+                                                              shot="shot-gap")])
 
     restored.poll_once()
 
@@ -571,11 +572,13 @@ def test_empty_following_feed_warns_operator(copier, monkeypatch, caplog):
 def test_multiple_feeds_are_merged_and_deduped(copier, monkeypatch):
     post = {
         "id": "p-shared",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "update": {"ticker": "BTC", "isOpen": True, "verifiedTrade": True,
                    "baseShortId": "shot-shared", "directionLong": True,
                    "entryPrice": 62000.0, "closingPrice": None,
-                   "portfolio": {"id": "p1"}, "owner": {"id": "u1", "username": "x"},
-                   "changes": {"isAdded": True}},
+                   "portfolio": QUALIFIED_PORTFOLIO,
+                   "owner": {"id": "u1", "username": "x"},
+                   "changes": {"isOpen": True, "reasonClosed": None}},
     }
     calls = []
 
@@ -592,6 +595,13 @@ def test_multiple_feeds_are_merged_and_deduped(copier, monkeypatch):
     assert copier.poll_once() == 1
     assert calls == ["following", "trending"]
     assert len(copier.ctrader.orders) == 1     # the shared post id is handled once
+
+
+# A copy of the portfolio block Invo attaches to every post: 85% win over 400 closed
+# trades and positive P&L, i.e. a record that clears the quality gate.
+QUALIFIED_PORTFOLIO = {"id": "p1", "closedPositionsCount": 400,
+                       "wonPositionsCount": 340, "lostPositionsCount": 60,
+                       "winRate": 85.0, "plSnapshot": 1200.0}
 
 
 def make_open_post(post_id="p-allow", owner_id="u-allow", shot="shot-allow",
@@ -642,9 +652,9 @@ def test_allowlist_accepts_owner_carried_at_post_level(copier):
 def test_feed_pagination_reaches_entries_beyond_the_first_page(copier, monkeypatch):
     # A burst between cycles pushes a real entry onto page 2; fetching one page only
     # would lose that trade entirely.
-    noise = make_open_post(post_id="p-noise", shot="shot-noise")
+    noise = qualified_post(post_id="p-noise", shot="shot-noise")
     noise["update"]["ticker"] = "SOL"      # uncopyable filler occupying page 1
-    entry = make_open_post(post_id="p-entry", shot="shot-entry")
+    entry = qualified_post(post_id="p-entry", shot="shot-entry")
 
     def fake(self, name, limit=20, last_post_id=None):
         if last_post_id is None:
@@ -697,6 +707,81 @@ def test_allowlist_copies_chosen_master(copier, monkeypatch):
     assert len(copier.ctrader.orders) == 1
 
 
+# -- signal quality gate ---------------------------------------------------- #
+# A static allowlist cannot track who is actually posting copyable trades, so each
+# signal is also judged on the portfolio record Invo attaches to the post.
+
+
+def qualified_post(**kwargs):
+    post = make_open_post(**kwargs)
+    post["update"]["portfolio"] = dict(QUALIFIED_PORTFOLIO)
+    return post
+
+
+def test_unlisted_master_with_a_proven_record_is_copied(copier, monkeypatch):
+    copier.allowed = set()
+    copier._first_poll = False
+    post = qualified_post(post_id="p-qual", owner_id="u-stranger", shot="shot-qual")
+    monkeypatch.setattr(mod.InvoClient, "get_feed", lambda self, *a, **k: [post])
+
+    copier.poll_once()
+
+    assert len(copier.ctrader.orders) == 1
+
+
+def test_unlisted_master_with_a_poor_record_is_refused(copier):
+    post = qualified_post(post_id="p-poor", owner_id="u-bad", shot="shot-poor")
+    post["update"]["portfolio"]["winRate"] = 52.0
+
+    assert copier._allowed_post(post) is False
+
+
+def test_thin_track_record_is_refused(copier):
+    post = qualified_post(post_id="p-thin", owner_id="u-thin", shot="shot-thin")
+    post["update"]["portfolio"]["closedPositionsCount"] = 5
+
+    assert copier._allowed_post(post) is False
+
+
+def test_losing_portfolio_is_refused(copier):
+    post = qualified_post(post_id="p-neg", owner_id="u-neg", shot="shot-neg")
+    post["update"]["portfolio"]["plSnapshot"] = -42.0
+
+    assert copier._allowed_post(post) is False
+
+
+def test_missing_win_rate_falls_back_to_won_over_closed(copier):
+    post = qualified_post(post_id="p-wr", owner_id="u-wr", shot="shot-wr")
+    post["update"]["portfolio"].pop("winRate")
+
+    assert copier._allowed_post(post) is True     # 340/400 = 85%
+
+
+def test_operator_allowlist_overrides_the_quality_bar(copier):
+    # An explicitly chosen master is trusted even with an unrated record.
+    post = make_open_post(post_id="p-trust", owner_id="u-trusted", shot="shot-trust")
+    copier.allowed = {"u-trusted"}
+
+    assert copier._allowed_post(post) is True
+
+
+def test_quality_gate_can_be_switched_off(copier, monkeypatch):
+    monkeypatch.setattr(mod, "QUALITY_VET", False)
+    post = qualified_post(post_id="p-off", owner_id="u-off", shot="shot-off")
+    copier.allowed = set()
+
+    assert copier._allowed_post(post) is False    # nothing is copied unvetted
+
+
+def test_held_position_exit_is_mirrored_whatever_the_record(copier):
+    copier.handle_open(make_signal(shot="shot-held-q"))
+    copier.allowed = set()
+    post = make_close_post(post_id="p-held-q", owner_id="u-gone", shot="shot-held-q")
+    post["update"]["portfolio"] = {"id": "p1"}
+
+    assert copier._allowed_post(post) is True
+
+
 def test_allowlist_still_mirrors_exit_for_held_copy(copier, monkeypatch):
     copier.handle_open(make_signal(shot="shot-held"))
     assert len(copier.ctrader.orders) == 1
@@ -713,11 +798,13 @@ def test_allowlist_still_mirrors_exit_for_held_copy(copier, monkeypatch):
 def test_broken_feed_does_not_stop_the_others(copier, monkeypatch):
     post = {
         "id": "p-good",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "update": {"ticker": "BTC", "isOpen": True, "verifiedTrade": True,
                    "baseShortId": "shot-good", "directionLong": True,
                    "entryPrice": 62000.0, "closingPrice": None,
-                   "portfolio": {"id": "p1"}, "owner": {"id": "u1", "username": "x"},
-                   "changes": {"isAdded": True}},
+                   "portfolio": QUALIFIED_PORTFOLIO,
+                   "owner": {"id": "u1", "username": "x"},
+                   "changes": {"isOpen": True, "reasonClosed": None}},
     }
 
     def fake(self, name, limit=20, last_post_id=None):
