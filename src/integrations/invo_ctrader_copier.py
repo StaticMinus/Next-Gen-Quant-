@@ -96,10 +96,17 @@ MAX_POSITIONS = int(os.getenv("INVO_MAX_POSITIONS", "2"))  # engine budget, not 
 # trickle; a burst (or a gap between cloud cycles) would otherwise push a master's
 # entry past the window and that trade would never be copied.
 FEED_PAGES = max(1, int(os.getenv("INVO_FEED_PAGES", "3")))
-# Entries older than this are history, not signals. Invo's own `isOpen`/`closedAt`
-# fields cannot tell us whether a position is still live, so age is the guard against
-# filling a master's trade long after they took it (or after they had already left).
-MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "20"))
+# Entries older than this are history, not signals.
+#
+# This was 20 minutes when the copier assumed the masters scalp, and it rejected every
+# opportunity: only 20 BTC/ETH entries existed across 456 scanned posts, the newest
+# 115 minutes old. Measurement says these are swing traders - the leaderboard reports
+# avgHoldTimeSeconds near 295000 (about 3.4 days, "days to weeks"), and across a
+# 761-post scan not one open/close pair fell inside the visible window, i.e. masters
+# hold for longer than the feed reaches back. On a multi-day trade a four-hour-old
+# entry is still early, so the window has to be generous; the real staleness guard is
+# `_slot_closed_after`, which refuses an entry the master has already exited.
+MAX_SIGNAL_AGE_MIN = float(os.getenv("INVO_MAX_SIGNAL_AGE_MIN", "240"))
 # The cloud runner chains a fresh process every ~10 minutes. An unconditional startup
 # message would hit the operator's phone ~144 times a day, which trains them to ignore
 # the alerts that actually matter, so "online" only fires after a real outage.
@@ -351,6 +358,19 @@ def set_refresh_token(token: str, env_path: Optional[Path] = None,
     return 0
 
 
+def _parse_ts(raw: Any) -> Optional[datetime]:
+    """Parse an Invo timestamp into an aware UTC datetime, or None if unusable."""
+    if not raw:
+        return None
+    try:
+        when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when
+
+
 def symbol_map() -> Dict[str, str]:
     mapping = dict(DEFAULT_SYMBOL_MAP)
     raw = os.getenv("INVO_SYMBOL_MAP", "").strip()
@@ -434,6 +454,10 @@ class InvoCtaderCopier:
         # Dry-run plans are tracked in memory only: writing them to the shared state
         # file would make a later --live run believe slots are already taken.
         self._dry_planned: set = set()
+        # Dry runs must show the same decisions a live run would make, and "one copy per
+        # symbol" is part of that: without this a rehearsal would plan two BTC longs
+        # while the live path would take only the first.
+        self._dry_symbols: set = set()
         # A cold start (no history at all) must index the feed rather than replay it.
         # A *restored* state file is not cold: the chained cloud runner restarts every
         # ~10 minutes, and treating each restart as cold silently swallowed every entry
@@ -605,14 +629,20 @@ class InvoCtaderCopier:
         side = "BUY" if signal["trade"]["side"] == "long" else "SELL"
         trader = signal["owner"].get("username") or signal["owner"].get("id")
 
-        if shot and (shot in self.state["copies"] or shot in self._dry_planned):
+        if shot and shot in self._dry_planned:
+            return None
+        # A slot outlives the trade in it: once our copy of the previous trade is
+        # closed, the master opening again in the same slot is a new signal and must
+        # be copied rather than suppressed by the old record's key.
+        existing = self.state["copies"].get(shot) if shot else None
+        if existing and not existing.get("closed"):
             return None
         symbol = self.symbols.get(coin)
         if not symbol:
             logger.info(f"SKIP {coin} {side} @{trader}: no broker symbol (broker lists "
                         f"{', '.join(sorted(set(self.symbols.values())))})")
             return None
-        if self._open_copy_for_symbol(symbol):
+        if self._open_copy_for_symbol(symbol) or (self.dry_run and symbol in self._dry_symbols):
             logger.info(f"SKIP {symbol} {side} @{trader}: already holding a copied {symbol} position")
             return None
         if guardian.state.get("trading_halted"):
@@ -668,6 +698,7 @@ class InvoCtaderCopier:
 
         if self.dry_run:
             self._dry_planned.add(shot or f"{symbol}-dry")
+            self._dry_symbols.add(symbol)
             return plan
 
         comment = f"InvoCopy:{coin}:{(shot or 'na')[:40]}"
@@ -723,9 +754,17 @@ class InvoCtaderCopier:
             **plan, "units": units, "risk_usd": round(risk_usd, 2),
             "positionId": int(position_id), "closed": False,
             "postId": signal.get("postId"), "portfolioId": signal["mimicMeta"].get("portfolioId"),
+            "entryPostedAt": signal.get("postedAt"),
             "openedAt": datetime.now(timezone.utc).isoformat(),
         }
-        self.state["copies"][shot or f"{symbol}-{position_id}"] = record
+        key = shot or f"{symbol}-{position_id}"
+        if shot and existing:
+            # Slots are reused, so the record being replaced is the master's previous
+            # trade in it. Park it under a suffixed key instead of overwriting: its
+            # positionId still needs reconciling for realized P&L and the daily breaker.
+            archive = f"{shot}@{str(existing.get('openedAt') or 'prev')[:19]}"
+            self.state["copies"].setdefault(archive, existing)
+        self.state["copies"][key] = record
         self._save_state()
         logger.info(f"COPIED {symbol} {side} -> position #{position_id}")
         notify(f"<b>COPIED {symbol} {side}</b>\n"
@@ -751,6 +790,19 @@ class InvoCtaderCopier:
                     break
         if not copy or copy.get("closed"):
             logger.info(f"CLOSE signal for {shot or 'unknown'} ignored: not a copied trade")
+            return
+        posted_at = _parse_ts(signal.get("postedAt"))
+        # Judged against the entry post, not our order time: we may enter hours after
+        # the signal, so an exit posted in between still belongs to this trade and must
+        # be honoured, while one posted before the entry belongs to the slot's previous
+        # occupant and must not flatten a position the master still holds.
+        entry_at = _parse_ts(copy.get("entryPostedAt")) or _parse_ts(copy.get("openedAt"))
+        if posted_at and entry_at and posted_at < entry_at:
+            # The slot was closed before we entered the current trade in it, so this
+            # post belongs to the previous occupant - flattening now would exit a
+            # position the master is still holding.
+            logger.info(f"CLOSE signal for {shot} predates our entry - belongs to the "
+                        f"slot's previous trade, ignoring")
             return
         logger.info(f"{'DRY ' if self.dry_run else ''}CLOSE {copy['symbol']} position "
                     f"#{copy.get('positionId')} (trader @{copy.get('trader')} exited)")
@@ -836,18 +888,46 @@ class InvoCtaderCopier:
     @staticmethod
     def _post_age_minutes(post: Dict[str, Any]) -> Optional[float]:
         """Minutes since the master published this post."""
-        raw = post.get("createdAt")
-        if not raw:
+        when = _parse_ts(post.get("createdAt"))
+        if when is None:
             return None
-        try:
-            when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
         return (datetime.now(timezone.utc) - when).total_seconds() / 60.0
 
-    def handle_post(self, post: Dict[str, Any]) -> Optional[str]:
+    @classmethod
+    def _slot_closed_after(cls, post: Dict[str, Any],
+                           context: Optional[List[dict]] = None) -> bool:
+        """Did the master leave this trade after publishing this entry?
+
+        `baseShortId` names a reusable slot (this master's BTC long), not one trade:
+        a master closes the slot and later opens a new position in it. That is why
+        every open/close pair found in a live feed scan had the close written
+        *earlier* than the open - it belongs to the previous occupant of the slot.
+        So a close only ends this entry when it was written after it; comparing to
+        any close in the slot would refuse the master's newest trade because of an
+        exit that happened days before.
+        """
+        if not context:
+            return False
+        update = post.get("update") or {}
+        shot = update.get("baseShortId")
+        entry_at = _parse_ts(post.get("createdAt"))
+        if not shot or entry_at is None:
+            return False
+        for other in context:
+            if other is post or other.get("id") == post.get("id"):
+                continue
+            other_update = other.get("update") or {}
+            if other_update.get("baseShortId") != shot:
+                continue
+            if cls._classify(other_update) != "close":
+                continue
+            closed_at = _parse_ts(other.get("createdAt"))
+            if closed_at is not None and closed_at > entry_at:
+                return True
+        return False
+
+    def handle_post(self, post: Dict[str, Any],
+                    context: Optional[List[dict]] = None) -> Optional[str]:
         update = post.get("update")
         if not isinstance(update, dict) or not update.get("ticker"):
             return None
@@ -861,10 +941,14 @@ class InvoCtaderCopier:
             logger.info(f"Increase signal on {update.get('ticker')} ignored (no pyramiding)")
             return action
         if action == "open":
-            # `update.isOpen` and `closedAt` are unreliable: they read False and even a
-            # timestamp *earlier* than the post on entries that are minutes old. Age is
-            # the one signal we can trust, and a copy trader must anyway act only on
-            # fresh entries - filling a 20-minute-old call just pays a worse price.
+            # `update.isOpen` is False on every entry post we surveyed (33 of 34) and
+            # `closedAt` can precede the entry, so neither describes the position. The
+            # two facts that do hold are age (a multi-day trade is still worth joining
+            # hours in) and the master's own exit, which is a later post in the slot.
+            if self._slot_closed_after(post, context):
+                logger.info(f"Exit already posted for {update.get('ticker')} "
+                            f"@{self._trader_name(post)} - master is out, not copying")
+                return "exited"
             age_min = self._post_age_minutes(post)
             if age_min is not None and age_min > MAX_SIGNAL_AGE_MIN:
                 logger.info(f"Stale open on {update.get('ticker')} ignored - posted "
@@ -873,6 +957,7 @@ class InvoCtaderCopier:
 
         signal = {
             "postId": post.get("id"),
+            "postedAt": post.get("createdAt"),
             "action": action,
             "owner": update.get("owner") or post.get("owner") or {},
             "trade": {
@@ -917,8 +1002,11 @@ class InvoCtaderCopier:
     def poll_once(self) -> int:
         self._release_stale_daily_halt()
         self.retry_pending_closes()
-        handled = 0
-        saw_any = False
+        # Both feeds are merged before anything is acted on: an entry watched on
+        # "following" can be exited on "trending", and the slot check that decides
+        # whether a master has walked away can only see an exit it was given.
+        merged: List[dict] = []
+        index: Dict[str, int] = {}
         for feed_name in self.feeds:
             try:
                 posts = self._feed_pages(feed_name)
@@ -927,17 +1015,35 @@ class InvoCtaderCopier:
                 # INVO_FEEDS must not take the whole poll down with it.
                 logger.error(f"Feed '{feed_name}' failed: {str(exc)[:160]}")
                 continue
-            saw_any = saw_any or bool(posts)
-            handled += self._consume_feed(posts)
+            for post in posts:
+                post_id = post.get("id")
+                if post_id and post_id in index:
+                    continue
+                if post_id:
+                    index[post_id] = len(merged)
+                merged.append(post)
+        saw_any = bool(merged)
+        # Oldest first, so an entry is handled before the exit that followed it - the
+        # other order would mirror a close onto a copy that does not exist yet and then
+        # leave the freshly opened position untracked.
+        merged.sort(key=lambda p: str(p.get("createdAt") or ""))
+        handled = self._consume_feed(merged)
         if self._first_poll:
             logger.info(f"Indexed {len(self.seen_posts)} existing feed posts "
-                        f"from {self.feeds} - waiting for new signals")
+                        f"from {self.feeds} - adopting any live entries in range")
             if not saw_any:
                 logger.warning("Every watched feed is empty - nothing is being followed yet. "
                                "Run --discover, then --follow <user id>")
             self._first_poll = False
         self._save_state()
         return handled
+
+    @staticmethod
+    def _trader_name(post: Dict[str, Any]) -> str:
+        """The poster's handle, whether the owner sits on the update or the post."""
+        update = post.get("update") or {}
+        owner = update.get("owner") or post.get("owner") or {}
+        return str(owner.get("username") or owner.get("id") or "unknown")
 
     def _allowed_post(self, post: Dict[str, Any]) -> bool:
         """Decide whether this signal earns a real position.
@@ -1025,14 +1131,20 @@ class InvoCtaderCopier:
             if not self._allowed_post(post):
                 continue
             if self._first_poll:
-                # Index history instead of replaying it - but never ignore an exit for a
-                # position we still hold, or a restart would strand the trade open.
+                # Index history rather than replay it - but "history" now means a post we
+                # cannot date, because age is what proves a signal is live. A dated
+                # entry still goes through the normal gate, so a cold start adopts a
+                # vetted trade the master is demonstrably still holding instead of
+                # ignoring the feed until the next master happens to post.
+                if self._post_age_minutes(post) is None:
+                    continue
                 shot = (post.get("update") or {}).get("baseShortId")
                 tracked = self.state["copies"].get(shot or "", {})
-                if not tracked or tracked.get("closed"):
+                if self._classify(post.get("update") or {}) == "close" and (
+                        not tracked or tracked.get("closed")):
                     continue
             try:
-                if self.handle_post(post):
+                if self.handle_post(post, context=posts):
                     handled += 1
             except Exception as exc:
                 logger.error(f"Signal handling failed for post {post_id}: {exc}")

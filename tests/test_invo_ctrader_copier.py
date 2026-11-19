@@ -268,6 +268,32 @@ def test_restored_cycle_is_not_a_cold_start(tmp_path):
     assert cold._first_poll is True
 
 
+def test_cold_start_adopts_a_live_entry(tmp_path, monkeypatch):
+    """A fresh deploy must not sit idle until the next master happens to post.
+
+    Only undatable posts are treated as history; a dated entry inside the window that
+    the master has not exited is a live trade and is worth joining.
+    """
+    cold = mod.InvoCtaderCopier(dry_run=True, state_file=tmp_path / "cold.json",
+                               ctrader=FakeCTrader(), allowed_traders=set())
+    entry = qualified_post(post_id="p-live", shot="shot-live", minutes_old=90)
+    monkeypatch.setattr(mod.InvoClient, "get_feed", lambda self, *a, **k: [entry])
+
+    assert cold.poll_once() == 1
+    assert len(cold._dry_planned) == 1
+
+
+def test_cold_start_indexes_posts_it_cannot_date(tmp_path, monkeypatch):
+    cold = mod.InvoCtaderCopier(dry_run=True, state_file=tmp_path / "cold2.json",
+                               ctrader=FakeCTrader(), allowed_traders=set())
+    undated = qualified_post(post_id="p-undated", shot="shot-undated")
+    undated.pop("createdAt")
+    monkeypatch.setattr(mod.InvoClient, "get_feed", lambda self, *a, **k: [undated])
+
+    assert cold.poll_once() == 0
+    assert cold._dry_planned == set()
+
+
 def test_restored_cycle_copies_an_entry_posted_between_cycles(tmp_path, monkeypatch):
     # The chained runner restarts every ~10 minutes. Entries a master posts during that
     # gap used to be indexed as if they were ancient history, so they were never copied.
@@ -625,11 +651,12 @@ def make_open_post(post_id="p-allow", owner_id="u-allow", shot="shot-allow",
 
 
 def make_close_post(post_id="p-close", owner_id="u-allow", shot="shot-allow",
-                    closing_price=63100.0):
+                    closing_price=63100.0, minutes_old=0):
     """A real exit: Invo marks it as removed, and often omits the closing price."""
     return {
         "id": post_id,
-        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "createdAt": (datetime.now(timezone.utc) - timedelta(minutes=minutes_old))
+                     .isoformat().replace("+00:00", "Z"),
         "update": {"ticker": "BTC", "isOpen": False, "verifiedTrade": True,
                    "baseShortId": shot, "directionLong": True,
                    "entryPrice": 62000.0, "closingPrice": closing_price,
@@ -966,3 +993,89 @@ def test_daily_digest_is_sent_once_and_names_open_copies(copier, monkeypatch):
     digests = [m for m in sent if "Daily copy report" in m]
     assert len(digests) == 1
     assert "BTCUSD" in digests[0]
+
+
+# --------------------------------------------------------------------------- #
+# baseShortId is a reusable slot, not a trade id. A master closes a slot and
+# later opens a new position in it, so "the slot has a close post" says nothing
+# about the *current* trade - only a close written AFTER the entry does.
+# --------------------------------------------------------------------------- #
+
+
+def test_entry_the_master_already_exited_is_not_copied(copier):
+    """A close posted after the entry means the master is out - do not fill it."""
+    copier.allowed = {"u-allow"}
+    entry = make_open_post(minutes_old=30)
+    later_exit = make_close_post(post_id="p-out", minutes_old=5)
+
+    assert copier.handle_post(entry, context=[entry, later_exit]) == "exited"
+    assert copier.ctrader.orders == []
+
+
+def test_close_written_before_the_entry_belongs_to_the_previous_trade(copier):
+    """The dominant live pattern: slot closed days ago, reopened now. Copy it."""
+    copier.allowed = {"u-allow"}
+    entry = make_open_post(minutes_old=10)
+    old_exit = make_close_post(post_id="p-old", minutes_old=600)
+
+    assert copier.handle_post(entry, context=[entry, old_exit]) == "open"
+    assert len(copier.ctrader.orders) == 1
+
+
+def test_swing_hold_means_a_multi_hour_entry_is_still_copyable(copier):
+    """Masters hold for days, so a four-hour-old entry still has its trade ahead."""
+    copier.allowed = {"u-allow"}
+    entry = make_open_post(minutes_old=200)
+
+    assert entry["update"]["changes"] == {"isOpen": True, "reasonClosed": None}
+    assert copier.handle_post(entry, context=[entry]) == "open"
+    assert len(copier.ctrader.orders) == 1
+
+
+def test_master_reentering_a_reused_slot_is_copied(copier):
+    """After our copy closes, the same slot opening again is a new trade."""
+    copier.allowed = {"u-allow"}
+    first = make_open_post(post_id="p-a", shot="slot-1", minutes_old=120)
+    assert copier.handle_post(first, context=[first]) == "open"
+
+    copier.state["copies"]["slot-1"]["closed"] = True
+    second = make_open_post(post_id="p-b", shot="slot-1", minutes_old=0)
+    assert copier.handle_post(second, context=[second]) == "open"
+
+    assert len(copier.ctrader.orders) == 2
+    # The finished trade keeps its own record so its P&L can still be reconciled.
+    archived = [k for k in copier.state["copies"] if k.startswith("slot-1@")]
+    assert len(archived) == 1
+
+
+def test_stale_close_does_not_flatten_a_newer_copy(copier):
+    """A slot's old exit must not close the position we opened after it."""
+    copier.allowed = {"u-allow"}
+    entry = make_open_post(minutes_old=60)
+    copier.handle_post(entry, context=[entry])
+
+    stale = make_close_post(post_id="p-old", minutes_old=240)
+    copier.handle_post(stale, context=[stale])
+
+    assert copier.ctrader.closed == []
+    assert copier.state["copies"]["shot-allow"]["closed"] is False
+
+
+def test_feeds_are_merged_so_a_close_on_one_feed_ends_a_trade_from_the_other(copier, monkeypatch):
+    """An entry seen on 'following' can be exited on 'trending'."""
+    copier.allowed = {"u-allow"}
+    copier.feeds = ["following", "trending"]
+    entry = make_open_post(post_id="p-feed-a", shot="slot-feed")
+    exit_post = make_close_post(post_id="p-feed-b", shot="slot-feed")
+
+    def fake_pages(feed_name):
+        return [entry] if feed_name == "following" else [exit_post]
+
+    monkeypatch.setattr(copier, "_feed_pages", fake_pages)
+    copier._first_poll = False
+
+    assert copier.poll_once() == 2
+    # The entry opened a copy and the cross-feed exit then flattened it.
+    assert len(copier.ctrader.orders) == 1
+    assert copier.ctrader.closed == [4242]
+
