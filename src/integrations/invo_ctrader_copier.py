@@ -589,6 +589,9 @@ class InvoCtaderCopier:
                 "side": pos.get("tradeSide") or "BUY",
                 "units": pos.get("volume"),
                 "positionId": position_id,
+                # The fill is the only honest break-even price, and a record without one
+                # cannot be managed at all - the broker knows it, so keep it.
+                "entry": float(pos.get("entryPrice") or 0) or None,
                 "stop": pos.get("stopLoss"),
                 "closed": False,
                 "trader": "adopted",
@@ -599,6 +602,22 @@ class InvoCtaderCopier:
             changed += 1
             logger.warning(f"ADOPT untracked broker position #{position_id} {symbol} - "
                            f"now managed so its exit is mirrored")
+
+        # A copy adopted before this version has no entry price, which silently excludes
+        # it from break-even. The broker still knows the fill, so backfill it rather than
+        # leaving a live winner unable to protect itself.
+        for copy in self.state["copies"].values():
+            if copy.get("closed") or not copy.get("positionId"):
+                continue
+            pos = live.get(int(copy["positionId"]))
+            if not pos:
+                continue
+            for field, source in (("entry", "entryPrice"), ("stop", "stopLoss")):
+                if not copy.get(field) and pos.get(source):
+                    copy[field] = float(pos[source])
+                    changed += 1
+                    logger.info(f"ADOPT filled missing {field} for #{copy['positionId']} "
+                                f"from the broker ({copy[field]})")
         if changed:
             self._save_state()
         return changed
@@ -916,7 +935,14 @@ class InvoCtaderCopier:
         for shot, copy in list(self.state["copies"].items()):
             if copy.get("closed") or copy.get("breakevenAt"):
                 continue
-            if not copy.get("positionId") or not copy.get("entry") or not copy.get("stop"):
+            if not copy.get("positionId"):
+                continue
+            if not copy.get("entry") or not copy.get("stop"):
+                # Adoption backfills both from the broker. A record that still lacks them
+                # cannot be break-evened, and skipping this quietly is how a live winner
+                # went unprotected through a whole cloud cycle.
+                logger.warning(f"BREAKEVEN skipped #{copy['positionId']}: "
+                               f"no entry/stop on record")
                 continue
             symbol, side = copy["symbol"], copy["side"]
             try:

@@ -66,7 +66,10 @@ class FakeCTrader:
                 "tradeSide": order.get("side", "BUY"),
                 "volume": int(round(order.get("volume_lots", 0) * 100)),
                 "entryPrice": 62010.0,
-                "stopLoss": self._stops.get(position_id) or 0.0,
+                # A position placed through this fake tracks its live stop; one seeded
+                # directly reports the stop it was seeded with.
+                "stopLoss": (self._stops[position_id] if position_id in self._stops
+                             else order.get("stop_loss_price")) or 0.0,
                 "comment": order.get("comment", ""),
             }
             for offset, order in enumerate(self.orders)
@@ -458,6 +461,33 @@ def test_adopt_takes_over_untracked_broker_position(copier):
 
     assert copier.handle_open(make_signal(coin="ETH", shot="shot-eth")) is None
     assert len(copier.ctrader.orders) == 1
+
+
+def test_adoption_records_the_fill_so_the_copy_can_be_managed(copier):
+    # An adopted record without an entry price is invisible to break-even.
+    copier.ctrader.orders.append({"symbol": "ETHUSD", "side": "BUY",
+                                  "volume_lots": 0.05, "stop_loss_price": 61000.0})
+
+    copier.adopt_broker_positions()
+
+    assert copier.state["copies"]["adopted-4242"]["entry"] == 62010.0
+    assert copier.state["copies"]["adopted-4242"]["stop"] == 61000.0
+
+
+def test_legacy_adopted_record_gets_its_entry_backfilled_then_locks_breakeven(copier):
+    # Records written by the previous version have a stop but no entry.
+    copier.ctrader.orders.append({"symbol": "BTCUSD", "side": "BUY",
+                                  "volume_lots": 0.07, "stop_loss_price": 61000.0})
+    copier.state["copies"]["legacy"] = {
+        "symbol": "BTCUSD", "side": "BUY", "positionId": 4242,
+        "stop": 61000.0, "closed": False, "trader": "adopted", "adopted": True,
+    }
+    copier.adopt_broker_positions()
+    assert copier.state["copies"]["legacy"]["entry"] == 62010.0
+
+    copier.ctrader.get_spot_price = lambda _s: {"bid": 63400.0, "ask": 63410.0}
+    assert copier.lock_in_breakeven() == 1
+    assert copier.state["copies"]["legacy"]["stop"] == 62010.0
 
 
 def test_adopted_position_is_closed_when_its_slot_is_exited(copier):
