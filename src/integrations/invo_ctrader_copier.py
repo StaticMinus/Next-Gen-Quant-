@@ -92,6 +92,10 @@ FEEDS = [name.strip() for name in os.getenv("INVO_FEEDS", "following").split(","
 ALLOWED_TRADERS = {uid.strip() for uid in os.getenv("INVO_ALLOWED_TRADERS", "").split(",")
                    if uid.strip()}
 MAX_POSITIONS = int(os.getenv("INVO_MAX_POSITIONS", "2"))  # engine budget, not account-wide
+# How far back to page each feed per poll. One page of 20 is enough only while posts
+# trickle; a burst (or a gap between cloud cycles) would otherwise push a master's
+# entry past the window and that trade would never be copied.
+FEED_PAGES = max(1, int(os.getenv("INVO_FEED_PAGES", "3")))
 STOP_BOUNDS = (0.0025, 0.02)  # synthetic stop distance clamped to 0.25% .. 2% of price
 MIN_LOTS = 0.01              # 0.01 BTC / 0.01 ETH granularity
 MAX_SEEN_POSTS = 500
@@ -173,11 +177,12 @@ class InvoClient:
             raise RuntimeError(f"Invo {path} {resp.status_code}: {str(data)[:300]}")
         return data
 
-    def get_feed(self, filter_name: str = "following", item_limit: int = 20) -> List[dict]:
+    def get_feed(self, filter_name: str = "following", item_limit: int = 20,
+                 last_post_id: Optional[str] = None) -> List[dict]:
         data = self.post(
             "/v1_0/posts/get_feed",
             {"filter": {"filter": filter_name, "assetTypes": []},
-             "params": {"lastPostId": None, "itemLimit": item_limit}},
+             "params": {"lastPostId": last_post_id, "itemLimit": item_limit}},
         )
         if isinstance(data, dict):
             return data.get("items") or []
@@ -845,7 +850,7 @@ class InvoCtaderCopier:
         saw_any = False
         for feed_name in self.feeds:
             try:
-                posts = self.invo.get_feed(feed_name, 20)
+                posts = self._feed_pages(feed_name)
             except Exception as exc:
                 # Invo 500s on filter names it does not know, so one bad filter in
                 # INVO_FEEDS must not take the whole poll down with it.
@@ -868,11 +873,32 @@ class InvoCtaderCopier:
         if not self.allowed:
             return True
         update = post.get("update") or {}
-        if (update.get("owner") or {}).get("id") in self.allowed:
+        # Trending posts carry the owner at post level rather than under the update,
+        # so reading only update.owner silently dropped allowlisted masters.
+        owner = update.get("owner") or post.get("owner") or {}
+        if owner.get("id") in self.allowed:
             return True
         # Dropping a trader from the allowlist must not strand their open copy.
         tracked = self.state["copies"].get(update.get("baseShortId") or "", {})
         return bool(tracked and not tracked.get("closed"))
+
+    def _feed_pages(self, feed_name: str) -> List[dict]:
+        """Page a feed backwards until a page holds nothing we have not seen.
+
+        Stops early so steady-state polling stays cheap, while a restart or a burst
+        still reaches every entry posted since the last successful poll.
+        """
+        posts: List[dict] = []
+        cursor: Optional[str] = None
+        for _ in range(FEED_PAGES):
+            page = self.invo.get_feed(feed_name, 20, last_post_id=cursor)
+            if not page:
+                break
+            posts.extend(page)
+            if all(post.get("id") in self.seen_posts for post in page if post.get("id")):
+                break  # the whole page is known history - older pages cannot be new
+            cursor = page[-1].get("id")
+        return posts
 
     def _consume_feed(self, posts: List[dict]) -> int:
         handled = 0

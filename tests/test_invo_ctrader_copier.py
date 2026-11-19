@@ -549,7 +549,9 @@ def test_multiple_feeds_are_merged_and_deduped(copier, monkeypatch):
     }
     calls = []
 
-    def fake(self, name, limit=20):
+    def fake(self, name, limit=20, last_post_id=None):
+        if last_post_id is not None:
+            return []           # this fixture only holds one page of history
         calls.append(name)
         return [post]
 
@@ -572,6 +574,54 @@ def make_open_post(post_id="p-allow", owner_id="u-allow", shot="shot-allow"):
                    "owner": {"id": owner_id, "username": "master"},
                    "changes": {"isAdded": True}},
     }
+
+
+def test_allowlist_accepts_owner_carried_at_post_level(copier):
+    # Trending posts put the owner on the post, not inside the update.
+    post = make_open_post(post_id="p-trend", owner_id="u-master", shot="shot-trend")
+    post["update"].pop("owner", None)
+    post["owner"] = {"id": "u-master", "username": "master"}
+    copier.allowed = {"u-master"}
+
+    assert copier._allowed_post(post) is True
+
+
+def test_feed_pagination_reaches_entries_beyond_the_first_page(copier, monkeypatch):
+    # A burst between cycles pushes a real entry onto page 2; fetching one page only
+    # would lose that trade entirely.
+    noise = make_open_post(post_id="p-noise", shot="shot-noise")
+    noise["update"]["ticker"] = "SOL"      # uncopyable filler occupying page 1
+    entry = make_open_post(post_id="p-entry", shot="shot-entry")
+
+    def fake(self, name, limit=20, last_post_id=None):
+        if last_post_id is None:
+            return [noise]
+        if last_post_id == "p-noise":
+            return [entry]
+        return []
+
+    monkeypatch.setattr(mod.InvoClient, "get_feed", fake)
+    copier.feeds = ["following"]
+    copier._first_poll = False
+
+    assert copier.poll_once() == 2
+    assert copier.state["copies"]["shot-entry"]["closed"] is False
+
+
+def test_feed_pagination_stops_once_a_page_is_known_history(copier, monkeypatch):
+    post = make_open_post(post_id="p-known", shot="shot-known")
+    seen = []
+
+    def fake(self, name, limit=20, last_post_id=None):
+        seen.append(last_post_id)
+        return [post]
+
+    monkeypatch.setattr(mod.InvoClient, "get_feed", fake)
+    copier.seen_posts.add("p-known")
+
+    copier._feed_pages("following")
+
+    assert seen == [None]      # one page, then stop - no needless API calls
 
 
 def test_allowlist_ignores_masters_we_did_not_choose(copier, monkeypatch):
@@ -618,9 +668,11 @@ def test_broken_feed_does_not_stop_the_others(copier, monkeypatch):
                    "changes": {"isAdded": True}},
     }
 
-    def fake(self, name, limit=20):
+    def fake(self, name, limit=20, last_post_id=None):
         if name == "trending":
             raise RuntimeError("Invo /v1_0/posts/get_feed 500: Invalid filter")
+        if last_post_id is not None:
+            return []
         return [post]
 
     monkeypatch.setattr(mod.InvoClient, "get_feed", fake)
