@@ -418,6 +418,24 @@ def test_notification_failure_never_blocks_a_copy(copier, monkeypatch):
     assert len(copier.ctrader.orders) == 1
 
 
+def test_rehearsal_pnl_does_not_charge_the_daily_breaker(copier):
+    # A smoke test is not a master signal; charging it would burn a real strike.
+    copier.handle_open({
+        "postId": "r1", "action": "open",
+        "owner": {"id": "self", "username": "rehearsal"},
+        "trade": {"coin": "BTC", "side": "long", "leverage": 1},
+        "mimicMeta": {"portfolioId": "rehearsal", "baseShortId": "REHEARSAL-1"},
+    })
+    copier.ctrader.closed.append(4242)
+    copier.ctrader.deals.append({"position_id": 4242, "net_pnl": -12.0,
+                                 "symbol_name": "BTCUSD"})
+
+    assert copier.reconcile_closed_trades() == 1
+
+    assert guardian.state["daily_losses_count"] == 0
+    assert copier.state["copies"]["REHEARSAL-1"]["realizedPnl"] == pytest.approx(-12.0)
+
+
 def test_dry_run_never_touches_broker(tmp_path):
     client = FakeCTrader()
     dry = mod.InvoCtaderCopier(dry_run=True, ctrader=client, state_file=tmp_path / "s.json",

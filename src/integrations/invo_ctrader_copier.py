@@ -593,12 +593,18 @@ class InvoCtaderCopier:
             return None
         if guardian.state.get("trading_halted"):
             logger.warning(f"SKIP {symbol} {side}: RiskGuardian halted ({guardian.state.get('halt_reason')})")
+            notify(f"<b>MISSED {symbol} {side}</b>\n"
+                   f"master @{trader} posted a trade but new copies are halted "
+                   f"({guardian.state.get('halt_reason')}).")
             return None
         held = [c for c in self.state["copies"].values() if not c.get("closed")]
         in_use = len(held) + (len(self._dry_planned) if self.dry_run else 0)
         if in_use >= self.max_positions:
             logger.info(f"SKIP {symbol} {side}: copy budget used "
                         f"({in_use}/{self.max_positions}) - Telegram/other positions keep their slots")
+            notify(f"<b>MISSED {symbol} {side}</b>\n"
+                   f"master @{trader} posted, but the copy budget is full "
+                   f"({in_use}/{self.max_positions}). Raise INVO_MAX_POSITIONS to take more.")
             return None
 
         spot = self.ctrader.get_spot_price(symbol)
@@ -900,9 +906,15 @@ class InvoCtaderCopier:
                     f" risk={self.risk_pct}% poll={POLL_SECONDS}s")
         notify(f"<b>Invo copier online</b>\n"
                f"account {account_label()} ({'dry run' if self.dry_run else 'LIVE'})\n"
+               f"equity ${self._account()['equity']:,.2f}\n"
                f"feeds {', '.join(self.feeds)} | masters {len(self.allowed) or 'any on feed'}\n"
                f"risk {self.risk_pct}%/copy | max {self.max_positions} open")
         self.adopt_broker_positions()
+        # Logged at every cycle start: the token decides the account, so this line is the
+        # only proof in the cloud log that orders land on the intended demo account.
+        acct = self._account()
+        logger.info(f"Broker account #{account_label()} balance ${acct['balance']:,.2f} "
+                    f"equity ${acct['equity']:,.2f} free margin ${acct['free_margin']:,.2f}")
         self.reconcile_closed_trades()
         deadline = time.time() + max_minutes * 60 if max_minutes else None
         polls = 0
@@ -943,7 +955,10 @@ class InvoCtaderCopier:
                 continue
             key, copy = pending[position_id]
             pnl = float(deal.get("net_pnl") or 0.0)
-            guardian.record_trade_result(is_loss=pnl < 0, pnl_usd=abs(pnl))
+            # A rehearsal is an operator smoke test, not a master's trade - charging it to
+            # the daily breaker would burn a real strike and could halt live copying.
+            if copy.get("trader") != "rehearsal":
+                guardian.record_trade_result(is_loss=pnl < 0, pnl_usd=abs(pnl))
             copy.update({
                 "reconciled": True, "closed": True, "realizedPnl": pnl,
                 "closedAt": copy.get("closedAt") or datetime.now(timezone.utc).isoformat(),
