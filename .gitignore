@@ -49,3 +49,8 @@ laya-main_2/
 agi/
 Skills/
 caveman/
+invo-copy-trader-master/
+
+# Local run artefacts
+logs/
+.zcode/

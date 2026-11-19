@@ -1,0 +1,113 @@
+name: Invo Copy Trader (Autonomous)
+
+# Mirrors verified Invo master signals onto the cTrader demo account.
+#
+# Why a short cycle instead of one long job: GitHub Actions kills a job at 6h and
+# cancels scheduled overlaps, so each run copies for ~9 minutes and exits. State is
+# carried in the actions cache, and the copier reconciles against the broker on every
+# start, so a lost cache cannot duplicate a position - the broker is the source of
+# truth for what is already open.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Execution mode'
+        required: true
+        default: 'live'
+        type: choice
+        options:
+          - live
+          - dry-run
+      minutes:
+        description: 'Runner minutes (keep below the 10-minute cadence)'
+        required: true
+        default: '9'
+
+concurrency:
+  group: invo-copier
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  copy:
+    name: Invo -> cTrader Copy Cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Restore Copier State
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            cache/invo_copier_state.json
+            cache/risk_guardian_state.json
+          key: invo-state-${{ github.run_id }}
+          restore-keys: |
+            invo-state-
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run Copier Cycle
+        env:
+          PYTHONPATH: .
+          PYTHONUNBUFFERED: "1"
+          # Invo credentials
+          INVO_REFRESH_TOKEN: ${{ secrets.INVO_REFRESH_TOKEN }}
+          INVO_RISK_PCT: ${{ secrets.INVO_RISK_PCT || '0.5' }}
+          INVO_MAX_POSITIONS: ${{ secrets.INVO_MAX_POSITIONS || '2' }}
+          INVO_MAX_NOTIONAL: '2.0'
+          INVO_ATR_MULT: '1.5'
+          INVO_POLL_SECONDS: '8'
+          INVO_FEEDS: ${{ secrets.INVO_FEEDS || 'following,trending' }}
+          INVO_ALLOWED_TRADERS: ${{ secrets.INVO_ALLOWED_TRADERS }}
+          # Execution account: 5947478, the clean 6k demo reserved for Invo copies
+          CTRADER_ACCOUNT_ID: ${{ secrets.INVO_CTRADER_ACCOUNT_ID || '5947478' }}
+          CTRADER_ACCESS_TOKEN: ${{ secrets.INVO_CTRADER_ACCESS_TOKEN }}
+          CTRADER_ENVIRONMENT: demo
+          CTRADER_MCP_URL: ${{ secrets.CTRADER_MCP_URL || 'https://mcp.ctrader.com/trading/mcp' }}
+          # Operator alerts
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MODE="${{ inputs.mode || 'live' }}"
+          MINUTES="${{ inputs.minutes || '9' }}"
+          if [ "$MODE" = "dry-run" ]; then FLAG="--dry-run"; else FLAG="--live"; fi
+          echo "Invo copier starting: mode=$MODE minutes=$MINUTES"
+          python src/integrations/invo_ctrader_copier.py $FLAG --minutes "$MINUTES"
+
+      - name: Save Copier State
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            cache/invo_copier_state.json
+            cache/risk_guardian_state.json
+          key: invo-state-${{ github.run_id }}
+
+      - name: Report Cycle Failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d parse_mode="HTML" \
+            --data-urlencode "text=<b>Invo copier cycle failed</b> - see the Actions log (${{ github.run_id }})." \
+            > /dev/null || true
