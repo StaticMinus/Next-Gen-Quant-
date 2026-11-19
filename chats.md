@@ -1919,3 +1919,42 @@ OPENROUTER_API_KEY="gsk_YourGroqApiKeyHere"
 OPENROUTER_MODEL="llama-3.3-70b-versatile"
 TRADINGAGENTS_BACKEND_URL="https://api.groq.com/openai/v1"
 ```
+
+---
+
+## 2026-11-19 - Invo copy trading goes live on the dedicated 6k demo
+
+**Goal:** copy Invo master-trader signals onto our own cTrader account, autonomously.
+
+**What changed**
+- Execution account is **5947478** ($6,000 demo). The account is bound to the cTrader
+  MCP *token*, not to `CTRADER_ACCOUNT_ID` - that env var is never read by the client,
+  so pointing the copier at a different account means swapping the token.
+- `AgentQuant Cloud Trader` (Telegram signal copier, 5947479) and
+  `TradingAgents 24/7 Multi-Agent Trader` (5947478) were **disabled** so exactly one
+  system trades the Invo account. Re-enable with `gh workflow enable <name>`.
+- New workflow `.github/workflows/invo_copier.yml`: a bounded 9-minute cycle every
+  10 minutes. State rides in the Actions cache, but the copier also reconciles
+  against the broker on every start, so a lost cache cannot duplicate a position.
+- `adopt_broker_positions()` makes the broker the source of truth: untracked
+  positions are adopted (their exit still gets mirrored), vanished ones release
+  their budget slot.
+- Telegram alerts on copy open, mirrored exit, realized P&L, unprotected flatten,
+  2-strike halt, and on signals that were **seen but not copied** (budget full or
+  halted). Rehearsal P&L no longer consumes a daily strike.
+
+**Masters mirrored** (lifetime P&L positive, liquidated accounts excluded):
+@crypto_rocket, @0x744, @jaro, @akira, @prathamesh123, @oozypath.
+Deliberately excluded despite 93%+ accuracy: @archiduc (-16.8%), @prateek (-28.5%),
+@limpan96 (liquidated).
+
+**Verified**
+- Real round trip on 5947478: ETHUSD BUY 2.53 units, broker SL 1769.533 confirmed,
+  closed, reconciled at -$2.88 (spread).
+- Cloud dry-run cycle: authenticated, both feeds indexed 38 posts, correct account
+  balance in the log, clean exit on the runner budget.
+- 61 tests passing, ruff clean.
+
+**Guardrails:** 0.5% of equity risk per copy, 2 concurrent copies max, 2x notional
+cap, synthetic ATR stop clamped to 0.25-2%, fail-closed flatten when a broker stop
+cannot be confirmed, 2-strike daily breaker.
